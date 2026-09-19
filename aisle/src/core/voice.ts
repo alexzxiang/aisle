@@ -260,6 +260,8 @@ export interface VoiceInputOptions {
   conversation?: Pick<ConversationLog, 'pushUser' | 'pushAisle'>;
   /** The scene describer's on-demand path; resolves to the text it spoke, or null. */
   describe?: () => Promise<string | null>;
+  /** Ask the camera a free question in the user's words ("is the fridge open?"); resolves to the spoken answer, or null. */
+  askScene?: (question: string) => Promise<string | null>;
   /**
    * Answers to open questions, before the planner: the awareness loop's "yes" /
    * "no" / "I'm in the kitchen", the guided task's "yes" to a step check. Returns
@@ -509,6 +511,27 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       ? await plan(transcript)
       : { output: parseIntentFallback('', []), planner: false, latencyMs: null };
     const output = withUnclearPrompt(r.output);
+    // B-3: an unrecognised utterance is usually a question ("is the fridge open?", "how many
+    // steps?"), not noise — send it to the camera as a free question in the user's words rather
+    // than "Say the item again." Scene / "where is X" questions were already taken by intercept.
+    if (output.intent === 'unknown' && transcript.length > 0 && opts.askScene) {
+      unclearStreak = 0;
+      let answer: string | null = null;
+      try {
+        answer = await opts.askScene(transcript);
+      } catch {
+        answer = null;
+      }
+      if (answer && answer.trim().length > 0) {
+        // The vision service spoke and logged its own answer; nothing more to say here.
+        last = { output: { intent: 'unknown', item: null, reply: answer }, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs, localIntent: 'describe' };
+        return last;
+      }
+      opts.speech.say({ text: PHRASES.not_caught, priority: 'NAV', cacheKey: 'not_caught', dedupeKey: 'voice-reply', cooldownMs: 1000 });
+      opts.conversation?.pushAisle(PHRASES.not_caught, 'speech');
+      last = { output: { intent: 'unknown', item: null, reply: PHRASES.not_caught }, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs, localIntent: 'intercepted' };
+      return last;
+    }
     act(output, source);
     last = { output, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs };
     return last;

@@ -335,6 +335,8 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     now,
     conversation,
     describe: () => describer.describeNow(),
+    // B-3: an unrecognised utterance becomes a free question to the camera in the user's words.
+    askScene: (question) => describer.describeNow(question),
     // Open questions answer first: the awareness loop's, then the guided task's step check,
     // then "where is the X" from memory — never a store trip for a fridge.
     intercept: (transcript) => situate.intercept(transcript) || (guidedTaskRef?.intercept(transcript) ?? false) || sceneMemory.intercept(transcript),

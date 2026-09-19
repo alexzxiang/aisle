@@ -210,6 +210,29 @@ describe('createVoiceInput', () => {
     v.cancel();
   });
 
+  it('an unrecognised question goes to the camera as a free question, not "say the item again" (B-3)', async () => {
+    const r = fakeRecognizer();
+    fetchStatus = 503;   // planner miss → local parser → unknown
+    const asked: string[] = [];
+    const v = make(r.rec, { askScene: async (q: string) => { asked.push(q); return 'The shelf has cereal boxes.'; } });
+    await v.begin();
+    r.final('what is on the shelf');
+    const out = await v.end();
+    expect(asked).toEqual(['what is on the shelf']);
+    expect(out.localIntent).toBe('describe');
+    expect(said.some((s) => s.text === PHRASES.say_item_again)).toBe(false);
+  });
+
+  it('when the camera cannot answer an unrecognised utterance, it says "I did not catch that" once (B-3)', async () => {
+    const r = fakeRecognizer();
+    fetchStatus = 503;
+    const v = make(r.rec, { askScene: async () => null });
+    await v.begin();
+    r.final('what is on the shelf');
+    await v.end();
+    expect(said.filter((s) => s.text === PHRASES.not_caught)).toHaveLength(1);
+  });
+
   it('falls back to the local keyword parser when the planner fails, times out or returns fallback', async () => {
     const r = fakeRecognizer();
     fetchStatus = 503;

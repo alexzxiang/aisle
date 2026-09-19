@@ -70,7 +70,8 @@ export interface SceneDescriberStats {
 export interface SceneDescriber {
   start(): void;
   stop(): void;
-  describeNow(): Promise<string | null>;
+  /** On-demand look; an optional question ("is the fridge open?") is sent as the vision prompt. */
+  describeNow(question?: string): Promise<string | null>;
   getStats(): SceneDescriberStats;
 }
 
@@ -109,7 +110,7 @@ export function createSceneDescriber(deps: SceneDescriberDeps): SceneDescriber {
   };
 
   /** One question; resolves to the text spoken, or null. */
-  const ask = async (priority: SpeechPriority, onDemand: boolean): Promise<string | null> => {
+  const ask = async (priority: SpeechPriority, onDemand: boolean, question?: string): Promise<string | null> => {
     const t0 = now();
     lastAskAt = t0;
     lastAskedKey = currentKey;
@@ -118,7 +119,7 @@ export function createSceneDescriber(deps: SceneDescriberDeps): SceneDescriber {
     let speechText: string | null = null;
     try {
       const outcome = await deps.vision.ask('free', {
-        userText: DESCRIBE_PROMPT,
+        userText: question && question.trim().length > 0 ? question.trim() : DESCRIBE_PROMPT,
         image: DESCRIBE_SNAPSHOT_WIDTH,
         priority: 'INFO',
         silent: true,   // spoken here, under the 'describe' dedupe key, not by the vision client
@@ -219,10 +220,10 @@ export function createSceneDescriber(deps: SceneDescriberDeps): SceneDescriber {
       clearTimer();
       for (const u of unsubs.splice(0)) u();
     },
-    async describeNow() {
+    async describeNow(question?: string) {
       if (DESCRIBE_SILENT_MODES.has(mode())) return null;
       if (inFlight) return null;
-      return ask('NAV', true);
+      return ask('NAV', true, question);
     },
     getStats: () => ({ running, ...stats, inFlight, lastAskAt, lastText }),
   };
