@@ -41,6 +41,13 @@ export const TASK_DONE_CONFIDENCE = 0.8;
 /** A `done` reading in [ASK, DONE) is put to the user instead: "It looks like <thing>. Is that right?" */
 export const TASK_ASK_CONFIDENCE = 0.5;
 export const TASK_REMIND_MS = 20_000;
+/**
+ * Between the 20 s step reminders a guided task is otherwise silent (the describer and
+ * the awareness loop do not speak in GUIDED_TASK). A short reassurance nudge at INFO
+ * fills that quiet so the user knows the app is still with them; it yields to any real
+ * guidance and never fires while a "Is that right?" check is waiting.
+ */
+export const TASK_REASSURE_MS = 12_000;
 /** Two consecutive `done` readings before a step closes on camera evidence alone (one blurry frame must not skip a step). */
 export const TASK_DONE_STREAK = 2;
 /** An unanswered step check expires after this; the loop goes back to watching. */
@@ -90,6 +97,7 @@ export interface GuidedTaskDeps {
   now?: () => number;
   tickMs?: number;
   remindMs?: number;
+  reassureMs?: number;
   doneConfidence?: number;
   askConfidence?: number;
   doneStreak?: number;
@@ -137,6 +145,7 @@ interface RunState {
   doneReadings: number;
   timer: ReturnType<typeof setTimeout> | null;
   remindTimer: ReturnType<typeof setTimeout> | null;
+  reassureTimer: ReturnType<typeof setTimeout> | null;
   asking: boolean;
   /** An open "Is that right?" for this step, with when it was asked. */
   check: { step: number; at: number } | null;
@@ -152,6 +161,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const now = deps.now ?? Date.now;
   const tickMs = deps.tickMs ?? TASK_TICK_MS;
   const remindMs = deps.remindMs ?? TASK_REMIND_MS;
+  const reassureMs = deps.reassureMs ?? TASK_REASSURE_MS;
   const doneConfidence = deps.doneConfidence ?? TASK_DONE_CONFIDENCE;
   const askConfidence = deps.askConfidence ?? TASK_ASK_CONFIDENCE;
   const doneStreak = deps.doneStreak ?? TASK_DONE_STREAK;
@@ -182,8 +192,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const clearTimers = (r: RunState): void => {
     if (r.timer !== null) clearT(r.timer);
     if (r.remindTimer !== null) clearT(r.remindTimer);
+    if (r.reassureTimer !== null) clearT(r.reassureTimer);
     r.timer = null;
     r.remindTimer = null;
+    r.reassureTimer = null;
   };
 
   const stop = (): void => {
@@ -203,6 +215,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       bus.emit({ type: 'TASK_STEP', index: r.step, total: r.steps.length, instruction: s.instruction });
     }
     scheduleRemind(r);
+    scheduleReassure(r);
   };
 
   const scheduleRemind = (r: RunState): void => {
@@ -212,6 +225,20 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       if (run !== r || mode() !== 'GUIDED_TASK') return;
       speakStep(r, true);
     }, remindMs);
+  };
+
+  // A short "still with you" between reminders, at INFO so real guidance always wins.
+  // Not re-armed here: the next step or reminder re-arms it, so it fires at most once
+  // per quiet window and never while a step check is open.
+  const scheduleReassure = (r: RunState): void => {
+    if (r.reassureTimer !== null) clearT(r.reassureTimer);
+    r.reassureTimer = setT(() => {
+      r.reassureTimer = null;
+      if (run !== r || mode() !== 'GUIDED_TASK' || r.check !== null) return;
+      const text = phraseText('task_still_looking');
+      speech.say({ text, priority: 'INFO', cacheKey: 'task_still_looking', dedupeKey: 'task-reassure', cooldownMs: reassureMs });
+      deps.conversation?.pushAisle(text, 'prompt');
+    }, reassureMs);
   };
 
   const complete = (r: RunState): void => {
@@ -349,7 +376,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
-    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description };
+    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description };
     run = r;
     deps.conversation?.pushAisle(`Plan: ${plan.steps.length === 1 ? 'one step' : `${plan.steps.length} steps`} to ${goal}.`, 'prompt');
     speakStep(r, false);
