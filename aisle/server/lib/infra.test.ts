@@ -130,4 +130,21 @@ describe('health service', () => {
     expect(r.upstreams.nvidia.err).toBe('timeout');
     expect(r.ok).toBe(false);
   });
+
+  it('bounds a cold report by one short budget: every probe runs at once and still diagnoses', async () => {
+    const hang = (signal: AbortSignal) => new Promise<void>((_r, rej) => signal.addEventListener('abort', () => rej(new Error('aborted'))));
+    const h = createHealthService({
+      config: testConfig(),
+      timeoutMs: 10_000,
+      checks: { ...base, nvidia: hang, overpass: hang },
+      counters: createRateLimitCounters(), schemasWarm: () => ({}), latency: () => ({}), missingKeys: () => [],
+    });
+    const t0 = Date.now();
+    const r = await h.report({ timeoutMs: 30 });
+    // Two hanging probes, one budget: overpass waits alongside the upstreams, not after them.
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect(r.upstreams.nvidia.err).toBe('timeout');
+    expect(r.overpass.err).toBe('timeout');
+    expect(r.upstreams.anthropic.ok).toBe(true);
+  });
 });

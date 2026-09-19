@@ -28,16 +28,17 @@ import {
   type JobOutput,
 } from '../../src/outdoor/plannerJobs';
 import { loadConfig, type ProxyConfig } from '../config';
-import { toPlannerResult, withFirstTokenDeadline, type DeadlineOutcome, type StreamHandle } from '../lib/deadline';
+import { toPlannerResult, type DeadlineOutcome, type StreamHandle } from '../lib/deadline';
 import { requestLog, type RequestLog } from '../lib/log';
 import { nimChat, type NimChatParams, type NimChatResult } from '../lib/nim';
 import { sdkClaudePlan, type ClaudePlanStarter } from '../lib/claudePlan';
+import { claudeHandle, plannerPrimary, racePlanner } from '../lib/plannerRace';
 
 export type NimStarter = (params: NimChatParams) => StreamHandle<NimChatResult>;
 
 /** How long after Nemotron's deadline the understudy may still answer before the template wins. */
 export const CLAUDE_GRACE_MS = 1500;
-/** Route-time jobs write long scripts; the walk has not started, so the understudy gets longer. */
+/** Route-time jobs write long scripts; the walk has not started, so the backup gets longer. */
 export const CLAUDE_GRACE_BY_JOB: Readonly<Partial<Record<PlannerJob, number>>> = { routeCompile: 5000, crossingAnnounce: 3000, taskPlan: 3000 };
 export function claudeGraceFor(job: PlannerJob): number {
   return CLAUDE_GRACE_BY_JOB[job] ?? CLAUDE_GRACE_MS;
@@ -86,19 +87,13 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
   const config = deps.config ?? loadConfig();
   const nim = deps.nim ?? defaultNim(config);
   const deadlines = JOB_DEADLINES_MS[job];
-  let validationFallback = false;
-  let thinkingLeaked = false;
-
-  // The understudy starts now; it is only read if Nemotron misses (see lib/claudePlan.ts).
+  const log = deps.log ?? requestLog;
+  const primary = plannerPrimary(job, log);
   const claudeStarter = deps.claude === undefined ? (config.anthropicApiKey ? sdkClaudePlan(config.anthropicApiKey) : null) : deps.claude;
-  const understudy = claudeStarter
-    ? claudeStarter({ system: spec.prompt, user: JSON.stringify(input), schema: spec.schema, maxTokens: maxTokensFor(job) })
-    : null;
-  if (understudy) understudy.result.catch(() => undefined); // an aborted / failed understudy is not an unhandled rejection
-
-  let understudyVerdict: 'unused' | 'won' | 'late' | 'invalid' | 'off' = understudy ? 'unused' : 'off';
-  let outcome = await withFirstTokenDeadline<NimChatResult, JobOutput<J>>(
-    () => nim({
+  const params = { system: spec.prompt, user: JSON.stringify(input), schema: spec.schema, maxTokens: maxTokensFor(job) };
+  const { outcome, attempts, validationFallback, thinkingLeaked } = await racePlanner<JobOutput<J>>({
+    primary,
+    nim: () => nim({
       system: spec.prompt,
       user: JSON.stringify(input),
       schema: spec.schema,
@@ -106,58 +101,22 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
       maxTokens: maxTokensFor(job),
       temperature: 0,
     }),
-    {
+    claude: claudeStarter ? () => claudeHandle(claudeStarter(params), now) : null,
+    graceMs: claudeGraceFor(job),
+    validate: (r) => {
+      const parsed = extractJsonObject(r.text);
+      if (parsed === null) throw new Error('model reply is not JSON');
+      return validateFor(job, parsed, input);
+    },
+    deadline: {
       firstTokenMs: deadlines.firstToken,
       totalMs: deadlines.total,
       fallback: () => templateFor(job, input),
-      accept: (r) => {
-        thinkingLeaked = r.thinkingLeaked;
-        const parsed = extractJsonObject(r.text);
-        if (parsed === null) throw new Error('model reply is not JSON');
-        const v = validateFor(job, parsed, input);
-        validationFallback = v.usedFallback;
-        return v.output;
-      },
       now,
       setTimeoutFn: deps.setTimeoutFn,
       clearTimeoutFn: deps.clearTimeoutFn,
     },
-  );
-
-  if (understudy) {
-    if (!outcome.fallback) {
-      understudy.abort();
-    } else {
-      // Nemotron missed or answered badly: take Haiku's answer if it is in (or arrives within the grace).
-      const t1 = now();
-      const graced = await Promise.race<{ text: string; model: string } | null>([
-        understudy.result.catch(() => null),
-        new Promise<null>((resolve) => { (deps.setTimeoutFn ?? setTimeout)(() => resolve(null), claudeGraceFor(job)); }),
-      ]);
-      if (graced) {
-        const parsed = extractJsonObject(graced.text);
-        if (parsed !== null) {
-          const v = validateFor(job, parsed, input);
-          validationFallback = v.usedFallback;
-          understudyVerdict = 'won';
-          outcome = {
-            value: v.output,
-            fallback: false,
-            firstTokenMs: outcome.firstTokenMs,
-            latencyMs: outcome.latencyMs + (now() - t1),
-            provider: 'anthropic',
-            model: graced.model,
-            reason: outcome.reason,
-          };
-        } else {
-          understudyVerdict = 'invalid';
-        }
-      } else {
-        understudyVerdict = 'late';
-        understudy.abort();
-      }
-    }
-  }
+  });
 
   const base = toPlannerResult(job, outcome);
   const result: PlanRunResult<JobOutput<J>> = {
@@ -171,7 +130,7 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
   };
   if (outcome.error) result.error = outcome.error;
 
-  (deps.log ?? requestLog).write({
+  log.write({
     route: 'plan',
     key: job,
     model: result.model ?? undefined,
@@ -181,7 +140,7 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
     fallback: result.fallback,
     verdict: 'pass',
     error: result.error,
-    extra: { reason: result.reason, thinkingLeaked, understudy: understudyVerdict },
+    extra: { reason: result.reason, thinkingLeaked, primary, attempts },
   });
   return result;
 }

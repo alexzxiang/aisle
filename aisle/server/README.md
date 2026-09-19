@@ -103,6 +103,12 @@ Five upstreams are red when down; `openrouter` is grey. Checks are cached 30 s (
 Routes 5 min — they cost credits); `?force=1` re-runs them. A red pair in `schemasWarm`
 30 minutes before the slot is a stop-the-line item.
 
+`npm run doctor [url]` prints that report one line per upstream, in colour, and exits
+nonzero when anything required is red — a dead key (`MISSING KEY` / `AUTH / PERMISSION`)
+reads differently from a dead network (`NETWORK`). It asks for `?budgetMs=` so every cold
+probe is bounded (all of them run at once, Overpass included) and the answer lands in a
+couple of seconds instead of waiting out the 10 s per-check timeout.
+
 ## Hosting (us-east) and the hotspot / LAN plan
 
 1. **Hosted, us-east** on the team's Node host [verify: provider, plan, WebSocket support,

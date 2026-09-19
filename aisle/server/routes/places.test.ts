@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearPlacesCache, nameMatches, normStreet, onStreetHint, placesQuery, searchPlaces, toPlaces } from './places';
+import { clearPlacesCache, nameMatches, normStreet, onStreetHint, placesQuery, searchPlaces, toPlaces, placesReply, PLACES_CACHE_MS, PLACES_STALE_MAX_MS } from './places';
 
 const ORIGIN = { lat: 40.4443, lng: -79.9436 };
 const elements: Array<{ type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }> = [
@@ -86,6 +86,33 @@ describe('toPlaces', () => {
 });
 
 describe('searchPlaces', () => {
+  const query = { q: 'cvs', ...ORIGIN, radiusM: 1500, limit: 5 };
+  it('serves stale matching results during an outage without extending their age', async () => {
+    const good = fakeFetch(() => new Response(JSON.stringify({ elements })));
+    const down = fakeFetch(() => new Response('', { status: 502 }));
+    await searchPlaces(query, { fetchFn: good.fn, now: () => 0 });
+    const stale = await searchPlaces(query, { fetchFn: down.fn, mirrors: ['https://x/api'], now: () => PLACES_CACHE_MS + 1 });
+    expect(stale).toMatchObject({ source: 'stale-cache', cacheAgeMs: PLACES_CACHE_MS + 1 });
+    expect(stale.places).toHaveLength(2);
+    expect(placesReply(query, stale.places, true)).toContain('Last saved result.');
+    expect((await searchPlaces(query, { fetchFn: down.fn, now: () => PLACES_STALE_MAX_MS + 1 })).places).toEqual([]);
+  });
+  it('never reuses another location or mismatched name during an outage', async () => {
+    await searchPlaces(query, { fetchFn: fakeFetch(() => new Response(JSON.stringify({ elements }))).fn, now: () => 0 });
+    const deps = { fetchFn: fakeFetch(() => new Response('', { status: 502 })).fn, now: () => PLACES_CACHE_MS + 1 };
+    expect((await searchPlaces({ ...query, lat: 0 }, deps)).places).toEqual([]);
+    expect((await searchPlaces({ ...query, q: 'bakery' }, deps)).places).toEqual([]);
+  });
+  it('refreshes after ten minutes and reports nearest versus street selection honestly', async () => {
+    const good = fakeFetch(() => new Response(JSON.stringify({ elements })));
+    await searchPlaces(query, { fetchFn: good.fn, now: () => 0 });
+    const r = await searchPlaces(query, { fetchFn: good.fn, now: () => PLACES_CACHE_MS + 1 });
+    expect(r.source).toBe('live');
+    expect(good.calls).toHaveLength(2);
+    expect(placesReply(query, r.places)).toBe('Found the nearest matching place.');
+    expect(placesReply({ ...query, street: 'Forbes Ave' }, r.places)).toContain('No match on that street.');
+    expect(placesReply({ ...query, street: 'Forbes Ave' }, [{ ...r.places[0]!, onStreet: true, street: 'Forbes Avenue' }])).toBe('Found the one on Forbes Avenue.');
+  });
   it('posts to the first mirror, caches, and falls back to the next mirror on failure', async () => {
     const { fn, calls } = fakeFetch((url) => url.includes('kumi') ? new Response(JSON.stringify({ elements }), { status: 200 }) : new Response('', { status: 504 }));
     const q = { q: 'cvs', lat: ORIGIN.lat, lng: ORIGIN.lng, radiusM: 1500, limit: 5 };

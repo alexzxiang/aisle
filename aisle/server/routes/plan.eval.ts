@@ -12,12 +12,14 @@
  *   3. p50 / p95 first-token and total latency per job, `nvext` acceptance, fallback rate, thinking leakage.
  * Nothing here runs during the walk.
  */
+import 'dotenv/config';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ParseIntentOutput, PlannerJob } from '../../src/core/contracts';
+import type { ParseIntentOutput, PlannerJob, TaskPlanInput, TaskPlanOutput } from '../../src/core/contracts';
 import { countWords } from '../../src/core/phrases';
-import { INTENTS, templateParseIntent, templateRouteCompile } from '../../src/outdoor/plannerJobs';
+import { INTENTS, PLANNER_JOBS, templateParseIntent, templateRouteCompile, templateTaskPlan } from '../../src/outdoor/plannerJobs';
+import { plannerPrimary, type PlanAttempt } from '../lib/plannerRace';
 import { loadConfig } from '../config';
 import { createRequestLog } from '../lib/log';
 import { runPlannerJob, warmInputFor, type PlanDeps } from './plan';
@@ -25,6 +27,21 @@ import { runPlannerJob, warmInputFor, type PlanDeps } from './plan';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'plan.eval.md');
 const KNOWN_ITEMS = ['eggs', 'milk', 'bread', 'butter', 'cheese', 'apples', 'bananas', 'rice', 'pasta', 'coffee'];
+
+export const TASK_GOLDENS: Array<{ name: string; input: TaskPlanInput; landmark: RegExp; direction: RegExp }> = [
+  { name: 'kitchen/fridge', input: { goal: 'find eggs in my fridge', context: 'home', facts: { detections: ['refrigerator'], ocr: [], scene: 'in a kitchen', description: 'Kitchen counter ahead, fridge on your left.' } }, landmark: /fridge|refrigerator/i, direction: /left/i },
+  { name: 'living room/keys', input: { goal: 'find my keys', context: 'home', facts: { detections: ['couch', 'table'], ocr: [], scene: 'in a living room', description: 'Keys on the table to your right.' } }, landmark: /keys|table/i, direction: /right/i },
+  { name: 'store/eggs', input: { goal: 'find eggs', context: 'store', facts: { detections: [], ocr: ['DAIRY'], scene: 'in a grocery store', description: 'Dairy sign ahead, shelves on both sides.' } }, landmark: /dairy|sign/i, direction: /ahead|forward/i },
+  { name: 'street/entrance', input: { goal: 'reach the entrance', context: 'street', facts: { detections: [], ocr: ['ENTRANCE'], scene: 'on a sidewalk', description: 'An entrance on your left.' } }, landmark: /entrance|door/i, direction: /left/i },
+  { name: 'unknown', input: { goal: 'find my bag', context: 'unknown', facts: { detections: [], ocr: [], scene: 'unknown', description: 'Too dark to identify objects.' } }, landmark: /camera|look|scan/i, direction: /still|slowly/i },
+];
+
+/** A narrow, reproducible grounding check, not a claim of physical task completion. */
+export function groundedFirstStep(plan: TaskPlanOutput, golden: typeof TASK_GOLDENS[number]): boolean {
+  const text = plan.steps[0]?.instruction ?? '';
+  return golden.landmark.test(text) && golden.direction.test(text) &&
+    !(golden.name === 'unknown' && /\b(walk|reach|open)\b/i.test(text));
+}
 
 type Intent = ParseIntentOutput['intent'];
 interface Utterance { text: string; intent: Intent; item?: string; kind: 'clean' | 'noisy' | 'off-task' }
@@ -149,7 +166,7 @@ async function runIntents(live: boolean, deps: PlanDeps): Promise<IntentRun[]> {
   for (const u of UTTERANCES) template.predictions.push(templateParseIntent({ transcript: u.text, mode: 'OUTDOOR_NAV', knownItems: KNOWN_ITEMS }));
   const runs = [template];
   if (live) {
-    const model: IntentRun = { name: 'nemotron (live)', predictions: [], latencies: [], fallbacks: 0 };
+    const model: IntentRun = { name: 'planner race (live)', predictions: [], latencies: [], fallbacks: 0 };
     for (const u of UTTERANCES) {
       const r = await runPlannerJob('parseIntent', { transcript: u.text, mode: 'OUTDOOR_NAV', knownItems: KNOWN_ITEMS }, deps);
       model.predictions.push(r.output);
@@ -163,15 +180,15 @@ async function runIntents(live: boolean, deps: PlanDeps): Promise<IntentRun[]> {
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const live = Boolean(config.nvidiaApiKey || config.openRouterApiKey);
+  const live = !process.argv.includes('--offline') && Boolean(config.nvidiaApiKey || config.openRouterApiKey || config.anthropicApiKey);
   const log = createRequestLog({ sink: () => {} });
   const deps: PlanDeps = { config, log };
   const lines: string[] = [];
   lines.push('# Nemotron Planner eval (Tier 2, "Beyond the Chatbot")');
   lines.push('');
-  lines.push(`Generated ${new Date().toISOString()} by \`server/routes/plan.eval.ts\` — mode: **${live ? 'live (NIM)' : 'offline (templated fallback only; set NVIDIA_API_KEY to add the model column)'}**.`);
+  lines.push(`Generated ${new Date().toISOString()} by \`server/routes/plan.eval.ts\` — mode: **${live ? 'live (Nemotron / Haiku race)' : 'offline (templates only; model measurements unavailable)'}**.`);
   lines.push('');
-  lines.push('Nemotron routes, classifies, judges and decides; it never chats and never sees a frame. Every job is schema-bound (`nvext.guided_json`), thinking off, streamed, behind a 1.5 s first-token deadline with a deterministic template so the walk never waits.');
+  lines.push('Validated JSON jobs race Nemotron and Haiku under per-job deadlines, then use templates. NIM uses non-streaming json_object with the schema in the prompt. parseIntent prefers Haiku after at least five Nemotron samples with a rolling median above three seconds; routeCompile keeps Nemotron first.');
   lines.push('');
 
   // 1. Intent accuracy
@@ -213,7 +230,7 @@ async function main(): Promise<void> {
     modelLegs = r.output.legs;
     compileMeta = ` (routeCompile: first token ${r.firstTokenMs ?? 'n/a'} ms, total ${r.latencyMs} ms, fallback ${r.fallback}, provider ${r.provider ?? 'n/a'})`;
   }
-  lines.push(`| # | Raw Google (words) | Template now / confirm (words) | Nemotron now / confirm (words)${compileMeta} | Rating |`);
+  lines.push(`| # | Raw Google (words) | Template now / confirm (words) | Model now / confirm (words)${compileMeta} | Rating |`);
   lines.push('|---|---|---|---|---|');
   GOOGLE_STEPS.forEach((s, i) => {
     const raw = s.instruction.replace(/\n/g, ' / ');
@@ -225,14 +242,14 @@ async function main(): Promise<void> {
   lines.push('');
 
   // 3. Latency / acceptance
-  lines.push('## 3. Latency, `nvext` acceptance, fallback rate, thinking');
+  lines.push('## 3. Per-job latency, fallback rate, thinking');
   lines.push('');
   if (!live) {
     lines.push('Offline run: no model calls were made. Deadlines under test: `server/routes/plan.test.ts` exercises the first-token miss, the upstream 429 rejection, the missing-key path and per-field validation; `server/lib/nim.test.ts` (Agent D) exercises the NIM → OpenRouter failover and thinking-leak stripping.');
   } else {
     lines.push('| Job | n | first token p50 / p95 (ms) | total p50 / p95 (ms) | fallback rate | thinking leaked |');
     lines.push('|---|---|---|---|---|---|');
-    const jobs: PlannerJob[] = ['routeCompile', 'parseIntent', 'disambiguate', 'crossingAnnounce', 'answer'];
+    const jobs: readonly PlannerJob[] = PLANNER_JOBS;
     for (const job of jobs) {
       const first: number[] = [];
       const total: number[] = [];
@@ -247,18 +264,43 @@ async function main(): Promise<void> {
         if (r.thinkingLeaked) leaked += 1;
       }
       if (job === 'parseIntent') {
-        const run = runs.find((r) => r.name.startsWith('nemotron'));
+        const run = runs.find((r) => r.name.startsWith('planner'));
         if (run) {
           total.push(...run.latencies);
           fallbacks = run.fallbacks;
         }
+        for (const row of log.recent({ route: 'plan', key: job })) if (row.firstTokenMs != null) first.push(row.firstTokenMs);
       }
       const q = (xs: number[], p: number): string => String(quantile(xs, p) ?? 'n/a');
       lines.push(`| ${job} | ${total.length} | ${q(first, 0.5)} / ${q(first, 0.95)} | ${q(total, 0.5)} / ${q(total, 0.95)} | ${total.length ? pct(fallbacks / total.length) : 'n/a'} | ${leaked} |`);
     }
     lines.push('');
-    lines.push(`Model: \`${config.nvidiaModel}\` on \`${config.nimBaseUrl}\`; request body per 07 §1 (stream, temperature 0, max_completion_tokens, chat_template_kwargs.enable_thinking=false, nvext.guided_json). A thinking-leak count above zero means the template is on and must be fixed before the demo.`);
+    lines.push(`Nemotron model: \`${config.nvidiaModel}\`. Non-streaming completion latency is also reported as first-token latency; it is not streaming TTFT.`);
   }
+  lines.push('', '## 4. Golden task plans — first-step grounding', '', '| Case | Template first step | Grounded | Model first step | Grounded | Provider / fallback |', '|---|---|---|---|---|---|');
+  let templateGrounded = 0;
+  let modelGrounded = 0;
+  for (const golden of TASK_GOLDENS) {
+    const template = templateTaskPlan(golden.input);
+    const model = live ? await runPlannerJob('taskPlan', golden.input, deps) : null;
+    const templateOk = groundedFirstStep(template, golden);
+    const modelOk = model ? groundedFirstStep(model.output, golden) : false;
+    if (templateOk) templateGrounded++;
+    if (modelOk && !model?.fallback) modelGrounded++;
+    lines.push(`| ${golden.name} | ${template.steps[0]?.instruction} | ${templateOk} | ${model?.output.steps[0]?.instruction ?? 'not run'} | ${model ? modelOk : 'n/a'} | ${model ? `${model.provider} / ${model.fallback}` : 'n/a'} |`);
+  }
+  lines.push('', `Template grounding: ${templateGrounded}/5. Model-only grounding: ${live ? `${modelGrounded}/5` : 'not measured (no live calls)'}. Checks require the observed landmark and side in step one; unknown scenes require a stationary scan.`);
+  lines.push('', '## 5. Provider attempts', '', '| Job | Provider | completed n | p50 / p95 (ms) | invalid | errors | timeouts | cancelled |', '|---|---|---|---|---|---|---|---|');
+  for (const job of PLANNER_JOBS) {
+    const attempts = log.recent({ route: 'plan', key: job }).flatMap((r) => (r.extra?.attempts ?? []) as PlanAttempt[]);
+    for (const provider of ['nim', 'anthropic', 'openrouter']) {
+      const rows = attempts.filter((a) => a.provider === provider);
+      const completed = rows.filter((a) => a.status === 'valid' || a.status === 'invalid').map((a) => a.elapsedMs);
+      const n = (status: PlanAttempt['status']) => rows.filter((a) => a.status === status).length;
+      lines.push(`| ${job} | ${provider} | ${completed.length} | ${quantile(completed, 0.5) ?? 'n/a'} / ${quantile(completed, 0.95) ?? 'n/a'} | ${n('invalid')} | ${n('error')} | ${n('timeout')} | ${n('cancelled')} |`);
+    }
+  }
+  lines.push('', `Next parseIntent primary: ${plannerPrimary('parseIntent', log)}. Deadline-limited samples are lower bounds used for routing; cancellations are excluded from medians.`, '');
   lines.push('');
   lines.push('## Failure we found');
   lines.push('');
@@ -266,7 +308,8 @@ async function main(): Promise<void> {
   lines.push('');
 
   await fs.writeFile(OUT, `${lines.join('\n')}\n`, 'utf8');
-  process.stdout.write(`wrote ${OUT}\n`);
+  process.stdout.write(`${lines.join('\n')}\n\nwrote ${OUT}\n`);
+  if (live && modelGrounded !== TASK_GOLDENS.length) process.exitCode = 1;
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

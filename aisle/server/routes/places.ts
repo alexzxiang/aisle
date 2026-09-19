@@ -11,9 +11,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { haversineM } from '../../src/outdoor/geo';
 import { OVERPASS_MIRRORS, OVERPASS_USER_AGENT } from './crossings';
+import { isValidPhrase } from '../../src/outdoor/plannerJobs';
 
 export const PLACES_TIMEOUT_MS = 20_000;
 export const PLACES_CACHE_MS = 10 * 60 * 1000;
+/** Expired results may cover an outage, but never indefinitely. */
+export const PLACES_STALE_MAX_MS = 60 * 60 * 1000;
 export const PLACES_DEFAULT_RADIUS_M = 2000;
 export const PLACES_MAX_RADIUS_M = 5000;
 
@@ -137,14 +140,32 @@ export function clearPlacesCache(): void {
   cache.clear();
 }
 
-export async function searchPlaces(q: PlacesQuery, deps: PlacesDeps = {}): Promise<{ places: Place[]; source: 'live' | 'cache'; error?: string }> {
+export interface PlacesResult {
+  places: Place[];
+  source: 'live' | 'cache' | 'stale-cache';
+  cacheAgeMs?: number;
+  error?: string;
+}
+
+/** Reply describes the selected match, and never invents a requested street match. */
+export function placesReply(q: PlacesQuery, places: Place[], stale = false): string {
+  const first = places[0];
+  if (!first) return 'I could not find that place nearby.';
+  const text = q.street
+    ? first.onStreet ? `Found the one on ${first.street}.` : 'No match on that street. Found a nearby alternative.'
+    : 'Found the nearest matching place.';
+  const reply = stale ? `Last saved result. ${text}` : text;
+  return isValidPhrase(reply, false) ? reply : stale ? 'Last saved result. Found a matching place.' : 'Found a matching place.';
+}
+
+export async function searchPlaces(q: PlacesQuery, deps: PlacesDeps = {}): Promise<PlacesResult> {
   const now = deps.now ?? Date.now;
   const fetchFn = deps.fetchFn ?? fetch;
   const mirrors = deps.mirrors ?? OVERPASS_MIRRORS;
   const timeoutMs = deps.timeoutMs ?? PLACES_TIMEOUT_MS;
   const key = `${q.lat.toFixed(3)}|${q.lng.toFixed(3)}|${q.radiusM}`;
   const hit = cache.get(key);
-  if (hit && now() - hit.at <= PLACES_CACHE_MS) return { places: toPlaces(hit.elements, { lat: q.lat, lng: q.lng }, q.limit, q.q, q.street), source: 'cache' };
+  if (hit && now() - hit.at <= PLACES_CACHE_MS) return { places: toPlaces(hit.elements, { lat: q.lat, lng: q.lng }, q.limit, q.q, q.street), source: 'cache', cacheAgeMs: now() - hit.at };
   const query = placesQuery(q.lat, q.lng, q.radiusM);
   const errors: string[] = [];
   for (const mirror of mirrors) {
@@ -160,7 +181,8 @@ export async function searchPlaces(q: PlacesQuery, deps: PlacesDeps = {}): Promi
       if (!res.ok) throw new Error(`overpass ${res.status}`);
       const json = (await res.json()) as { elements?: OverpassEl[]; remark?: string };
       if (typeof json.remark === 'string' && /timed out/i.test(json.remark)) throw new Error(`overpass timeout: ${json.remark.slice(0, 80)}`);
-      const elements = json.elements ?? [];
+      if (!Array.isArray(json.elements)) throw new Error('overpass invalid elements');
+      const elements = json.elements;
       cache.set(key, { at: now(), elements });
       return { places: toPlaces(elements, { lat: q.lat, lng: q.lng }, q.limit, q.q, q.street), source: 'live' };
     } catch (e) {
@@ -168,6 +190,12 @@ export async function searchPlaces(q: PlacesQuery, deps: PlacesDeps = {}): Promi
     } finally {
       clearTimeout(timer);
     }
+  }
+  // Same position/radius only, re-filtered for the current name and street.
+  // Do not refresh the timestamp: an outage must not make old data immortal.
+  if (hit && now() - hit.at <= PLACES_STALE_MAX_MS) {
+    const places = toPlaces(hit.elements, { lat: q.lat, lng: q.lng }, q.limit, q.q, q.street);
+    if (places.length) return { places, source: 'stale-cache', cacheAgeMs: now() - hit.at, error: errors.join('; ') };
   }
   return { places: [], source: 'live', error: errors.join('; ') };
 }
@@ -185,7 +213,7 @@ export function createPlacesRouter(deps: PlacesDeps = {}): Router {
       res.status(502).json({ error: `places lookup failed: ${r.error}`, places: [] });
       return;
     }
-    res.json({ query: parsed.data.q, places: r.places, source: r.source });
+    res.json({ query: parsed.data.q, ...r, reply: placesReply(parsed.data, r.places, r.source === 'stale-cache') });
   });
   return router;
 }

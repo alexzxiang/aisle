@@ -181,6 +181,19 @@ describe('GET /api/health', () => {
     expect(j.latency['vision.storefront']?.p50).toBe(1900);
   });
 
+  it('passes ?budgetMs through to the probes, clamped, and leaves an unasked report unbounded', async () => {
+    const deps = fakeDeps();
+    const seen: Array<{ force?: boolean; timeoutMs?: number }> = [];
+    const report = deps.health.report.bind(deps.health);
+    deps.health = { report: (o = {}) => { seen.push(o); return report(o); } };
+    srv = await startTestServer(deps);
+    await fetch(`${srv.url}/api/health?budgetMs=800`);
+    await fetch(`${srv.url}/api/health?budgetMs=99999`);
+    await fetch(`${srv.url}/api/health?budgetMs=oops`);
+    await fetch(`${srv.url}/api/health`);
+    expect(seen.map((o) => o.timeoutMs)).toEqual([800, 10_000, undefined, undefined]);
+  });
+
   it('/warm re-fires every pair', async () => {
     const deps = fakeDeps();
     srv = await startTestServer(deps);

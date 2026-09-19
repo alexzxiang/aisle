@@ -11,6 +11,7 @@
     "dev": "tsx watch index.ts",
     "start": "tsx index.ts",
     "typecheck": "tsc --noEmit",
+    "doctor": "tsx scripts/doctor.ts",
     "test": "vitest run"
   },
   "dependencies": {
