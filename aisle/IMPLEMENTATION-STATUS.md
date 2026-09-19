@@ -614,3 +614,24 @@ buzz, the curb prompts and the body offset remain tuned on paper only.
 Gates on this checkout: app typecheck clean, 1048 Jest tests (70 suites, +25),
 `lint:phrases` and `lint:deps` ok. `npx jest src/ui src/outdoor src/crossing` — D's own
 command — is 394 tests in 26 suites.
+
+### Round 6c — 2026-09-19 afternoon (merges + the "still weak" report)
+- Merged every teammate branch into main (`shared/task-step-direction`, `d/win-fixture-path`,
+  `c/brain-reliability` — kept main's per-job token budgets and grace on top of the new
+  `plannerRace`, `b/store-guided-task`, `b/store-item-routing`, `d/screens-and-demo-script` = PR #1).
+  1064 Jest / 186 vitest green after the merge.
+- **"Offline. Signal reading and directions still work." at home.** Google Routes is enabled and
+  fast; the proxy log showed the phone's route calls at 17–39 s (Overpass mirrors 25 s each, then
+  two planner jobs in series) against the app's 15 s timeout. Now: Overpass mirrors raced with a
+  5 s budget, the demo area warmed once at proxy start and persisted (`server/data/cache`, 15,936
+  elements) so any route inside it gets crossings from memory, the two planner jobs concurrent,
+  routeCompile with 1600 output tokens and a 5 s understudy grace, client timeout 20 s. Measured:
+  8.4 / 6.2 / 6.4 s with 16–35 crossings. A degraded straight-line route re-plans locally.
+- **Quiet voice on route.** Cached phrases measured −25…−37 dB mean vs −19.8 dB for the live
+  stream; all normalized to −16 LUFS (`scripts/normalize-audio.sh`, run by `gen:audio`).
+- **Eggs at the fridge.** The reach step now runs a hand loop (`src/core/handGuide.ts`):
+  "Hold out your hand." → Higher / Lower / Left / Right / Reach forward → "Grab it."; hint
+  `forward` added to the contract, the hand prompt generalised beyond shelves.
+- **Hold anywhere to talk** (`src/ui/HoldToTalk.tsx`, mounted in Root): 350 ms hold on any
+  non-control spot, pulsing ring, "Listening — release to send".
+No native change since the 12:10 build + the AWARE install; Metro reload is enough.

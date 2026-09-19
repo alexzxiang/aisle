@@ -134,6 +134,13 @@ the pedestrian-signal model (`training/`, `models/manifest.json` names the file 
 classes; `training/score_gate.py` decides if it ships), a 30-minute thermal soak with
 the camera up in IDLE.
 
+## Round 6c additions (same day, later)
+`src/core/handGuide.ts` (the reach step steers the hand), `src/ui/HoldToTalk.tsx` (hold anywhere
+to talk), `scripts/normalize-audio.sh` (cached phrases at −16 LUFS; `gen:audio` runs it),
+`server/routes/crossings.ts` `warmOverpassArea` (the demo area's crossings cached at proxy
+start, `server/data/cache/`, git-ignored) and the proxy's `plannerRace` (Stream C's). The
+route path is 6–8 s; if "Offline" ever comes back, read the proxy log's `route` lines first.
+
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV
   item (newest wins), INFO dropped if anything is queued, 4 s minimum gap, CRITICAL
