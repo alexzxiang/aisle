@@ -36,6 +36,7 @@ import type { PlannerClient } from '../outdoor/planner';
 import { templateTaskPlan } from '../outdoor/plannerJobs';
 import { createHandGuide, itemOfGoal, type HandGuide } from './handGuide';
 import type { Guide, GuideInstruction, TargetBox } from './guide';
+import { classForWords } from './sceneMemory';
 
 export const TASK_TICK_MS = 3000;
 /** A `done` reading at or above this counts toward closing the step on camera evidence alone. */
@@ -72,10 +73,17 @@ export const TASK_GUIDE_AFTER_STEP_MS = 4000;
  * for walking steps: the place the item is in; "eggs" for the reach).
  */
 export function stepTarget(instruction: string, lookFor: string, goal: string): string {
-  const place = goal.match(/\b(?:in|on|at|inside|from)\s+(?:the |my |a )?(.+?)$/i)?.[1]?.trim();
+  const place = goal.match(/\b(?:in|on|at|inside|from)\s+(?:the |my |a )?(.+?)$/i)?.[1]?.trim() ?? null;
   if (isReachStep(instruction)) return itemOfGoal(goal);
-  const lf = lookFor.trim().toLowerCase();
-  if (lf && !/\b(room|layout|door|frame|hallway|sign|shelf|shelves|aisle)\b/.test(lf) && lf.split(/\s+/).length <= 4) return lf.replace(/^(the|a|an|my)\s+/, '');
+  // Walking steps aim at the goal's place whenever the phone can see or remember it (the
+  // fridge, the couch); a plan's intermediate "kitchen counter" / "door frame" only when the
+  // detector knows that thing — otherwise the guide would hunt for a counter it cannot see
+  // while the fridge sits in plain view (the 09-19 living-room report).
+  const placeKnown = place !== null && classForWords(place) !== null;
+  const lf = lookFor.trim().toLowerCase().replace(/^(the|a|an|my)\s+/, '');
+  const lfKnown = lf.length > 0 && classForWords(lf) !== null;
+  if (placeKnown && !lfKnown) return place!;
+  if (lfKnown) return lf;
   return place ?? itemOfGoal(goal);
 }
 /**
@@ -135,6 +143,8 @@ export interface GuidedTaskDeps {
   guide?: Guide;
   /** Minimum time between two geometric instructions that say the same thing. */
   guideRepeatMs?: number;
+  /** Round 7b: one line per decision to the proxy's trace file. */
+  trace?: (kind: string, payload: Record<string, unknown>) => void;
   conversation?: Pick<ConversationLog, 'pushAisle'>;
   now?: () => number;
   tickMs?: number;
@@ -237,6 +247,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (t - r.stepAt < TASK_GUIDE_AFTER_STEP_MS) return false;   // the step's own sentence goes first
     const target = stepTarget(s.instruction, s.lookFor, r.goal);
     const next = deps.guide.instructionFor(target, r.modelTarget);
+    deps.trace?.('guide', { step: r.step, instruction: s.instruction, target, decision: next ? { kind: next.kind, steps: next.steps, relativeDeg: next.relativeDeg, visible: next.targetVisible, text: next.text } : null, modelTarget: r.modelTarget?.box ?? null });
     if (!next) return false;
     const prev = r.guided;
     const news = deps.guide.changed(prev?.instruction ?? null, next);
@@ -431,6 +442,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
           return;
         }
         const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: r.check !== null || geometric });
+        deps.trace?.('task_step', { step: r.step, geometric, status: out.status, speech: out.response?.speech ?? null, done: out.response?.task ?? null, target: out.response?.target ?? null, latencyMs: out.latencyMs });
         if (run === r && out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= 0.4) {
           r.modelTarget = { box: out.response.target.box, at: now() };
         }

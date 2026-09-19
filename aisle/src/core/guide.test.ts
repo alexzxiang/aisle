@@ -27,7 +27,7 @@ describe('guide (pure)', () => {
   });
 
   it('every phrasing of every kind is twelve words or fewer, digit-free and never a forbidden term', () => {
-    const kinds: GuideKind[] = ['arrived', 'forward', 'turn_little', 'turn', 'turn_around', 'scan_remembered', 'scan_unknown'];
+    const kinds: GuideKind[] = ['arrived', 'forward', 'sidestep', 'turn_little', 'turn', 'turn_around', 'scan_remembered', 'scan_unknown'];
     for (const kind of kinds) {
       const seen = new Set<number>();
       for (let i = 0; i < 40; i += 1) {
@@ -83,6 +83,21 @@ describe('createGuide', () => {
     const g = rig({ where: 'unseen', now }).guide;
     expect(g.instructionFor('eggs', { box: [0.4, 0.4, 0.2, 0.15], at: 500 })).toMatchObject({ kind: 'forward', targetVisible: true });
     expect(g.instructionFor('eggs', { box: [0.4, 0.4, 0.2, 0.15], at: -5000 })).toMatchObject({ kind: 'scan_unknown' });   // stale box
+  });
+
+  it('something close in the way while the target is ahead → step around it toward the open side', () => {
+    const now = () => 1000;
+    const memory = { whereIs: jest.fn(() => 'unseen' as never), facing: () => 0 };
+    const blockedLeftOpen = createGuide({ detections: () => [det('fridge', 0.5, 0.3)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.85, left: 0.2, right: 0.6 }) });
+    expect(blockedLeftOpen.instructionFor('fridge')).toMatchObject({ kind: 'sidestep' });
+    expect(blockedLeftOpen.instructionFor('fridge')!.text).toMatch(/left/);
+    const blockedRightOpen = createGuide({ detections: () => [det('fridge', 0.5, 0.3)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.85, left: 0.7, right: 0.1 }) });
+    expect(blockedRightOpen.instructionFor('fridge')!.text).toMatch(/right/);
+    const open = createGuide({ detections: () => [det('fridge', 0.5, 0.3)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.2, left: 0.2, right: 0.2 }) });
+    expect(open.instructionFor('fridge')).toMatchObject({ kind: 'forward' });
+    // Close to the target, the "blockage" is the target itself: no sidestep.
+    const atIt = createGuide({ detections: () => [det('fridge', 0.5, 0.9, 0.9)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.9, left: 0.9, right: 0.9 }) });
+    expect(atIt.instructionFor('fridge')).toMatchObject({ kind: 'arrived' });
   });
 
   it('changed(): same kind and about the same steps is not news', () => {

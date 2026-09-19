@@ -33,7 +33,7 @@ import type { Detection, DetectionClass, HandPoseEvent } from './contracts';
 import { classForWords, spokenName, wrap180, type SceneMemory } from './sceneMemory';
 import { integerToWords } from '../outdoor/numberWords';
 
-export type GuideKind = 'arrived' | 'forward' | 'turn_little' | 'turn' | 'turn_around' | 'scan_remembered' | 'scan_unknown';
+export type GuideKind = 'arrived' | 'forward' | 'sidestep' | 'turn_little' | 'turn' | 'turn_around' | 'scan_remembered' | 'scan_unknown';
 
 export interface GuideInstruction {
   kind: GuideKind;
@@ -64,6 +64,8 @@ export const STEP_M = 0.7;
 export const MAX_STEPS = 20;
 /** Fresh enough to steer by. */
 export const TARGET_FRESH_MS = 3000;
+/** Depth-grid nearness at which the bottom-centre cell counts as something in the way. */
+export const PATH_BLOCKED = 0.7;
 
 export function stepsFromBox(cls: DetectionClass | null, box: [number, number, number, number], near: number | undefined, ultraWide = false): number {
   const h = Math.max(0.02, box[3]);
@@ -94,6 +96,11 @@ const VARIANTS: Readonly<Record<GuideKind, ReadonlyArray<(name: string, steps: s
     (n, s) => `Walk forward ${s}. The ${n} is straight ahead.`,
     (n, s) => `Straight ahead, ${s} to the ${n}.`,
     (n, s) => `Keep walking. ${cap(n)} ahead, ${s}.`,
+  ],
+  sidestep: [
+    (n, s, side) => `Something in your way. Step ${side}, then walk forward.`,
+    (n, s, side) => `Blocked ahead. Move one step ${side} and continue to the ${n}.`,
+    (n, s, side) => `Step ${side} around it. The ${n} is still ahead.`,
   ],
   turn_little: [
     (n, s, side) => `${cap(n)} ahead to your ${side}. Turn ${side} a little.`,
@@ -142,6 +149,8 @@ export function phraseFor(kind: GuideKind, name: string, steps: number | null, s
 export interface GuideDeps {
   /** The detector's latest tracks (a fresh copy each call). */
   detections: () => readonly Detection[];
+  /** The depth grid's bottom row, fresh (≤ 1 s): nearness 0..1 ahead / left / right. Null when unknown. */
+  path?: () => { center: number; left?: number; right?: number } | null;
   /** Scene memory: remembered bearings for things out of view, and the facing. */
   memory: Pick<SceneMemory, 'whereIs' | 'facing'>;
   /** Portrait horizontal field of view of the still, degrees (56 wide / 100 ultra-wide). */
@@ -195,7 +204,18 @@ export function createGuide(deps: GuideDeps): Guide {
         if (steps <= 1 || (typeof near === 'number' && near >= 0.75 && a <= 25)) {
           return { kind: 'arrived', text: say('arrived', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
         }
-        if (a <= hfov * 0.12) return { kind: 'forward', text: say('forward', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
+        if (a <= hfov * 0.12) {
+          // The way ahead: when the depth grid says something is close in front and the target
+          // is still a few steps off, route around it toward the more open side (round 7b).
+          const p = deps.path?.() ?? null;
+          if (p && p.center >= PATH_BLOCKED && steps >= 2) {
+            const leftOpen = typeof p.left === 'number' ? p.left : 1;
+            const rightOpen = typeof p.right === 'number' ? p.right : 1;
+            const stepSide = leftOpen <= rightOpen ? 'left' : 'right';
+            return { kind: 'sidestep', text: say('sidestep', name, steps, stepSide), relativeDeg: rel, steps, targetVisible: true };
+          }
+          return { kind: 'forward', text: say('forward', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
+        }
         if (a <= hfov * 0.3) return { kind: 'turn_little', text: say('turn_little', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
         return { kind: 'turn', text: say('turn', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
       }

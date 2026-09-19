@@ -42,6 +42,7 @@ import { createGuidedTask, type GuidedTask } from './guidedTask';
 import { createSituate, type Situate } from './situate';
 import { createSceneMemory, type SceneMemory } from './sceneMemory';
 import { createGuide } from './guide';
+import { createTracer } from './trace';
 import { createHandGuide } from './handGuide';
 import { wirePrompts, type PromptsBinding } from './prompts';
 import { LatencyRing, liveMetrics, observePlanner, timedTransport, type LiveMetrics } from './metrics';
@@ -313,11 +314,43 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     // Bearings need the lens: ~100° across a portrait ultra-wide still, ~56° on the wide lens.
     hfovDeg: () => ((perception.debugLog?.() ?? []).some((l) => l.includes('ultrawide')) ? 100 : 56),
   });
+  // --- Round 7b: the phone's decisions, one line each, to the proxy (server/data/cache/trace.jsonl) ---
+  const trace = createTracer({ proxyUrl: mocks ? '' : config.proxyUrl, fetchImpl: platform.fetchImpl, now });
+  const TRACED_EVENTS = new Set(['TASK_REQUESTED', 'TASK_STEP', 'TASK_COMPLETED', 'ITEM_HAND_GUIDANCE', 'ERROR', 'DESTINATION_REQUESTED', 'CAMERA_REQUEST', 'USER_ACTION']);
+  unsubs.push(bus.onAny((r) => {
+    if (TRACED_EVENTS.has(r.event.type)) trace('event', { event: r.event });
+  }));
+  // Every line either side said (the conversation log already dedupes repeats).
+  let tracedEntries = 0;
+  unsubs.push(conversation.subscribe((entries) => {
+    if (entries.length < tracedEntries) tracedEntries = 0;
+    for (const e of entries.slice(tracedEntries)) trace('said', { role: e.role, text: e.text, source: e.source ?? null });
+    tracedEntries = entries.length;
+  }));
+  // What the detector sees, once a second at most, so a trace line can be matched to the frame.
+  let lastDetTraceAt = 0;
+  unsubs.push(perception.onDetections((list) => {
+    const t = now();
+    if (t - lastDetTraceAt < 1000) return;
+    lastDetTraceAt = t;
+    trace('seen', { n: list.length, top: list.slice(0, 6).map((d) => ({ cls: d.cls, score: Math.round(d.score * 100) / 100, box: d.box.map((v) => Math.round(v * 100) / 100), near: d.near ?? null })) });
+  }));
+
   // --- Round 7: instructions from geometry (guide.ts) and the phone's own hand ------------
   const lensHfov = (): number => ((perception.debugLog?.() ?? []).some((l) => l.includes('ultrawide')) ? 100 : 56);
   let latestDetections: readonly Detection[] = [];
   unsubs.push(perception.onDetections((d) => { latestDetections = d; }));
-  const guide = createGuide({ detections: () => latestDetections, memory: sceneMemory, hfovDeg: lensHfov, now });
+  let latestDepth: { at: number; center: number; left?: number; right?: number } | null = null;
+  unsubs.push(perception.onDepth((d) => {
+    latestDepth = { at: now(), center: d.centerBottomRel, ...(typeof d.leftBottomRel === 'number' ? { left: d.leftBottomRel } : {}), ...(typeof d.rightBottomRel === 'number' ? { right: d.rightBottomRel } : {}) };
+  }));
+  const guide = createGuide({
+    detections: () => latestDetections,
+    memory: sceneMemory,
+    hfovDeg: lensHfov,
+    path: () => (latestDepth && now() - latestDepth.at <= 1000 ? latestDepth : null),
+    now,
+  });
   const handGuide = createHandGuide({ vision, speech, haptics, perception, bus, conversation, now });
   let guidedTaskRef: GuidedTask | null = null;
 
@@ -415,6 +448,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     handGuide,
     conversation,
     now,
+    trace,
   });
   guidedTaskRef = guidedTask;
 
@@ -501,6 +535,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
       describer.stop();
       situate.dispose();
       sceneMemory.dispose();
+      trace.dispose();
       prompts.dispose();
       guidedTask.dispose();
       trip.dispose();

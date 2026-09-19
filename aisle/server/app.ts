@@ -9,6 +9,7 @@ import type { AppDeps } from './deps';
 import { info, warn } from './lib/log';
 import { createHealthRouter } from './routes/health';
 import { createPlacesRouter } from './routes/places';
+import { createTraceRouter } from './routes/trace';
 import { createSttRouter } from './routes/stt';
 import { createTtsRouter } from './routes/tts';
 import { createVisionRouter } from './routes/vision';
@@ -47,6 +48,7 @@ export async function createApp(opts: CreateAppOptions): Promise<MountedApp> {
   app.use('/api/stt', createSttRouter(opts.deps));
   app.use('/api/health', createHealthRouter(opts.deps));
   app.use('/api/places', createPlacesRouter());
+  app.use('/api/trace', createTraceRouter());
 
   const external: Record<string, boolean> = {};
   for (const ext of opts.externalRoutes ?? DEFAULT_EXTERNAL_ROUTES ?? []) {
