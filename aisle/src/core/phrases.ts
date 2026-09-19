@@ -128,7 +128,8 @@ export type ASideKey =
   | 'onboarding_ticker_countdown' | 'onboarding_keep_cane' | 'onboarding_wear_phone'
   | 'onboarding_ring_switch' | 'onboarding_walk_straight' | 'onboarding_done'
   | 'route_unavailable' | 'no_route_data'
-  | 'need_location' | 'no_store_nearby' | 'say_item_one_word' | 'describe_nothing';
+  | 'need_location' | 'no_store_nearby' | 'say_item_one_word' | 'describe_nothing'
+  | 'let_me_see' | 'planning_route' | 'no_place_found' | 'arrived_destination' | 'task_done' | 'task_next' | 'task_step_done';
 
 export type PhraseKey = CacheKey | ASideKey;
 
@@ -215,6 +216,14 @@ export const PHRASE_LIST: readonly Phrase[] = [
   P('offline_notice', 'Offline. Signal reading and directions still work.', 'always'),
   P('route_unavailable', 'Route unavailable. Try again shortly.', 'always', true),
   P('no_route_data', 'No route data. Heading straight to the store.', 'always', true),
+  // Round 4: destinations ("take me to CVS") and guided tasks ("eggs in my fridge")
+  P('let_me_see', 'Let me see your surroundings.', 'always', true),
+  P('planning_route', 'Planning your route.', 'always', true),
+  P('no_place_found', 'I could not find that place nearby.', 'always', true),
+  P('arrived_destination', 'You have arrived.', 'always', true),
+  P('task_done', 'Done. Task complete.', 'indoor', true),
+  P('task_next', 'Next step.', 'indoor', true),
+  P('task_step_done', 'Step done.', 'indoor', true),
   // Proactive prompts when information is missing (round 3; flagged for 01 §3).
   P('need_location', 'I need your location. Step outside.', 'always', true),
   P('no_store_nearby', 'I cannot find a store nearby.', 'always', true),

@@ -31,7 +31,7 @@ interface Harness {
   hooks: { onTransition: jest.Mock; onTripEnd: jest.Mock; onManualSignal: jest.Mock; startPickup: jest.Mock; stopPickup: jest.Mock };
 }
 
-function harness(opts: { firstRun?: boolean; map?: AisleStoreMap | null; lastFix?: GeoFix | null; startImpl?: () => Promise<unknown>; loadRouteImpl?: () => Promise<void>; fixPromptMs?: number; conversation?: TripDeps['conversation'] } = {}): Harness {
+function harness(opts: { firstRun?: boolean; map?: AisleStoreMap | null; lastFix?: GeoFix | null; startImpl?: () => Promise<unknown>; loadRouteImpl?: () => Promise<void>; fixPromptMs?: number; conversation?: TripDeps['conversation']; fetchImpl?: typeof fetch; describe?: TripDeps['describe'] } = {}): Harness {
   const bus = createEventBus();
   const store = createAppStore({ bus, warn: () => undefined, initial: { firstRun: opts.firstRun ?? false } });
   bindStoreToBus(store, bus);
@@ -40,7 +40,8 @@ function harness(opts: { firstRun?: boolean; map?: AisleStoreMap | null; lastFix
   const targetListeners = new Set<(t: ResolvedTarget | null, o: ResolveOutcome) => void>();
   const fixListeners = new Set<(f: GeoFix) => void>();
   let lastFix: GeoFix | null = opts.lastFix === undefined ? fix() : opts.lastFix;
-  const map = opts.map === undefined ? loadMap() : opts.map;
+  const loaded = opts.map === undefined ? loadMap() : opts.map;
+  let map: AisleStoreMap | null = loaded;
   const sessions: Harness['sessions'] = [];
   const hooks = { onTransition: jest.fn(), onTripEnd: jest.fn(), onManualSignal: jest.fn(), startPickup: jest.fn(async () => undefined), stopPickup: jest.fn() };
 
@@ -84,6 +85,8 @@ function harness(opts: { firstRun?: boolean; map?: AisleStoreMap | null; lastFix
       },
       getMap: () => map,
       ensureMap: async () => map,
+      useMap: jest.fn((m: AisleStoreMap) => { map = m; }),
+      restoreMap: jest.fn(() => { map = loaded; }),
     },
     outdoor: createOutdoorStore(),
     createSession,
@@ -94,6 +97,8 @@ function harness(opts: { firstRun?: boolean; map?: AisleStoreMap | null; lastFix
     fixTimeoutMs: 1000,
     ...(opts.fixPromptMs !== undefined ? { fixPromptMs: opts.fixPromptMs } : {}),
     ...(opts.conversation ? { conversation: opts.conversation } : {}),
+    ...(opts.fetchImpl ? { proxyUrl: 'http://proxy.test', fetchImpl: opts.fetchImpl } : {}),
+    ...(opts.describe ? { describe: opts.describe } : {}),
   };
   return {
     deps,
@@ -435,6 +440,141 @@ describe('wireTrip', () => {
     expect(h.said).toHaveLength(2);
     expect(h.deps.bus.history().filter((r) => r.event.type === 'ERROR').map((r) => (r.event as { scope: string }).scope)).toEqual(['store-map']);
     expect(trip.isActive()).toBe(false);
+    trip.dispose();
+  });
+
+  // --- round 4: "take me to CVS" — a spoken place becomes a destination-only trip -------
+
+  const placesOk = (places: unknown[]): typeof fetch => jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ places }) })) as unknown as typeof fetch;
+  const cvs = { id: 'node/1', name: 'CVS Pharmacy', lat: 40.4460, lng: -79.9440, distanceM: 120, kind: 'pharmacy' };
+
+  it('a place: looks first, says planning_route, then starts the route to the OSM entrance and swaps the map in', async () => {
+    const order: string[] = [];
+    const describe = jest.fn(async () => { order.push('describe'); return 'A hallway.'; });
+    const fetchImpl = placesOk([cvs]);
+    const h = harness({ fetchImpl, describe });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'CVS', source: 'keyboard' });
+    expect(h.deps.store.getState().targetItem).toBe('CVS');
+    expect(h.deps.store.getState().destinationOnly).toBe(true);
+    expect(h.said.map((r) => r.cacheKey)).toEqual(['let_me_see']);
+    await flush();
+    expect(describe).toHaveBeenCalledTimes(1);
+    expect(h.said.map((r) => r.cacheKey)).toEqual(['let_me_see', 'planning_route']);
+    const url = String((fetchImpl as jest.Mock).mock.calls[0][0]);
+    expect(url).toMatch(/^http:\/\/proxy\.test\/api\/places\?/);
+    expect(url).toContain('q=CVS');
+    expect(url).toContain('radiusM=2500');
+    expect(h.deps.resolver.useMap).toHaveBeenCalledWith(expect.objectContaining({ storeId: 'poi-node-1', displayName: 'CVS Pharmacy', aisles: [] }));
+    expect(h.sessions).toHaveLength(1);
+    expect(h.sessions[0].start).toHaveBeenCalledWith(expect.objectContaining({
+      storeId: 'poi-node-1',
+      entrance: { lat: 40.446, lng: -79.944, radiusM: 35 },
+      destName: 'CVS Pharmacy',
+    }));
+    expect(h.deps.store.getState().mode).toBe('OUTDOOR_NAV');
+    expect(h.deps.store.getState().destinationOnly).toBe(true);
+    trip.dispose();
+  });
+
+  it('arriving at a place: the store-entry handoff ends the trip at the door with "You have arrived." and restores the map', async () => {
+    const h = harness({ fetchImpl: placesOk([cvs]) });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'CVS', source: 'voice' });
+    await flush();
+    expect(h.deps.store.getState().mode).toBe('OUTDOOR_NAV');
+    h.deps.bus.emit({ type: 'STORE_ENTERED', reason: 'FUSED', confidence: 0.9 });
+    expect(h.deps.store.getState().mode).toBe('TRANSITION');
+    h.deps.store.getState().transitionEnded();
+    expect(h.deps.store.getState().mode).toBe('DONE');
+    expect(h.said.map((r) => r.cacheKey)).toEqual(['let_me_see', 'planning_route', 'entering_store', 'arrived_destination']);
+    expect(h.sessions[0].dispose).toHaveBeenCalledTimes(1);
+    expect(h.deps.resolver.restoreMap).toHaveBeenCalled();
+    expect(h.hooks.onTripEnd).toHaveBeenCalledTimes(1);
+    trip.dispose();
+  });
+
+  it('the loaded store map wins by name and keeps the full aisle flow (destinationOnly cleared, no places call)', async () => {
+    const fetchImpl = placesOk([cvs]);
+    const h = harness({ fetchImpl });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'demo grocery', source: 'keyboard' });
+    await flush();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(h.deps.resolver.useMap).not.toHaveBeenCalled();
+    expect(h.deps.store.getState().destinationOnly).toBe(false);
+    expect(h.sessions[0].start).toHaveBeenCalledWith(expect.objectContaining({ storeId: 'demo-store-01' }));
+    h.deps.bus.emit({ type: 'STORE_ENTERED', reason: 'FUSED', confidence: 0.9 });
+    h.deps.store.getState().transitionEnded();
+    expect(h.deps.store.getState().mode).toBe('INDOOR_NAV');
+    trip.dispose();
+  });
+
+  it('no match → "I could not find that place nearby." and back to IDLE; no fix → need_location', async () => {
+    const h = harness({ fetchImpl: placesOk([]) });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'Narnia', source: 'keyboard' });
+    await flush();
+    expect(h.said.map((r) => r.cacheKey)).toEqual(['let_me_see', 'planning_route', 'no_place_found']);
+    expect(h.said[2]).toEqual(expect.objectContaining({ text: PHRASES.no_place_found, priority: 'NAV' }));
+    expect(h.sessions).toHaveLength(0);
+    expect(h.deps.store.getState().mode).toBe('IDLE');
+    expect(h.deps.store.getState().targetItem).toBeNull();
+    trip.dispose();
+
+    const fetchImpl = placesOk([cvs]);
+    const h2 = harness({ fetchImpl, lastFix: null });
+    const trip2 = wireTrip(h2.deps);
+    h2.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'CVS', source: 'keyboard' });
+    await flush();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(h2.said.map((r) => r.cacheKey)).toEqual(['let_me_see', 'planning_route', 'need_location']);
+    expect(h2.deps.store.getState().mode).toBe('IDLE');
+    trip2.dispose();
+  });
+
+  it('the proxy down (network error or 5xx) → no_place_found, and a failed look does not block the route', async () => {
+    const h = harness({
+      fetchImpl: jest.fn(async () => { throw new Error('ECONNREFUSED'); }) as unknown as typeof fetch,
+      describe: jest.fn(async () => { throw new Error('vision down'); }),
+    });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'CVS', source: 'keyboard' });
+    await flush();
+    expect(h.said.map((r) => r.cacheKey)).toEqual(['let_me_see', 'planning_route', 'no_place_found']);
+    expect(h.deps.store.getState().mode).toBe('IDLE');
+    trip.dispose();
+  });
+
+  it('a second request while the first is still resolving supersedes it (one route, the later name); mid-trip requests are ignored', async () => {
+    const releases: Array<(places: unknown[]) => void> = [];
+    const fetchImpl = jest.fn(
+      () => new Promise((resolve) => { releases.push((places) => resolve({ ok: true, status: 200, json: async () => ({ places }) })); }),
+    ) as unknown as typeof fetch;
+    const h = harness({ fetchImpl });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'CVS', source: 'keyboard' });
+    await flush();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    h.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'Walgreens', source: 'keyboard' });
+    await flush();
+    expect(h.deps.store.getState().targetItem).toBe('Walgreens');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // The stale first lookup resolves: nothing starts from it.
+    releases[0]([cvs]);
+    await flush();
+    expect(h.sessions).toHaveLength(0);
+    releases[1]([{ ...cvs, id: 'node/2', name: 'Walgreens' }]);
+    await flush();
+    expect(h.sessions).toHaveLength(1);
+    expect(h.sessions[0].start).toHaveBeenCalledWith(expect.objectContaining({ storeId: 'poi-node-2', destName: 'Walgreens' }));
+    expect(h.deps.store.getState().mode).toBe('OUTDOOR_NAV');
+    // Mid-trip: the store keeps its target and the trip does not double-start.
+    h.deps.bus.emit({ type: 'DESTINATION_REQUESTED', name: 'CVS', source: 'keyboard' });
+    await flush();
+    expect(h.deps.store.getState().targetItem).toBe('Walgreens');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(h.sessions).toHaveLength(1);
     trip.dispose();
   });
 

@@ -30,6 +30,7 @@ import type { StoreResolver } from '../indoor/storeResolver';
 import type { LegRunner, LegRunnerDebugState } from '../outdoor/LegRunner';
 import { RouteClientError } from '../outdoor/routeClient';
 import { directRoute } from '../outdoor/directRoute';
+import { resolveDestination } from './destinations';
 import type { OutdoorStore } from '../outdoor/store';
 import { announceStoreEntry, type AnnounceHandle } from '../transition/announce';
 
@@ -56,7 +57,7 @@ export interface TripDeps {
   speech: Pick<SpeechService, 'say'>;
   haptics: Pick<HapticService, 'play'>;
   sensors: Pick<SensorService, 'getLastFix' | 'subscribeLocation'>;
-  resolver: Pick<StoreResolver, 'onTarget' | 'getMap' | 'ensureMap'>;
+  resolver: Pick<StoreResolver, 'onTarget' | 'getMap' | 'ensureMap' | 'useMap' | 'restoreMap'>;
   outdoor: Pick<OutdoorStore, 'getState'>;
   /** One outdoor session per trip (B's controller is single-use after `LegRunner.stop()`). */
   createSession(): TripSession;
@@ -68,6 +69,10 @@ export interface TripDeps {
   onManualSignal?(state: SignalState | null): void;
   /** Proactive prompts are also written to the transcript blurb (source 'prompt'). */
   conversation?: Pick<ConversationLog, 'pushAisle'>;
+  /** Round 4 ("take me to CVS"): the proxy for `/api/places`, and the describer's one-shot look. */
+  proxyUrl?: string;
+  fetchImpl?: typeof fetch;
+  describe?: () => Promise<string | null>;
   now?: () => number;
   fixTimeoutMs?: number;
   fixPromptMs?: number;
@@ -135,7 +140,7 @@ export function wireTrip(deps: TripDeps): Trip {
   };
 
   /** A cached prompt, spoken and written to the blurb (the speech hook's copy collapses into this one). */
-  const prompt = (key: 'need_location' | 'no_store_nearby', cooldownMs: number): void => {
+  const prompt = (key: 'need_location' | 'no_store_nearby' | 'let_me_see' | 'planning_route' | 'no_place_found' | 'arrived_destination', cooldownMs: number): void => {
     try {
       deps.speech.say({ text: PHRASES[key], cacheKey: key, priority: 'NAV', dedupeKey: key, cooldownMs });
     } catch (e) {
@@ -276,6 +281,44 @@ export function wireTrip(deps: TripDeps): Trip {
     else if (outcome.kind === 'map_error' && !disposed) prompt('no_store_nearby', 30_000);
   }));
 
+  // Round 4: "take me to <place>". The store recorded the destination-only intent; here the
+  // place is resolved (loaded map by name, else OpenStreetMap through the proxy) and the trip
+  // starts against a map with no aisles. Conversational beats first, as the user asked for.
+  let destinationGen = 0;
+  unsubs.push(bus.on('DESTINATION_REQUESTED', (e) => {
+    const gen = ++destinationGen;
+    void (async () => {
+      if (disposed || session) return;
+      prompt('let_me_see', 5_000);
+      if (deps.describe) {
+        try {
+          await deps.describe();
+        } catch {
+          // The look is a courtesy; the route does not depend on it.
+        }
+      }
+      if (gen !== destinationGen || disposed || session) return;
+      prompt('planning_route', 5_000);
+      const outcome = await resolveDestination(e.name, deps.sensors.getLastFix(), {
+        proxyUrl: deps.proxyUrl ?? '',
+        fetchImpl: deps.fetchImpl,
+        loadedMap: deps.resolver.getMap() ?? (await deps.resolver.ensureMap()),
+        now: deps.now,
+      });
+      if (gen !== destinationGen || disposed || session) return;
+      if (outcome.kind === 'none') {
+        if (outcome.reason === 'no_fix') prompt('need_location', 30_000);
+        else prompt('no_place_found', 15_000);
+        store.getState().abort();
+        return;
+      }
+      if (outcome.kind === 'place') deps.resolver.useMap(outcome.map);
+      else deps.resolver.restoreMap();
+      if (outcome.kind === 'store_map') store.setState({ destinationOnly: false });
+      await beginTrip();
+    })();
+  }));
+
   unsubs.push(store.subscribe((s, prev) => {
     // `abort()` clears the task fields even from IDLE (HomeScreen "Cancel" while the
     // route is still loading), so the cleared item is the abort signal, not the mode edge.
@@ -288,7 +331,9 @@ export function wireTrip(deps: TripDeps): Trip {
     if (s.mode === prev.mode) return;
     if (s.mode === 'TRANSITION') deps.onTransition?.();
     if (s.mode === 'DONE') {
+      if (s.destinationOnly && prev.mode === 'TRANSITION') prompt('arrived_destination', 5_000);
       endSession();
+      deps.resolver.restoreMap();
       deps.onTripEnd?.();
     }
     // Safety net: a stale ROUTE_READY after an abort would walk a trip nobody asked for.
