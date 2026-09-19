@@ -16,8 +16,16 @@ describe('planner client', () => {
     expect(r).toMatchObject({ job: 'parseIntent', fallback: false, latencyMs: 640, output: { intent: 'find_item', item: 'eggs' } });
   });
 
-  it('a bad proxy output (digits) is repaired per field and flagged fallback', async () => {
+  it('a proxy output with a bare digit is repaired by spelling it out (no fallback)', async () => {
     const client = createPlannerClient({ baseUrl: 'http://p', fetchImpl: ok({ job: 'answer', output: { reply: 'About 200 feet to the turn.' }, fallback: false, latencyMs: 300 }) });
+    const r = await client.run('answer', { question: 'how_far', context: { metersToManeuver: 61 } });
+    expect(r.fallback).toBe(false);
+    expect(r.output.reply).toBe('About two hundred feet to the turn.');
+  });
+
+  it('a proxy output that cannot be repaired (over twelve words) is templated and flagged fallback', async () => {
+    const long = 'You are on Fifth Avenue and the next turn is two hundred feet away on Forbes.';
+    const client = createPlannerClient({ baseUrl: 'http://p', fetchImpl: ok({ job: 'answer', output: { reply: long }, fallback: false, latencyMs: 300 }) });
     const r = await client.run('answer', { question: 'how_far', context: { metersToManeuver: 61 } });
     expect(r.fallback).toBe(true);
     expect(r.output.reply).toBe('About two hundred feet to the turn.');
