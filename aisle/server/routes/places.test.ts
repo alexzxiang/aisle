@@ -39,7 +39,7 @@ describe('places query', () => {
     expect(nameMatches('cvs', undefined)).toBe(false);
   });
   it('ranks a name match above a brand/operator-only match at any distance', () => {
-    const els = [
+    const els: Array<{ type: string; id: number; lat?: number; lon?: number; tags?: Record<string, string> }> = [
       { type: 'node', id: 1, lat: 40.4450, lon: -79.9440, tags: { name: 'GetGo', operator: 'Giant Eagle', amenity: 'fuel' } },
       { type: 'node', id: 2, lat: 40.4600, lon: -79.9600, tags: { name: 'Giant Eagle', shop: 'supermarket' } },
     ];
