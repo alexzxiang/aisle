@@ -1,0 +1,47 @@
+{
+  "storeId": "demo-store-01",
+  "displayName": "Demo Grocery",
+  "entrance": { "lat": 40.4443, "lng": -79.9436, "radiusM": 35,
+                "pinnedBy": "venue-walk", "pinnedAt": "2026-09-18" },
+  "signHeightM": 2.4,
+  "aisles": [
+    { "id": "a1", "label": "Aisle 1", "spokenLabel": "Aisle one",
+      "signText": ["1", "PRODUCE"], "order": 1,
+      "categories": ["produce", "fruit", "vegetables", "salad"] },
+    { "id": "a2", "label": "Aisle 2", "spokenLabel": "Aisle two",
+      "signText": ["2", "BAKERY"], "order": 2,
+      "categories": ["bakery", "bread", "rolls", "bagels"] },
+    { "id": "a3", "label": "Aisle 3", "spokenLabel": "Aisle three",
+      "signText": ["3", "DAIRY"], "order": 3,
+      "categories": ["dairy", "eggs", "milk", "cheese", "butter", "yogurt"] },
+    { "id": "a4", "label": "Aisle 4", "spokenLabel": "Aisle four",
+      "signText": ["4", "CEREAL"], "order": 4,
+      "categories": ["cereal", "breakfast", "oats", "granola"] },
+    { "id": "a5", "label": "Aisle 5", "spokenLabel": "Aisle five",
+      "signText": ["5", "SNACKS"], "order": 5,
+      "categories": ["snacks", "chips", "crackers", "cookies"] },
+    { "id": "a6", "label": "Aisle 6", "spokenLabel": "Aisle six",
+      "signText": ["6", "FROZEN"], "order": 6,
+      "categories": ["frozen", "ice cream", "frozen vegetables", "pizza"] }
+  ],
+  "landmarks": [
+    { "id": "checkout", "label": "Checkout", "spokenLabel": "Checkout",
+      "signText": ["CHECKOUT", "REGISTERS", "LANES"], "afterAisleOrder": 99 },
+    { "id": "entrance", "label": "Entrance", "spokenLabel": "Entrance",
+      "signText": ["WELCOME", "ENTRANCE"], "afterAisleOrder": 0 }
+  ],
+  "itemIndex": {
+    "eggs":      { "aisleId": "a3", "sideWhenAscending": "RIGHT", "shelf": "middle", "packageHint": "yellow carton" },
+    "milk":      { "aisleId": "a3", "sideWhenAscending": "RIGHT", "shelf": "bottom", "packageHint": "white jug with a blue cap" },
+    "cheese":    { "aisleId": "a3", "sideWhenAscending": "LEFT",  "shelf": "middle" },
+    "butter":    { "aisleId": "a3", "sideWhenAscending": "LEFT",  "shelf": "top" },
+    "bread":     { "aisleId": "a2", "sideWhenAscending": "LEFT",  "shelf": "middle", "packageHint": "soft loaf in a bag" },
+    "bagels":    { "aisleId": "a2", "sideWhenAscending": "RIGHT" },
+    "bananas":   { "aisleId": "a1", "sideWhenAscending": "LEFT",  "shelf": "table" },
+    "apples":    { "aisleId": "a1", "sideWhenAscending": "RIGHT", "shelf": "table" },
+    "cereal":    { "aisleId": "a4", "sideWhenAscending": "LEFT",  "shelf": "middle", "packageHint": "tall cardboard box" },
+    "oats":      { "aisleId": "a4", "sideWhenAscending": "RIGHT", "shelf": "bottom" },
+    "chips":     { "aisleId": "a5", "sideWhenAscending": "LEFT",  "shelf": "middle", "packageHint": "crinkly bag" },
+    "ice cream": { "aisleId": "a6", "sideWhenAscending": "RIGHT", "shelf": "freezer door", "packageHint": "round tub" }
+  }
+}

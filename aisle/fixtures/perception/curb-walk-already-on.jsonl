@@ -1,0 +1,13 @@
+{"t":0,"event":"onTrackingState","payload":"NORMAL"}
+{"t":0,"event":"onSignalState","payload":{"state":"UNKNOWN","fresh":false,"confidence":0.2,"nOfM":3}}
+{"t":2000,"event":"onSignalState","payload":{"state":"UNKNOWN","fresh":false,"confidence":0.2,"nOfM":3}}
+{"t":4000,"event":"onSignalState","payload":{"state":"WALK","fresh":false,"confidence":0.9,"nOfM":6}}
+{"t":6000,"event":"onSignalState","payload":{"state":"WALK","fresh":false,"confidence":0.92,"nOfM":8}}
+{"t":8000,"event":"onSignalState","payload":{"state":"WALK","fresh":false,"confidence":0.92,"nOfM":8}}
+{"t":10000,"event":"onSignalState","payload":{"state":"WALK","fresh":false,"confidence":0.92,"nOfM":8}}
+{"t":12000,"event":"onSignalState","payload":{"state":"WALK","fresh":false,"confidence":0.92,"nOfM":8}}
+{"t":14000,"event":"onSignalState","payload":{"state":"COUNTDOWN","fresh":false,"confidence":0.87,"nOfM":5}}
+{"t":16000,"event":"onSignalState","payload":{"state":"COUNTDOWN","fresh":false,"confidence":0.88,"nOfM":6}}
+{"t":18000,"event":"onSignalState","payload":{"state":"DONT_WALK","fresh":false,"confidence":0.91,"nOfM":7}}
+{"t":20000,"event":"onSignalState","payload":{"state":"DONT_WALK","fresh":false,"confidence":0.91,"nOfM":8}}
+{"t":22000,"event":"onSignalState","payload":{"state":"DONT_WALK","fresh":false,"confidence":0.91,"nOfM":8}}

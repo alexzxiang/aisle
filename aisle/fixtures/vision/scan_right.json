@@ -1,0 +1,8 @@
+{
+  "question": "scan_right",
+  "entries": [
+    { "seq": 1, "delayMs": 1400, "response": { "speech": "", "scan": { "vehiclesSeen": "none", "confidence": 0.81 }, "confidence": 0.81 } },
+    { "seq": 2, "delayMs": 1300, "response": { "speech": "", "scan": { "vehiclesSeen": "approaching", "confidence": 0.77 }, "confidence": 0.77 } },
+    { "seq": "*", "delayMs": 1400, "response": { "speech": "", "scan": { "vehiclesSeen": "none", "confidence": 0.79 }, "confidence": 0.79 } }
+  ]
+}

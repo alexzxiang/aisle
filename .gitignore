@@ -12,3 +12,7 @@ server/.env
 aisle/ios/Pods/
 .impeccable/
 .playwright-mcp/
+aisle/server/node_modules/
+aisle/ios/
+aisle/android/
+aisle/assets/audio/*.mp3

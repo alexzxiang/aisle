@@ -1,0 +1,10 @@
+{
+  "job": "answer",
+  "entries": [
+    { "match": { "question": "repeat" }, "result": { "job": "answer", "output": { "reply": "Turn right in twenty feet." }, "fallback": false, "latencyMs": 500 } },
+    { "match": { "question": "how_far" }, "result": { "job": "answer", "output": { "reply": "About two hundred feet to the store." }, "fallback": false, "latencyMs": 560 } },
+    { "match": { "question": "where_am_i" }, "result": { "job": "answer", "output": { "reply": "On Forbes, store on your right ahead." }, "fallback": false, "latencyMs": 600 } },
+    { "match": { "question": "replan" }, "result": { "job": "answer", "output": { "reply": "Turn around. Then turn left." }, "fallback": false, "latencyMs": 640 } },
+    { "seq": "*", "result": { "job": "answer", "output": { "reply": "Turn right in twenty feet." }, "fallback": true, "latencyMs": 1500 } }
+  ]
+}

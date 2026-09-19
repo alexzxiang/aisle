@@ -9,9 +9,16 @@ import type { GeoFix } from '../core/contracts';
 import { alongTrackUnclampedM, haversineM, polylineLengthM, projectOntoPolyline, type LatLng } from './geo';
 import type { RouteLeg } from './types';
 
-/** Signed −180..180; + = target is to the right of current. Wraps across 0/360. */
+/**
+ * Signed −180..180; + = target is to the right of current. Wraps across 0/360.
+ * 03 Task 3 gives `((target − current + 540) % 360) − 180`; the inner modulo
+ * below makes the same formula correct for inputs outside 0..360 too (JS `%`
+ * keeps the sign of the dividend).
+ */
 export function angularError(current: number, target: number): number {
-  return ((target - current + 540) % 360) - 180;
+  if (!Number.isFinite(current) || !Number.isFinite(target)) return 0;
+  const delta = ((target - current) % 360 + 540) % 360;
+  return delta - 180;
 }
 
 /** True when |angularError| ≤ tolerance. */

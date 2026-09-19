@@ -1,0 +1,10 @@
+{
+  "question": "scan_left",
+  "note": "seq 2 is the 'unclear' hard case (dark or blurred frame) → B says cant_see_well_left.",
+  "entries": [
+    { "seq": 1, "delayMs": 1400, "response": { "speech": "", "scan": { "vehiclesSeen": "none", "confidence": 0.8 }, "confidence": 0.8 } },
+    { "seq": 2, "delayMs": 1500, "response": { "speech": "", "scan": { "vehiclesSeen": "unclear", "confidence": 0.35 }, "confidence": 0.35 } },
+    { "seq": 3, "delayMs": 1300, "response": { "speech": "", "scan": { "vehiclesSeen": "distant", "confidence": 0.72 }, "confidence": 0.72 } },
+    { "seq": "*", "delayMs": 1400, "response": { "speech": "", "scan": { "vehiclesSeen": "none", "confidence": 0.78 }, "confidence": 0.78 } }
+  ]
+}

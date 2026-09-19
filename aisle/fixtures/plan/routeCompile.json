@@ -1,0 +1,17 @@
+{
+  "job": "routeCompile",
+  "entries": [
+    { "seq": "*", "result": { "job": "routeCompile", "output": {
+        "legs": [
+          { "index": 0, "soon": "Turn right in twenty feet.", "now": "Turn right now.", "confirm": "On course." },
+          { "index": 1, "soon": "Crossing ahead in eighty feet.", "now": "Curb ahead. Stop.", "confirm": "Aligned." },
+          { "index": 2, "soon": "Turn left in twenty feet.", "now": "Turn left now.", "confirm": "On course." },
+          { "index": 3, "soon": "Store entrance in thirty feet.", "now": "Entrance on your right.", "confirm": "Arrived." }
+        ],
+        "crossingAnnouncements": [
+          { "crossingId": "crossing-forbes-01", "text": "Crossing ahead: Forbes. Signalized." },
+          { "crossingId": "crossing-side-01", "text": "Crossing ahead: side street. No signal here." }
+        ]
+      }, "fallback": false, "latencyMs": 2900 } }
+  ]
+}

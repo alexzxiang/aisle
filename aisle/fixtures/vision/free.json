@@ -1,0 +1,7 @@
+{
+  "question": "free",
+  "entries": [
+    { "seq": 1, "delayMs": 1300, "response": { "speech": "Shelves on both sides. Aisle sign ahead.", "confidence": 0.7 } },
+    { "seq": "*", "delayMs": 1300, "response": { "speech": "", "confidence": 0.4 } }
+  ]
+}

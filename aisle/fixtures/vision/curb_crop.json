@@ -1,0 +1,10 @@
+{
+  "question": "curb_crop",
+  "note": "Fallback rung only (Sonnet). speech stays empty: B's controller phrases it and adds 'Signal read is delayed'. UNKNOWN unless confident.",
+  "entries": [
+    { "seq": 1, "delayMs": 1900, "response": { "speech": "", "signal": { "state": "DONT_WALK", "confidence": 0.74 }, "confidence": 0.74 } },
+    { "seq": 2, "delayMs": 2100, "response": { "speech": "", "signal": { "state": "WALK", "confidence": 0.71 }, "confidence": 0.71 } },
+    { "seq": 3, "delayMs": 1800, "response": { "speech": "", "signal": { "state": "UNKNOWN", "confidence": 0.2 }, "confidence": 0.2 } },
+    { "seq": "*", "delayMs": 2000, "response": { "speech": "", "signal": { "state": "UNKNOWN", "confidence": 0.3 }, "confidence": 0.3 } }
+  ]
+}

@@ -81,6 +81,7 @@ export type SpeechPriority = 'CRITICAL' | 'NAV' | 'INFO';
 
 export interface SpeechRequest {
   text: string;            // ≤ 12 words, numbers written as words ("twenty feet")
+                           // except when cacheKey is on the long-phrase allow-list (`disclaimer`)
   priority: SpeechPriority;
   cacheKey?: string;       // plays assets/audio/<cacheKey>.mp3 locally — 0 ms network
   dedupeKey?: string;      // suppresses a repeat within cooldownMs
@@ -226,8 +227,10 @@ export interface StoreMap {
   displayName: string;
   entrance: { lat: number; lng: number; radiusM: number; pinnedBy: string; pinnedAt: string };
   signHeightM?: number;
-  aisles: Array<{ id: string; label: string; signText: string[]; order: number; categories: string[] }>;
-  landmarks: Array<{ id: string; label: string; signText: string[]; afterAisleOrder: number }>;
+  aisles: Array<{ id: string; label: string; spokenLabel: string; signText: string[];
+                 order: number; categories: string[] }>;
+  landmarks: Array<{ id: string; label: string; spokenLabel: string; signText: string[];
+                     afterAisleOrder: number }>;
   itemIndex: Record<string, { aisleId: string; sideWhenAscending: Side; shelf?: string; packageHint?: string }>;
 }
 
@@ -270,7 +273,7 @@ export interface PerceptionService {
   stop(): void;
 
   // context the native filters need (set by B / A / C-indoor; null clears)
-  setCrossingBearing(bearingDeg: number | null): void;   // arms the signal gate + onset tracking
+  setCrossingBearing(bearingDeg: number | null): void;   // arms the signal gate + onset tracking; NOT a scan-side setter (§5)
   setCourseReference(ref: { bearingDeg: number } | null): void;  // anchors pose-derived drift at the current pose
   setBodyOffsetDeg(offsetDeg: number): void;             // from SensorService.calibrateBodyOffset
   setKnownSigns(words: string[]): void;                  // OCR customWords from the store map
@@ -390,7 +393,7 @@ export interface CrossingController {
   crossingStarted(): void;              // → CROSSING: beacon to farCurb, COURSE holds bearing
   farCurbReached(): void;               // CONFIRM, beacon off, → OUTDOOR_NAV
   setManualSignal(state: SignalState | null): void;   // DebugPanel rung 4 — always wired
-  abort(): void;
+  abort(reason?: 'user' | 'walked_past' | 'replan'): void;   // emits CROSSING_ABORTED → OUTDOOR_NAV (§1)
 }
 
 export interface TransitionSignals {

@@ -1,0 +1,8 @@
+{
+  "job": "crossingAnnounce",
+  "entries": [
+    { "match": { "street": "Forbes" }, "result": { "job": "crossingAnnounce", "output": { "nodeId": "n-4411", "signalized": true, "pushButtonLikely": false, "text": "Crossing ahead: Forbes. Signalized." }, "fallback": false, "latencyMs": 900 } },
+    { "match": { "street": "the side street" }, "result": { "job": "crossingAnnounce", "output": { "nodeId": "n-4420", "signalized": false, "pushButtonLikely": false, "text": "Crossing ahead: side street. No signal here." }, "fallback": false, "latencyMs": 880 } },
+    { "seq": "*", "result": { "job": "crossingAnnounce", "output": { "nodeId": null, "signalized": null, "pushButtonLikely": false, "text": "Crossing ahead." }, "fallback": true, "latencyMs": 8000 } }
+  ]
+}

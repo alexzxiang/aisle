@@ -1,0 +1,102 @@
+{
+  "routes": [
+    {
+      "distanceMeters": 183,
+      "duration": "140s",
+      "legs": [
+        {
+          "steps": [
+            {
+              "distanceMeters": 64,
+              "polyline": {
+                "encodedPolyline": "__zuFxc_gN\\lBH^"
+              },
+              "startLocation": {
+                "latLng": {
+                  "latitude": 40.4428803,
+                  "longitude": -79.9546937
+                }
+              },
+              "endLocation": {
+                "latLng": {
+                  "latitude": 40.442675,
+                  "longitude": -79.9553991
+                }
+              },
+              "navigationInstruction": {
+                "maneuver": "DEPART",
+                "instructions": "Head southwest on Forbes Ave"
+              }
+            },
+            {
+              "distanceMeters": 32,
+              "polyline": {
+                "encodedPolyline": "w}yuFfh_gNNVT^"
+              },
+              "startLocation": {
+                "latLng": {
+                  "latitude": 40.442675,
+                  "longitude": -79.9553991
+                }
+              },
+              "endLocation": {
+                "latLng": {
+                  "latitude": 40.4424879,
+                  "longitude": -79.9556804
+                }
+              },
+              "navigationInstruction": {
+                "maneuver": "NAME_CHANGE",
+                "instructions": "Continue onto Forbes Avenue"
+              }
+            },
+            {
+              "distanceMeters": 87,
+              "polyline": {
+                "encodedPolyline": "q|yuF~i_gN`BjCFJ"
+              },
+              "startLocation": {
+                "latLng": {
+                  "latitude": 40.4424879,
+                  "longitude": -79.9556804
+                }
+              },
+              "endLocation": {
+                "latLng": {
+                  "latitude": 40.4419581,
+                  "longitude": -79.9564358
+                }
+              },
+              "navigationInstruction": {
+                "maneuver": "TURN_SLIGHT_LEFT",
+                "instructions": "Slight left to stay on Forbes Ave"
+              }
+            },
+            {
+              "distanceMeters": 61,
+              "polyline": {
+                "encodedPolyline": "gyyuFvn_gNEHWl@Wh@GP"
+              },
+              "startLocation": {
+                "latLng": {
+                  "latitude": 40.4419581,
+                  "longitude": -79.9564358
+                }
+              },
+              "endLocation": {
+                "latLng": {
+                  "latitude": 40.4422747,
+                  "longitude": -79.9570206
+                }
+              },
+              "navigationInstruction": {
+                "maneuver": "UTURN_RIGHT",
+                "instructions": "Make a U-turn onto S Bouquet St"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

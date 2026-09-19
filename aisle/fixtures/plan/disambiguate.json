@@ -1,0 +1,9 @@
+{
+  "job": "disambiguate",
+  "entries": [
+    { "match": { "item": "dairy" }, "result": { "job": "disambiguate", "output": { "aisleId": "a3", "confidence": 0.9, "askBack": null }, "fallback": false, "latencyMs": 620 } },
+    { "match": { "item": "breakfast" }, "result": { "job": "disambiguate", "output": { "aisleId": "a4", "confidence": 0.72, "askBack": null }, "fallback": false, "latencyMs": 700 } },
+    { "match": { "item": "dessert" }, "result": { "job": "disambiguate", "output": { "aisleId": null, "confidence": 0.3, "askBack": "Frozen dessert or bakery?" }, "fallback": false, "latencyMs": 760 } },
+    { "seq": "*", "result": { "job": "disambiguate", "output": { "aisleId": null, "confidence": 0.2, "askBack": "Say the item again." }, "fallback": true, "latencyMs": 1500 } }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "aisle-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Aisle proxy: Claude (Tier 1), Nemotron (Tier 2), ElevenLabs TTS/STT, health. Keys never leave this process.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch index.ts",
+    "start": "tsx index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
+    "dotenv": "^18.0.0",
+    "express": "^5.2.1",
+    "openai": "^7.17.0",
+    "ws": "^8.21.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.1",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.1"
+  }
+}

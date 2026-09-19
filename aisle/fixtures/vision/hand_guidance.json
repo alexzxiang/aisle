@@ -1,0 +1,10 @@
+{
+  "question": "hand_guidance",
+  "note": "One hint per call; the caller gives up after eight. Sequence higher → left → touching.",
+  "entries": [
+    { "seq": 1, "delayMs": 1000, "response": { "speech": "Higher.", "hand": { "hint": "higher" }, "userAction": "reach", "confidence": 0.8 } },
+    { "seq": 2, "delayMs": 1000, "response": { "speech": "Left.", "hand": { "hint": "left" }, "userAction": "reach", "confidence": 0.78 } },
+    { "seq": 3, "delayMs": 1000, "response": { "speech": "Touching.", "hand": { "hint": "touching" }, "userAction": "none", "confidence": 0.83 } },
+    { "seq": "*", "delayMs": 1000, "response": { "speech": "", "hand": { "hint": "not_seen" }, "confidence": 0.3 } }
+  ]
+}

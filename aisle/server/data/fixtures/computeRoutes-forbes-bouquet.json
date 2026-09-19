@@ -1,0 +1,66 @@
+{
+  "routes": [
+    {
+      "distanceMeters": 243,
+      "duration": "187s",
+      "polyline": {
+        "encodedPolyline": "__zuFxc_gN\\lBH^NVT^`BjCFJEHWl@Wh@GP"
+      },
+      "warnings": [
+        "Walking directions are in beta. Use caution \u2013 This route may be missing sidewalks or pedestrian paths."
+      ],
+      "legs": [
+        {
+          "steps": [
+            {
+              "distanceMeters": 183,
+              "staticDuration": "140s",
+              "polyline": {
+                "encodedPolyline": "__zuFxc_gN\\lBH^NVT^`BjCFJ"
+              },
+              "startLocation": {
+                "latLng": {
+                  "latitude": 40.4428803,
+                  "longitude": -79.9546937
+                }
+              },
+              "endLocation": {
+                "latLng": {
+                  "latitude": 40.4419581,
+                  "longitude": -79.9564358
+                }
+              },
+              "navigationInstruction": {
+                "maneuver": "DEPART",
+                "instructions": "Head southwest on Forbes Ave toward S Bouquet St"
+              }
+            },
+            {
+              "distanceMeters": 61,
+              "staticDuration": "47s",
+              "polyline": {
+                "encodedPolyline": "gyyuFvn_gNEHWl@Wh@GP"
+              },
+              "startLocation": {
+                "latLng": {
+                  "latitude": 40.4419581,
+                  "longitude": -79.9564358
+                }
+              },
+              "endLocation": {
+                "latLng": {
+                  "latitude": 40.4422747,
+                  "longitude": -79.9570206
+                }
+              },
+              "navigationInstruction": {
+                "maneuver": "TURN_RIGHT",
+                "instructions": "Turn right onto S Bouquet St\nDestination will be on the right"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2801 @@
+{
+ "hz": 1,
+ "meta": {
+  "synthetic": true,
+  "generator": "fixtures/tools/generate.mjs",
+  "recordedOn": "none — synthetic until the phase-2 live run replaces it",
+  "speedMps": 1.3,
+  "entrance": {
+   "lat": 40.4443,
+   "lng": -79.9436,
+   "radiusM": 35
+  },
+  "door": {
+   "t": 172
+  },
+  "accuracySnap": {
+   "t": 180,
+   "accuracyM": 65
+  },
+  "canyonJump": {
+   "t": 30,
+   "accuracyM": 38,
+   "offLineM": 40
+  },
+  "compassAccuracy2": {
+   "fromT": 75,
+   "toT": 95
+  },
+  "curb": {
+   "arriveT": 107,
+   "dwellS": 14,
+   "alignedFromT": 112
+  },
+  "crossing": {
+   "crossingId": "crossing-forbes-01",
+   "street": "Forbes",
+   "signalized": true,
+   "pushButtonLikely": false,
+   "bearingDeg": 180,
+   "nearCurb": {
+    "lat": 40.444569,
+    "lng": -79.944072
+   },
+   "farCurb": {
+    "lat": 40.444372,
+    "lng": -79.944072
+   },
+   "roadSide": "LEFT"
+  },
+  "legs": [
+   {
+    "index": 0,
+    "from": {
+     "lat": 40.445378,
+     "lng": -79.945016
+    },
+    "to": {
+     "lat": 40.445001,
+     "lng": -79.944072
+    },
+    "bearingDeg": 117.7,
+    "distanceM": 90.35,
+    "roadSide": "RIGHT"
+   },
+   {
+    "index": 1,
+    "from": {
+     "lat": 40.445001,
+     "lng": -79.944072
+    },
+    "to": {
+     "lat": 40.444569,
+     "lng": -79.944072
+    },
+    "bearingDeg": 180,
+    "distanceM": 48,
+    "roadSide": "LEFT"
+   },
+   {
+    "index": 2,
+    "from": {
+     "lat": 40.444372,
+     "lng": -79.944072
+    },
+    "to": {
+     "lat": 40.444372,
+     "lng": -79.943694
+    },
+    "bearingDeg": 90,
+    "distanceM": 32,
+    "roadSide": "RIGHT"
+   },
+   {
+    "index": 3,
+    "from": {
+     "lat": 40.444372,
+     "lng": -79.943694
+    },
+    "to": {
+     "lat": 40.4443,
+     "lng": -79.9436
+    },
+    "bearingDeg": 135,
+    "distanceM": 11.31,
+    "roadSide": "RIGHT"
+   }
+  ],
+  "expectedTransitionWindowS": [
+   5,
+   15
+  ]
+ },
+ "phases": {
+  "OUTDOOR_NAV": {
+   "t": 0,
+   "pack": "outdoor-leg",
+   "packOffsetMs": 0
+  },
+  "APPROACH_CROSSING": {
+   "t": 88,
+   "pack": "vehicle-approach",
+   "packOffsetMs": 0
+  },
+  "AT_CURB": {
+   "t": 107,
+   "pack": "curb-walk-onset",
+   "packOffsetMs": 0
+  },
+  "CROSSING": {
+   "t": 121,
+   "pack": "curb-walk-onset",
+   "packOffsetMs": 14000
+  },
+  "TRANSITION": {
+   "t": 172,
+   "pack": "outdoor-leg",
+   "packOffsetMs": 0
+  },
+  "INDOOR_NAV": {
+   "t": 182,
+   "pack": "indoor-aisle-walk",
+   "packOffsetMs": 0
+  },
+  "AT_ITEM": {
+   "t": 186,
+   "pack": "indoor-aisle-walk",
+   "packOffsetMs": 26000
+  },
+  "ITEM_PICKUP": {
+   "t": 188,
+   "pack": "indoor-aisle-walk",
+   "packOffsetMs": 30000
+  },
+  "CHECKOUT_NAV": {
+   "t": 192,
+   "pack": "indoor-aisle-walk",
+   "packOffsetMs": 34000
+  }
+ },
+ "samples": [
+  {
+   "t": 0,
+   "lat": 40.445378,
+   "lng": -79.945016,
+   "accuracyM": 8.67,
+   "courseDeg": 118.68,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.13,
+    "accuracy": 3
+   },
+   "steps": 1
+  },
+  {
+   "t": 1,
+   "lat": 40.445373,
+   "lng": -79.945003,
+   "accuracyM": 6,
+   "courseDeg": 120.31,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.25,
+    "accuracy": 3
+   },
+   "steps": 3
+  },
+  {
+   "t": 2,
+   "lat": 40.445367,
+   "lng": -79.944989,
+   "accuracyM": 7.36,
+   "courseDeg": 118.42,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.14,
+    "accuracy": 3
+   },
+   "steps": 5
+  },
+  {
+   "t": 3,
+   "lat": 40.445362,
+   "lng": -79.944976,
+   "accuracyM": 6.62,
+   "courseDeg": 118.53,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.84,
+    "accuracy": 3
+   },
+   "steps": 7
+  },
+  {
+   "t": 4,
+   "lat": 40.445356,
+   "lng": -79.944962,
+   "accuracyM": 7.56,
+   "courseDeg": 116.89,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 114.86,
+    "accuracy": 3
+   },
+   "steps": 9
+  },
+  {
+   "t": 5,
+   "lat": 40.445351,
+   "lng": -79.944949,
+   "accuracyM": 8.19,
+   "courseDeg": 118.26,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.3,
+    "accuracy": 3
+   },
+   "steps": 11
+  },
+  {
+   "t": 6,
+   "lat": 40.445346,
+   "lng": -79.944936,
+   "accuracyM": 5.57,
+   "courseDeg": 120.33,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 120.3,
+    "accuracy": 3
+   },
+   "steps": 12
+  },
+  {
+   "t": 7,
+   "lat": 40.44534,
+   "lng": -79.944922,
+   "accuracyM": 7.74,
+   "courseDeg": 120.32,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 114.84,
+    "accuracy": 3
+   },
+   "steps": 14
+  },
+  {
+   "t": 8,
+   "lat": 40.445335,
+   "lng": -79.944909,
+   "accuracyM": 8.64,
+   "courseDeg": 118.85,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.09,
+    "accuracy": 3
+   },
+   "steps": 16
+  },
+  {
+   "t": 9,
+   "lat": 40.445329,
+   "lng": -79.944895,
+   "accuracyM": 5.51,
+   "courseDeg": 118.24,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.6,
+    "accuracy": 3
+   },
+   "steps": 18
+  },
+  {
+   "t": 10,
+   "lat": 40.445324,
+   "lng": -79.944882,
+   "accuracyM": 7.33,
+   "courseDeg": 116.44,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.35,
+    "accuracy": 3
+   },
+   "steps": 20
+  },
+  {
+   "t": 11,
+   "lat": 40.445319,
+   "lng": -79.944868,
+   "accuracyM": 8.99,
+   "courseDeg": 116.58,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.16,
+    "accuracy": 3
+   },
+   "steps": 22
+  },
+  {
+   "t": 12,
+   "lat": 40.445313,
+   "lng": -79.944855,
+   "accuracyM": 5.7,
+   "courseDeg": 118.63,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.82,
+    "accuracy": 3
+   },
+   "steps": 24
+  },
+  {
+   "t": 13,
+   "lat": 40.445308,
+   "lng": -79.944841,
+   "accuracyM": 7.88,
+   "courseDeg": 115.76,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 114.71,
+    "accuracy": 3
+   },
+   "steps": 25
+  },
+  {
+   "t": 14,
+   "lat": 40.445303,
+   "lng": -79.944828,
+   "accuracyM": 5.97,
+   "courseDeg": 117.53,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.82,
+    "accuracy": 3
+   },
+   "steps": 27
+  },
+  {
+   "t": 15,
+   "lat": 40.445297,
+   "lng": -79.944814,
+   "accuracyM": 7.79,
+   "courseDeg": 115.35,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.48,
+    "accuracy": 3
+   },
+   "steps": 29
+  },
+  {
+   "t": 16,
+   "lat": 40.445292,
+   "lng": -79.944801,
+   "accuracyM": 8.91,
+   "courseDeg": 115.26,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.27,
+    "accuracy": 3
+   },
+   "steps": 31
+  },
+  {
+   "t": 17,
+   "lat": 40.445286,
+   "lng": -79.944787,
+   "accuracyM": 5.78,
+   "courseDeg": 115.04,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.28,
+    "accuracy": 3
+   },
+   "steps": 33
+  },
+  {
+   "t": 18,
+   "lat": 40.445281,
+   "lng": -79.944774,
+   "accuracyM": 6.24,
+   "courseDeg": 118.26,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 120.6,
+    "accuracy": 3
+   },
+   "steps": 35
+  },
+  {
+   "t": 19,
+   "lat": 40.445276,
+   "lng": -79.94476,
+   "accuracyM": 8.3,
+   "courseDeg": 119.07,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.04,
+    "accuracy": 3
+   },
+   "steps": 37
+  },
+  {
+   "t": 20,
+   "lat": 40.44527,
+   "lng": -79.944747,
+   "accuracyM": 5.55,
+   "courseDeg": 117.76,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.81,
+    "accuracy": 3
+   },
+   "steps": 38
+  },
+  {
+   "t": 21,
+   "lat": 40.445265,
+   "lng": -79.944733,
+   "accuracyM": 7.23,
+   "courseDeg": 117.46,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.26,
+    "accuracy": 3
+   },
+   "steps": 40
+  },
+  {
+   "t": 22,
+   "lat": 40.445259,
+   "lng": -79.94472,
+   "accuracyM": 6.58,
+   "courseDeg": 117.43,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.82,
+    "accuracy": 3
+   },
+   "steps": 42
+  },
+  {
+   "t": 23,
+   "lat": 40.445254,
+   "lng": -79.944706,
+   "accuracyM": 7.7,
+   "courseDeg": 118.82,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.61,
+    "accuracy": 3
+   },
+   "steps": 44
+  },
+  {
+   "t": 24,
+   "lat": 40.445249,
+   "lng": -79.944693,
+   "accuracyM": 8.81,
+   "courseDeg": 117.26,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.11,
+    "accuracy": 3
+   },
+   "steps": 46
+  },
+  {
+   "t": 25,
+   "lat": 40.445243,
+   "lng": -79.944679,
+   "accuracyM": 5.34,
+   "courseDeg": 115.26,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.89,
+    "accuracy": 3
+   },
+   "steps": 48
+  },
+  {
+   "t": 26,
+   "lat": 40.445238,
+   "lng": -79.944666,
+   "accuracyM": 8.14,
+   "courseDeg": 116.5,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.26,
+    "accuracy": 3
+   },
+   "steps": 49
+  },
+  {
+   "t": 27,
+   "lat": 40.445232,
+   "lng": -79.944652,
+   "accuracyM": 6.12,
+   "courseDeg": 115.19,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.53,
+    "accuracy": 3
+   },
+   "steps": 51
+  },
+  {
+   "t": 28,
+   "lat": 40.445227,
+   "lng": -79.944639,
+   "accuracyM": 8.31,
+   "courseDeg": 119.05,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.12,
+    "accuracy": 3
+   },
+   "steps": 53
+  },
+  {
+   "t": 29,
+   "lat": 40.445222,
+   "lng": -79.944625,
+   "accuracyM": 7.85,
+   "courseDeg": 115.69,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.63,
+    "accuracy": 3
+   },
+   "steps": 55
+  },
+  {
+   "t": 30,
+   "lat": 40.444898,
+   "lng": -79.944831,
+   "accuracyM": 38,
+   "courseDeg": 117.73,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.72,
+    "accuracy": 3
+   },
+   "steps": 57
+  },
+  {
+   "t": 31,
+   "lat": 40.445211,
+   "lng": -79.944598,
+   "accuracyM": 8.22,
+   "courseDeg": 116.65,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 120.57,
+    "accuracy": 3
+   },
+   "steps": 59
+  },
+  {
+   "t": 32,
+   "lat": 40.445205,
+   "lng": -79.944585,
+   "accuracyM": 8.9,
+   "courseDeg": 119.02,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.93,
+    "accuracy": 3
+   },
+   "steps": 61
+  },
+  {
+   "t": 33,
+   "lat": 40.4452,
+   "lng": -79.944571,
+   "accuracyM": 5.24,
+   "courseDeg": 120.08,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.05,
+    "accuracy": 3
+   },
+   "steps": 62
+  },
+  {
+   "t": 34,
+   "lat": 40.445195,
+   "lng": -79.944558,
+   "accuracyM": 8.29,
+   "courseDeg": 115.25,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.28,
+    "accuracy": 3
+   },
+   "steps": 64
+  },
+  {
+   "t": 35,
+   "lat": 40.445189,
+   "lng": -79.944544,
+   "accuracyM": 5.28,
+   "courseDeg": 115.69,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.46,
+    "accuracy": 3
+   },
+   "steps": 66
+  },
+  {
+   "t": 36,
+   "lat": 40.445184,
+   "lng": -79.944531,
+   "accuracyM": 5.66,
+   "courseDeg": 120.45,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.34,
+    "accuracy": 3
+   },
+   "steps": 68
+  },
+  {
+   "t": 37,
+   "lat": 40.445179,
+   "lng": -79.944517,
+   "accuracyM": 6.55,
+   "courseDeg": 115.76,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.55,
+    "accuracy": 3
+   },
+   "steps": 70
+  },
+  {
+   "t": 38,
+   "lat": 40.445173,
+   "lng": -79.944504,
+   "accuracyM": 8.29,
+   "courseDeg": 115.74,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.79,
+    "accuracy": 3
+   },
+   "steps": 72
+  },
+  {
+   "t": 39,
+   "lat": 40.445168,
+   "lng": -79.94449,
+   "accuracyM": 7.82,
+   "courseDeg": 116.39,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.8,
+    "accuracy": 3
+   },
+   "steps": 74
+  },
+  {
+   "t": 40,
+   "lat": 40.445162,
+   "lng": -79.944477,
+   "accuracyM": 7.5,
+   "courseDeg": 120.44,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.16,
+    "accuracy": 3
+   },
+   "steps": 75
+  },
+  {
+   "t": 41,
+   "lat": 40.445157,
+   "lng": -79.944463,
+   "accuracyM": 5.75,
+   "courseDeg": 116.59,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.25,
+    "accuracy": 3
+   },
+   "steps": 77
+  },
+  {
+   "t": 42,
+   "lat": 40.445152,
+   "lng": -79.94445,
+   "accuracyM": 6.37,
+   "courseDeg": 118.8,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.54,
+    "accuracy": 3
+   },
+   "steps": 79
+  },
+  {
+   "t": 43,
+   "lat": 40.445146,
+   "lng": -79.944436,
+   "accuracyM": 7.61,
+   "courseDeg": 114.89,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.22,
+    "accuracy": 3
+   },
+   "steps": 81
+  },
+  {
+   "t": 44,
+   "lat": 40.445141,
+   "lng": -79.944423,
+   "accuracyM": 7.34,
+   "courseDeg": 117.01,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.96,
+    "accuracy": 3
+   },
+   "steps": 83
+  },
+  {
+   "t": 45,
+   "lat": 40.445135,
+   "lng": -79.944409,
+   "accuracyM": 5.66,
+   "courseDeg": 114.9,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.75,
+    "accuracy": 3
+   },
+   "steps": 85
+  },
+  {
+   "t": 46,
+   "lat": 40.44513,
+   "lng": -79.944396,
+   "accuracyM": 8.27,
+   "courseDeg": 120.64,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.48,
+    "accuracy": 3
+   },
+   "steps": 86
+  },
+  {
+   "t": 47,
+   "lat": 40.445125,
+   "lng": -79.944382,
+   "accuracyM": 5.08,
+   "courseDeg": 115.4,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 120.39,
+    "accuracy": 3
+   },
+   "steps": 88
+  },
+  {
+   "t": 48,
+   "lat": 40.445119,
+   "lng": -79.944369,
+   "accuracyM": 5.34,
+   "courseDeg": 117.11,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.41,
+    "accuracy": 3
+   },
+   "steps": 90
+  },
+  {
+   "t": 49,
+   "lat": 40.445114,
+   "lng": -79.944355,
+   "accuracyM": 8.27,
+   "courseDeg": 115.46,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.06,
+    "accuracy": 3
+   },
+   "steps": 92
+  },
+  {
+   "t": 50,
+   "lat": 40.445108,
+   "lng": -79.944342,
+   "accuracyM": 6.03,
+   "courseDeg": 116.42,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118,
+    "accuracy": 3
+   },
+   "steps": 94
+  },
+  {
+   "t": 51,
+   "lat": 40.445103,
+   "lng": -79.944328,
+   "accuracyM": 6.98,
+   "courseDeg": 116.04,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.97,
+    "accuracy": 3
+   },
+   "steps": 96
+  },
+  {
+   "t": 52,
+   "lat": 40.445098,
+   "lng": -79.944315,
+   "accuracyM": 8.97,
+   "courseDeg": 115.68,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.87,
+    "accuracy": 3
+   },
+   "steps": 98
+  },
+  {
+   "t": 53,
+   "lat": 40.445092,
+   "lng": -79.944301,
+   "accuracyM": 8.58,
+   "courseDeg": 117.59,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.48,
+    "accuracy": 3
+   },
+   "steps": 99
+  },
+  {
+   "t": 54,
+   "lat": 40.445087,
+   "lng": -79.944288,
+   "accuracyM": 7.26,
+   "courseDeg": 119.63,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.47,
+    "accuracy": 3
+   },
+   "steps": 101
+  },
+  {
+   "t": 55,
+   "lat": 40.445082,
+   "lng": -79.944275,
+   "accuracyM": 8.31,
+   "courseDeg": 120.41,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.9,
+    "accuracy": 3
+   },
+   "steps": 103
+  },
+  {
+   "t": 56,
+   "lat": 40.445076,
+   "lng": -79.944261,
+   "accuracyM": 6.58,
+   "courseDeg": 118.95,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.41,
+    "accuracy": 3
+   },
+   "steps": 105
+  },
+  {
+   "t": 57,
+   "lat": 40.445071,
+   "lng": -79.944248,
+   "accuracyM": 6.55,
+   "courseDeg": 116.85,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.75,
+    "accuracy": 3
+   },
+   "steps": 107
+  },
+  {
+   "t": 58,
+   "lat": 40.445065,
+   "lng": -79.944234,
+   "accuracyM": 8.68,
+   "courseDeg": 116.92,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 114.75,
+    "accuracy": 3
+   },
+   "steps": 109
+  },
+  {
+   "t": 59,
+   "lat": 40.44506,
+   "lng": -79.944221,
+   "accuracyM": 5.46,
+   "courseDeg": 118,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.19,
+    "accuracy": 3
+   },
+   "steps": 111
+  },
+  {
+   "t": 60,
+   "lat": 40.445055,
+   "lng": -79.944207,
+   "accuracyM": 8.15,
+   "courseDeg": 118.98,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.82,
+    "accuracy": 3
+   },
+   "steps": 112
+  },
+  {
+   "t": 61,
+   "lat": 40.445049,
+   "lng": -79.944194,
+   "accuracyM": 8.59,
+   "courseDeg": 115.27,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.21,
+    "accuracy": 3
+   },
+   "steps": 114
+  },
+  {
+   "t": 62,
+   "lat": 40.445044,
+   "lng": -79.94418,
+   "accuracyM": 5.99,
+   "courseDeg": 117.92,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.69,
+    "accuracy": 3
+   },
+   "steps": 116
+  },
+  {
+   "t": 63,
+   "lat": 40.445038,
+   "lng": -79.944167,
+   "accuracyM": 8.39,
+   "courseDeg": 116.4,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 117.65,
+    "accuracy": 3
+   },
+   "steps": 118
+  },
+  {
+   "t": 64,
+   "lat": 40.445033,
+   "lng": -79.944153,
+   "accuracyM": 7.97,
+   "courseDeg": 119.88,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.89,
+    "accuracy": 3
+   },
+   "steps": 120
+  },
+  {
+   "t": 65,
+   "lat": 40.445028,
+   "lng": -79.94414,
+   "accuracyM": 7.04,
+   "courseDeg": 118.88,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.24,
+    "accuracy": 3
+   },
+   "steps": 122
+  },
+  {
+   "t": 66,
+   "lat": 40.445022,
+   "lng": -79.944126,
+   "accuracyM": 5.47,
+   "courseDeg": 119.11,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 119.96,
+    "accuracy": 3
+   },
+   "steps": 123
+  },
+  {
+   "t": 67,
+   "lat": 40.445017,
+   "lng": -79.944113,
+   "accuracyM": 8.9,
+   "courseDeg": 117.39,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 116.65,
+    "accuracy": 3
+   },
+   "steps": 125
+  },
+  {
+   "t": 68,
+   "lat": 40.445011,
+   "lng": -79.944099,
+   "accuracyM": 8.79,
+   "courseDeg": 119.54,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 115.6,
+    "accuracy": 3
+   },
+   "steps": 127
+  },
+  {
+   "t": 69,
+   "lat": 40.445006,
+   "lng": -79.944086,
+   "accuracyM": 6.92,
+   "courseDeg": 120.34,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 118.83,
+    "accuracy": 3
+   },
+   "steps": 129
+  },
+  {
+   "t": 70,
+   "lat": 40.445001,
+   "lng": -79.944072,
+   "accuracyM": 7.26,
+   "courseDeg": 182.97,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 148.85,
+    "accuracy": 3
+   },
+   "steps": 131
+  },
+  {
+   "t": 71,
+   "lat": 40.444989,
+   "lng": -79.944072,
+   "accuracyM": 6.91,
+   "courseDeg": 179.21,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 179.68,
+    "accuracy": 3
+   },
+   "steps": 133
+  },
+  {
+   "t": 72,
+   "lat": 40.444977,
+   "lng": -79.944072,
+   "accuracyM": 8.34,
+   "courseDeg": 182.61,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.54,
+    "accuracy": 3
+   },
+   "steps": 135
+  },
+  {
+   "t": 73,
+   "lat": 40.444966,
+   "lng": -79.944072,
+   "accuracyM": 6.66,
+   "courseDeg": 182.63,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.75,
+    "accuracy": 3
+   },
+   "steps": 136
+  },
+  {
+   "t": 74,
+   "lat": 40.444954,
+   "lng": -79.944072,
+   "accuracyM": 7.62,
+   "courseDeg": 182.42,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.95,
+    "accuracy": 3
+   },
+   "steps": 138
+  },
+  {
+   "t": 75,
+   "lat": 40.444942,
+   "lng": -79.944072,
+   "accuracyM": 5.61,
+   "courseDeg": 182.31,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 179.01,
+    "accuracy": 2
+   },
+   "steps": 140
+  },
+  {
+   "t": 76,
+   "lat": 40.444931,
+   "lng": -79.944072,
+   "accuracyM": 5.69,
+   "courseDeg": 179.86,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 178.58,
+    "accuracy": 2
+   },
+   "steps": 142
+  },
+  {
+   "t": 77,
+   "lat": 40.444919,
+   "lng": -79.944072,
+   "accuracyM": 8,
+   "courseDeg": 178.99,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.46,
+    "accuracy": 2
+   },
+   "steps": 144
+  },
+  {
+   "t": 78,
+   "lat": 40.444907,
+   "lng": -79.944072,
+   "accuracyM": 8.42,
+   "courseDeg": 179.04,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 182.11,
+    "accuracy": 2
+   },
+   "steps": 146
+  },
+  {
+   "t": 79,
+   "lat": 40.444896,
+   "lng": -79.944072,
+   "accuracyM": 7.53,
+   "courseDeg": 177.97,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 182.47,
+    "accuracy": 2
+   },
+   "steps": 148
+  },
+  {
+   "t": 80,
+   "lat": 40.444884,
+   "lng": -79.944072,
+   "accuracyM": 6.31,
+   "courseDeg": 180.78,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.39,
+    "accuracy": 2
+   },
+   "steps": 149
+  },
+  {
+   "t": 81,
+   "lat": 40.444872,
+   "lng": -79.944072,
+   "accuracyM": 7.66,
+   "courseDeg": 180.11,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.34,
+    "accuracy": 2
+   },
+   "steps": 151
+  },
+  {
+   "t": 82,
+   "lat": 40.444861,
+   "lng": -79.944072,
+   "accuracyM": 6.89,
+   "courseDeg": 181.92,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 182.71,
+    "accuracy": 2
+   },
+   "steps": 153
+  },
+  {
+   "t": 83,
+   "lat": 40.444849,
+   "lng": -79.944072,
+   "accuracyM": 8.38,
+   "courseDeg": 182.02,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.29,
+    "accuracy": 2
+   },
+   "steps": 155
+  },
+  {
+   "t": 84,
+   "lat": 40.444838,
+   "lng": -79.944072,
+   "accuracyM": 5.39,
+   "courseDeg": 181.37,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.44,
+    "accuracy": 2
+   },
+   "steps": 157
+  },
+  {
+   "t": 85,
+   "lat": 40.444826,
+   "lng": -79.944072,
+   "accuracyM": 8.1,
+   "courseDeg": 180.73,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 181.2,
+    "accuracy": 2
+   },
+   "steps": 159
+  },
+  {
+   "t": 86,
+   "lat": 40.444814,
+   "lng": -79.944072,
+   "accuracyM": 7.97,
+   "courseDeg": 180.62,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 182.22,
+    "accuracy": 2
+   },
+   "steps": 160
+  },
+  {
+   "t": 87,
+   "lat": 40.444803,
+   "lng": -79.944072,
+   "accuracyM": 6.61,
+   "courseDeg": 181.97,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 178.19,
+    "accuracy": 2
+   },
+   "steps": 162
+  },
+  {
+   "t": 88,
+   "lat": 40.444791,
+   "lng": -79.944072,
+   "accuracyM": 6.23,
+   "courseDeg": 181.01,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.13,
+    "accuracy": 2
+   },
+   "steps": 164
+  },
+  {
+   "t": 89,
+   "lat": 40.444779,
+   "lng": -79.944072,
+   "accuracyM": 5.86,
+   "courseDeg": 177.51,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 182.78,
+    "accuracy": 2
+   },
+   "steps": 166
+  },
+  {
+   "t": 90,
+   "lat": 40.444768,
+   "lng": -79.944072,
+   "accuracyM": 6.38,
+   "courseDeg": 182.21,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.18,
+    "accuracy": 2
+   },
+   "steps": 168
+  },
+  {
+   "t": 91,
+   "lat": 40.444756,
+   "lng": -79.944072,
+   "accuracyM": 7.72,
+   "courseDeg": 178.97,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 181.78,
+    "accuracy": 2
+   },
+   "steps": 170
+  },
+  {
+   "t": 92,
+   "lat": 40.444744,
+   "lng": -79.944072,
+   "accuracyM": 7.25,
+   "courseDeg": 177.45,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 178.95,
+    "accuracy": 2
+   },
+   "steps": 172
+  },
+  {
+   "t": 93,
+   "lat": 40.444733,
+   "lng": -79.944072,
+   "accuracyM": 5.04,
+   "courseDeg": 177.46,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.18,
+    "accuracy": 2
+   },
+   "steps": 173
+  },
+  {
+   "t": 94,
+   "lat": 40.444721,
+   "lng": -79.944072,
+   "accuracyM": 6.51,
+   "courseDeg": 180.76,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.08,
+    "accuracy": 2
+   },
+   "steps": 175
+  },
+  {
+   "t": 95,
+   "lat": 40.444709,
+   "lng": -79.944072,
+   "accuracyM": 7.06,
+   "courseDeg": 181.84,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 179.24,
+    "accuracy": 3
+   },
+   "steps": 177
+  },
+  {
+   "t": 96,
+   "lat": 40.444698,
+   "lng": -79.944072,
+   "accuracyM": 8.42,
+   "courseDeg": 182.8,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.15,
+    "accuracy": 3
+   },
+   "steps": 179
+  },
+  {
+   "t": 97,
+   "lat": 40.444686,
+   "lng": -79.944072,
+   "accuracyM": 8.02,
+   "courseDeg": 177.92,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 182.87,
+    "accuracy": 3
+   },
+   "steps": 181
+  },
+  {
+   "t": 98,
+   "lat": 40.444674,
+   "lng": -79.944072,
+   "accuracyM": 5.55,
+   "courseDeg": 178.13,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 178.55,
+    "accuracy": 3
+   },
+   "steps": 183
+  },
+  {
+   "t": 99,
+   "lat": 40.444663,
+   "lng": -79.944072,
+   "accuracyM": 8.33,
+   "courseDeg": 177.18,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.24,
+    "accuracy": 3
+   },
+   "steps": 185
+  },
+  {
+   "t": 100,
+   "lat": 40.444651,
+   "lng": -79.944072,
+   "accuracyM": 8.77,
+   "courseDeg": 182.22,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 178.46,
+    "accuracy": 3
+   },
+   "steps": 186
+  },
+  {
+   "t": 101,
+   "lat": 40.444639,
+   "lng": -79.944072,
+   "accuracyM": 5.32,
+   "courseDeg": 181.78,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.03,
+    "accuracy": 3
+   },
+   "steps": 188
+  },
+  {
+   "t": 102,
+   "lat": 40.444628,
+   "lng": -79.944072,
+   "accuracyM": 5.8,
+   "courseDeg": 178.79,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.3,
+    "accuracy": 3
+   },
+   "steps": 190
+  },
+  {
+   "t": 103,
+   "lat": 40.444616,
+   "lng": -79.944072,
+   "accuracyM": 7.45,
+   "courseDeg": 179.65,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 178.65,
+    "accuracy": 3
+   },
+   "steps": 192
+  },
+  {
+   "t": 104,
+   "lat": 40.444604,
+   "lng": -79.944072,
+   "accuracyM": 7.61,
+   "courseDeg": 180.84,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 180.14,
+    "accuracy": 3
+   },
+   "steps": 194
+  },
+  {
+   "t": 105,
+   "lat": 40.444593,
+   "lng": -79.944072,
+   "accuracyM": 6.56,
+   "courseDeg": 181.87,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 181.52,
+    "accuracy": 3
+   },
+   "steps": 196
+  },
+  {
+   "t": 106,
+   "lat": 40.444581,
+   "lng": -79.944072,
+   "accuracyM": 7.5,
+   "courseDeg": 178.97,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 181.81,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 107,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 6.35,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 165,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 108,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 7.95,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 168,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 109,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 6.83,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 172,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 110,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 7.3,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 176,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 111,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 7.11,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 179,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 112,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 7.07,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 179.94,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 113,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 7.41,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 180.7,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 114,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 6.64,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 180.67,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 115,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 7.2,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 179.18,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 116,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 6.36,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 179.7,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 117,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 7.33,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 179.69,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 118,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 6.01,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 180.63,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 119,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 6.99,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 180.24,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 120,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 7.74,
+   "courseDeg": null,
+   "speedMps": 0.1,
+   "heading": {
+    "trueHeadingDeg": 179.32,
+    "accuracy": 3
+   },
+   "steps": 197
+  },
+  {
+   "t": 121,
+   "lat": 40.444569,
+   "lng": -79.944072,
+   "accuracyM": 8.58,
+   "courseDeg": 179.96,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 178,
+    "accuracy": 3
+   },
+   "steps": 199
+  },
+  {
+   "t": 122,
+   "lat": 40.444558,
+   "lng": -79.944075,
+   "accuracyM": 5.4,
+   "courseDeg": 177.45,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 176.98,
+    "accuracy": 3
+   },
+   "steps": 201
+  },
+  {
+   "t": 123,
+   "lat": 40.444546,
+   "lng": -79.944077,
+   "accuracyM": 7.45,
+   "courseDeg": 179.37,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 178.38,
+    "accuracy": 3
+   },
+   "steps": 203
+  },
+  {
+   "t": 124,
+   "lat": 40.444535,
+   "lng": -79.94408,
+   "accuracyM": 5.24,
+   "courseDeg": 178.92,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 173.94,
+    "accuracy": 3
+   },
+   "steps": 205
+  },
+  {
+   "t": 125,
+   "lat": 40.444523,
+   "lng": -79.944082,
+   "accuracyM": 8.49,
+   "courseDeg": 177.68,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 172.2,
+    "accuracy": 3
+   },
+   "steps": 207
+  },
+  {
+   "t": 126,
+   "lat": 40.444511,
+   "lng": -79.944083,
+   "accuracyM": 8.28,
+   "courseDeg": 178.01,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 170.03,
+    "accuracy": 3
+   },
+   "steps": 209
+  },
+  {
+   "t": 127,
+   "lat": 40.4445,
+   "lng": -79.944085,
+   "accuracyM": 7.5,
+   "courseDeg": 177.57,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 171.51,
+    "accuracy": 3
+   },
+   "steps": 210
+  },
+  {
+   "t": 128,
+   "lat": 40.444488,
+   "lng": -79.944086,
+   "accuracyM": 5.83,
+   "courseDeg": 178.48,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 168.93,
+    "accuracy": 3
+   },
+   "steps": 212
+  },
+  {
+   "t": 129,
+   "lat": 40.444476,
+   "lng": -79.944086,
+   "accuracyM": 6.28,
+   "courseDeg": 177.83,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 169.84,
+    "accuracy": 3
+   },
+   "steps": 214
+  },
+  {
+   "t": 130,
+   "lat": 40.444465,
+   "lng": -79.944086,
+   "accuracyM": 7.26,
+   "courseDeg": 179.03,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 170.7,
+    "accuracy": 3
+   },
+   "steps": 216
+  },
+  {
+   "t": 131,
+   "lat": 40.444453,
+   "lng": -79.944086,
+   "accuracyM": 5.38,
+   "courseDeg": 181.66,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 171.29,
+    "accuracy": 3
+   },
+   "steps": 218
+  },
+  {
+   "t": 132,
+   "lat": 40.444442,
+   "lng": -79.944085,
+   "accuracyM": 6.89,
+   "courseDeg": 180.33,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 172.39,
+    "accuracy": 3
+   },
+   "steps": 220
+  },
+  {
+   "t": 133,
+   "lat": 40.44443,
+   "lng": -79.944083,
+   "accuracyM": 7,
+   "courseDeg": 181.29,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 172.74,
+    "accuracy": 3
+   },
+   "steps": 222
+  },
+  {
+   "t": 134,
+   "lat": 40.444418,
+   "lng": -79.944082,
+   "accuracyM": 8.98,
+   "courseDeg": 180.24,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 173.99,
+    "accuracy": 3
+   },
+   "steps": 223
+  },
+  {
+   "t": 135,
+   "lat": 40.444407,
+   "lng": -79.94408,
+   "accuracyM": 8.19,
+   "courseDeg": 178.99,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 175.45,
+    "accuracy": 3
+   },
+   "steps": 225
+  },
+  {
+   "t": 136,
+   "lat": 40.444395,
+   "lng": -79.944077,
+   "accuracyM": 7.1,
+   "courseDeg": 181.59,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.58,
+    "accuracy": 3
+   },
+   "steps": 227
+  },
+  {
+   "t": 137,
+   "lat": 40.444383,
+   "lng": -79.944075,
+   "accuracyM": 8.31,
+   "courseDeg": 178.46,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 177.83,
+    "accuracy": 3
+   },
+   "steps": 229
+  },
+  {
+   "t": 138,
+   "lat": 40.444372,
+   "lng": -79.944072,
+   "accuracyM": 5.71,
+   "courseDeg": 89.7,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 135,
+    "accuracy": 3
+   },
+   "steps": 231
+  },
+  {
+   "t": 139,
+   "lat": 40.444372,
+   "lng": -79.944057,
+   "accuracyM": 5.13,
+   "courseDeg": 89.59,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 92.21,
+    "accuracy": 3
+   },
+   "steps": 233
+  },
+  {
+   "t": 140,
+   "lat": 40.444372,
+   "lng": -79.944042,
+   "accuracyM": 8.73,
+   "courseDeg": 90.81,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 89.54,
+    "accuracy": 3
+   },
+   "steps": 234
+  },
+  {
+   "t": 141,
+   "lat": 40.444372,
+   "lng": -79.944027,
+   "accuracyM": 8.95,
+   "courseDeg": 87.4,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 91.39,
+    "accuracy": 3
+   },
+   "steps": 236
+  },
+  {
+   "t": 142,
+   "lat": 40.444372,
+   "lng": -79.944012,
+   "accuracyM": 6.73,
+   "courseDeg": 92.35,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 87.17,
+    "accuracy": 3
+   },
+   "steps": 238
+  },
+  {
+   "t": 143,
+   "lat": 40.444372,
+   "lng": -79.943997,
+   "accuracyM": 6.08,
+   "courseDeg": 87.97,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 89.61,
+    "accuracy": 3
+   },
+   "steps": 240
+  },
+  {
+   "t": 144,
+   "lat": 40.444372,
+   "lng": -79.943981,
+   "accuracyM": 7.5,
+   "courseDeg": 91.44,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 90.43,
+    "accuracy": 3
+   },
+   "steps": 242
+  },
+  {
+   "t": 145,
+   "lat": 40.444372,
+   "lng": -79.943966,
+   "accuracyM": 8.25,
+   "courseDeg": 87.58,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 88.16,
+    "accuracy": 3
+   },
+   "steps": 244
+  },
+  {
+   "t": 146,
+   "lat": 40.444372,
+   "lng": -79.943951,
+   "accuracyM": 7.85,
+   "courseDeg": 88.33,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 90.06,
+    "accuracy": 3
+   },
+   "steps": 246
+  },
+  {
+   "t": 147,
+   "lat": 40.444372,
+   "lng": -79.943936,
+   "accuracyM": 7.26,
+   "courseDeg": 91.3,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 89.32,
+    "accuracy": 3
+   },
+   "steps": 247
+  },
+  {
+   "t": 148,
+   "lat": 40.444372,
+   "lng": -79.943921,
+   "accuracyM": 6.53,
+   "courseDeg": 92.84,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 89.48,
+    "accuracy": 3
+   },
+   "steps": 249
+  },
+  {
+   "t": 149,
+   "lat": 40.444372,
+   "lng": -79.943906,
+   "accuracyM": 5.65,
+   "courseDeg": 89.25,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 90.24,
+    "accuracy": 3
+   },
+   "steps": 251
+  },
+  {
+   "t": 150,
+   "lat": 40.444372,
+   "lng": -79.943891,
+   "accuracyM": 6.32,
+   "courseDeg": 92.58,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 88.78,
+    "accuracy": 3
+   },
+   "steps": 253
+  },
+  {
+   "t": 151,
+   "lat": 40.444372,
+   "lng": -79.943876,
+   "accuracyM": 8.43,
+   "courseDeg": 92.51,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 91.51,
+    "accuracy": 3
+   },
+   "steps": 255
+  },
+  {
+   "t": 152,
+   "lat": 40.444372,
+   "lng": -79.943861,
+   "accuracyM": 6.8,
+   "courseDeg": 91.04,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 90,
+    "accuracy": 3
+   },
+   "steps": 257
+  },
+  {
+   "t": 153,
+   "lat": 40.444372,
+   "lng": -79.943846,
+   "accuracyM": 7.67,
+   "courseDeg": 90.64,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 92.49,
+    "accuracy": 3
+   },
+   "steps": 259
+  },
+  {
+   "t": 154,
+   "lat": 40.444372,
+   "lng": -79.94383,
+   "accuracyM": 5.01,
+   "courseDeg": 88.1,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 87.8,
+    "accuracy": 3
+   },
+   "steps": 260
+  },
+  {
+   "t": 155,
+   "lat": 40.444372,
+   "lng": -79.943815,
+   "accuracyM": 8.02,
+   "courseDeg": 91.26,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 87.11,
+    "accuracy": 3
+   },
+   "steps": 262
+  },
+  {
+   "t": 156,
+   "lat": 40.444372,
+   "lng": -79.9438,
+   "accuracyM": 6.16,
+   "courseDeg": 90.51,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 89.36,
+    "accuracy": 3
+   },
+   "steps": 264
+  },
+  {
+   "t": 157,
+   "lat": 40.444372,
+   "lng": -79.943785,
+   "accuracyM": 6.24,
+   "courseDeg": 92.03,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 88.04,
+    "accuracy": 3
+   },
+   "steps": 266
+  },
+  {
+   "t": 158,
+   "lat": 40.444372,
+   "lng": -79.94377,
+   "accuracyM": 7.67,
+   "courseDeg": 87.18,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 87.58,
+    "accuracy": 3
+   },
+   "steps": 268
+  },
+  {
+   "t": 159,
+   "lat": 40.444372,
+   "lng": -79.943755,
+   "accuracyM": 7.55,
+   "courseDeg": 92.44,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 87.85,
+    "accuracy": 3
+   },
+   "steps": 270
+  },
+  {
+   "t": 160,
+   "lat": 40.444372,
+   "lng": -79.94374,
+   "accuracyM": 8.37,
+   "courseDeg": 91.54,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 91.37,
+    "accuracy": 3
+   },
+   "steps": 271
+  },
+  {
+   "t": 161,
+   "lat": 40.444372,
+   "lng": -79.943725,
+   "accuracyM": 7.68,
+   "courseDeg": 90.83,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 89.29,
+    "accuracy": 3
+   },
+   "steps": 273
+  },
+  {
+   "t": 162,
+   "lat": 40.444372,
+   "lng": -79.94371,
+   "accuracyM": 6.01,
+   "courseDeg": 92.66,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 87.09,
+    "accuracy": 3
+   },
+   "steps": 275
+  },
+  {
+   "t": 163,
+   "lat": 40.444372,
+   "lng": -79.943694,
+   "accuracyM": 5.33,
+   "courseDeg": 135.44,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 112.5,
+    "accuracy": 3
+   },
+   "steps": 277
+  },
+  {
+   "t": 164,
+   "lat": 40.444364,
+   "lng": -79.943684,
+   "accuracyM": 7.3,
+   "courseDeg": 133.2,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 137.31,
+    "accuracy": 3
+   },
+   "steps": 279
+  },
+  {
+   "t": 165,
+   "lat": 40.444356,
+   "lng": -79.943673,
+   "accuracyM": 6.43,
+   "courseDeg": 135.53,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 137.02,
+    "accuracy": 3
+   },
+   "steps": 281
+  },
+  {
+   "t": 166,
+   "lat": 40.444348,
+   "lng": -79.943663,
+   "accuracyM": 5.55,
+   "courseDeg": 134.3,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 134.1,
+    "accuracy": 1
+   },
+   "steps": 283
+  },
+  {
+   "t": 167,
+   "lat": 40.44434,
+   "lng": -79.943652,
+   "accuracyM": 7.83,
+   "courseDeg": 134.67,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 133.92,
+    "accuracy": 1
+   },
+   "steps": 284
+  },
+  {
+   "t": 168,
+   "lat": 40.444332,
+   "lng": -79.943642,
+   "accuracyM": 7.45,
+   "courseDeg": 133.1,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 136.82,
+    "accuracy": 1
+   },
+   "steps": 286
+  },
+  {
+   "t": 169,
+   "lat": 40.444324,
+   "lng": -79.943631,
+   "accuracyM": 8.73,
+   "courseDeg": 132.76,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 136.54,
+    "accuracy": 1
+   },
+   "steps": 288
+  },
+  {
+   "t": 170,
+   "lat": 40.444316,
+   "lng": -79.943621,
+   "accuracyM": 5.67,
+   "courseDeg": 134.4,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 133.04,
+    "accuracy": 1
+   },
+   "steps": 290
+  },
+  {
+   "t": 171,
+   "lat": 40.444308,
+   "lng": -79.94361,
+   "accuracyM": 8.2,
+   "courseDeg": 132.45,
+   "speedMps": 1.3,
+   "heading": {
+    "trueHeadingDeg": 135.1,
+    "accuracy": 1
+   },
+   "steps": 292
+  },
+  {
+   "t": 172,
+   "lat": 40.4443,
+   "lng": -79.9436,
+   "accuracyM": 7,
+   "courseDeg": 135.82,
+   "speedMps": 0.9,
+   "heading": {
+    "trueHeadingDeg": 135,
+    "accuracy": 1
+   },
+   "steps": 294
+  },
+  {
+   "t": 173,
+   "lat": 40.444295,
+   "lng": -79.9436,
+   "accuracyM": 6.9,
+   "courseDeg": null,
+   "speedMps": 0.8,
+   "heading": {
+    "trueHeadingDeg": 130,
+    "accuracy": 1
+   },
+   "steps": 296
+  },
+  {
+   "t": 174,
+   "lat": 40.444305,
+   "lng": -79.943611,
+   "accuracyM": 7.3,
+   "courseDeg": null,
+   "speedMps": 0.8,
+   "heading": {
+    "trueHeadingDeg": 125,
+    "accuracy": 1
+   },
+   "steps": 297
+  },
+  {
+   "t": 175,
+   "lat": 40.444291,
+   "lng": -79.943613,
+   "accuracyM": 7.7,
+   "courseDeg": null,
+   "speedMps": 0.8,
+   "heading": {
+    "trueHeadingDeg": 120,
+    "accuracy": 1
+   },
+   "steps": 299
+  },
+  {
+   "t": 176,
+   "lat": 40.4443,
+   "lng": -79.943602,
+   "accuracyM": 8.1,
+   "courseDeg": null,
+   "speedMps": 0.8,
+   "heading": {
+    "trueHeadingDeg": 115,
+    "accuracy": 1
+   },
+   "steps": 301
+  },
+  {
+   "t": 177,
+   "lat": 40.444297,
+   "lng": -79.943594,
+   "accuracyM": 8.5,
+   "courseDeg": null,
+   "speedMps": 0.8,
+   "heading": {
+    "trueHeadingDeg": 110,
+    "accuracy": 1
+   },
+   "steps": 303
+  },
+  {
+   "t": 178,
+   "lat": 40.444295,
+   "lng": -79.943597,
+   "accuracyM": 8.9,
+   "courseDeg": null,
+   "speedMps": 0.8,
+   "heading": {
+    "trueHeadingDeg": 105,
+    "accuracy": 1
+   },
+   "steps": 305
+  },
+  {
+   "t": 179,
+   "lat": 40.444298,
+   "lng": -79.943601,
+   "accuracyM": 9.3,
+   "courseDeg": null,
+   "speedMps": 0.8,
+   "heading": {
+    "trueHeadingDeg": 100,
+    "accuracy": 1
+   },
+   "steps": 307
+  },
+  {
+   "t": 180,
+   "lat": 40.444677,
+   "lng": -79.943175,
+   "accuracyM": 65,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 95,
+    "accuracy": 1
+   },
+   "steps": 308
+  },
+  {
+   "t": 181,
+   "lat": 40.444658,
+   "lng": -79.943223,
+   "accuracyM": 61.39,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 84.01,
+    "accuracy": 1
+   },
+   "steps": 310
+  },
+  {
+   "t": 182,
+   "lat": 40.444652,
+   "lng": -79.943216,
+   "accuracyM": 71.61,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 87.8,
+    "accuracy": 1
+   },
+   "steps": 312
+  },
+  {
+   "t": 183,
+   "lat": 40.444717,
+   "lng": -79.943182,
+   "accuracyM": 71.46,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 95.08,
+    "accuracy": 1
+   },
+   "steps": 314
+  },
+  {
+   "t": 184,
+   "lat": 40.444705,
+   "lng": -79.943126,
+   "accuracyM": 70.88,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 86.29,
+    "accuracy": 1
+   },
+   "steps": 316
+  },
+  {
+   "t": 185,
+   "lat": 40.444668,
+   "lng": -79.943135,
+   "accuracyM": 69.73,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 88.97,
+    "accuracy": 1
+   },
+   "steps": 318
+  },
+  {
+   "t": 186,
+   "lat": 40.444629,
+   "lng": -79.943109,
+   "accuracyM": 62.96,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 88.55,
+    "accuracy": 1
+   },
+   "steps": 320
+  },
+  {
+   "t": 187,
+   "lat": 40.444683,
+   "lng": -79.943119,
+   "accuracyM": 64.33,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 93.1,
+    "accuracy": 1
+   },
+   "steps": 321
+  },
+  {
+   "t": 188,
+   "lat": 40.444667,
+   "lng": -79.94311,
+   "accuracyM": 60.4,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 85.28,
+    "accuracy": 1
+   },
+   "steps": 323
+  },
+  {
+   "t": 189,
+   "lat": 40.444657,
+   "lng": -79.943197,
+   "accuracyM": 61.47,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 94.71,
+    "accuracy": 1
+   },
+   "steps": 325
+  },
+  {
+   "t": 190,
+   "lat": 40.444632,
+   "lng": -79.943203,
+   "accuracyM": 71.12,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 84.08,
+    "accuracy": 1
+   },
+   "steps": 327
+  },
+  {
+   "t": 191,
+   "lat": 40.444693,
+   "lng": -79.94316,
+   "accuracyM": 63.17,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 82.21,
+    "accuracy": 1
+   },
+   "steps": 329
+  },
+  {
+   "t": 192,
+   "lat": 40.444701,
+   "lng": -79.943228,
+   "accuracyM": 69.51,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 89.31,
+    "accuracy": 1
+   },
+   "steps": 331
+  },
+  {
+   "t": 193,
+   "lat": 40.444639,
+   "lng": -79.943136,
+   "accuracyM": 65.8,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 83.65,
+    "accuracy": 1
+   },
+   "steps": 333
+  },
+  {
+   "t": 194,
+   "lat": 40.444731,
+   "lng": -79.943177,
+   "accuracyM": 64.38,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 95.01,
+    "accuracy": 1
+   },
+   "steps": 334
+  },
+  {
+   "t": 195,
+   "lat": 40.444639,
+   "lng": -79.943137,
+   "accuracyM": 71.38,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 90.05,
+    "accuracy": 1
+   },
+   "steps": 336
+  },
+  {
+   "t": 196,
+   "lat": 40.444687,
+   "lng": -79.943232,
+   "accuracyM": 71.56,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 90.84,
+    "accuracy": 1
+   },
+   "steps": 338
+  },
+  {
+   "t": 197,
+   "lat": 40.444631,
+   "lng": -79.943224,
+   "accuracyM": 63.57,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 87.9,
+    "accuracy": 1
+   },
+   "steps": 340
+  },
+  {
+   "t": 198,
+   "lat": 40.444674,
+   "lng": -79.943151,
+   "accuracyM": 63.35,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 96.92,
+    "accuracy": 1
+   },
+   "steps": 342
+  },
+  {
+   "t": 199,
+   "lat": 40.444644,
+   "lng": -79.943179,
+   "accuracyM": 68.42,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 88.47,
+    "accuracy": 1
+   },
+   "steps": 344
+  },
+  {
+   "t": 200,
+   "lat": 40.44468,
+   "lng": -79.943132,
+   "accuracyM": 62.61,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 83.81,
+    "accuracy": 1
+   },
+   "steps": 345
+  },
+  {
+   "t": 201,
+   "lat": 40.444686,
+   "lng": -79.943216,
+   "accuracyM": 71.97,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 90.28,
+    "accuracy": 1
+   },
+   "steps": 347
+  },
+  {
+   "t": 202,
+   "lat": 40.444671,
+   "lng": -79.943182,
+   "accuracyM": 69.7,
+   "courseDeg": null,
+   "speedMps": null,
+   "heading": {
+    "trueHeadingDeg": 97.34,
+    "accuracy": 1
+   },
+   "steps": 349
+  }
+ ]
+}

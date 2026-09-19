@@ -1,0 +1,16 @@
+{
+  "job": "parseIntent",
+  "note": "match.transcript is compared case-insensitively after trimming; then seq; then '*'. Includes ASR-noise variants.",
+  "entries": [
+    { "match": { "transcript": "I need eggs" }, "result": { "job": "parseIntent", "output": { "intent": "find_item", "item": "eggs", "reply": "Eggs. Building your route." }, "fallback": false, "latencyMs": 640 } },
+    { "match": { "transcript": "eggs please uh" }, "result": { "job": "parseIntent", "output": { "intent": "find_item", "item": "eggs", "reply": "Eggs. Building your route." }, "fallback": false, "latencyMs": 710 } },
+    { "match": { "transcript": "I need x" }, "result": { "job": "parseIntent", "output": { "intent": "unknown", "item": null, "reply": "Say the item again." }, "fallback": false, "latencyMs": 590 } },
+    { "match": { "transcript": "uh i need some milk i think" }, "result": { "job": "parseIntent", "output": { "intent": "find_item", "item": "milk", "reply": "Milk. Building your route." }, "fallback": false, "latencyMs": 680 } },
+    { "match": { "transcript": "repeat that" }, "result": { "job": "parseIntent", "output": { "intent": "repeat", "item": null, "reply": "" }, "fallback": false, "latencyMs": 520 } },
+    { "match": { "transcript": "how far" }, "result": { "job": "parseIntent", "output": { "intent": "how_far", "item": null, "reply": "" }, "fallback": false, "latencyMs": 530 } },
+    { "match": { "transcript": "where am I" }, "result": { "job": "parseIntent", "output": { "intent": "where_am_i", "item": null, "reply": "" }, "fallback": false, "latencyMs": 540 } },
+    { "match": { "transcript": "stop" }, "result": { "job": "parseIntent", "output": { "intent": "abort", "item": null, "reply": "Stopping." }, "fallback": false, "latencyMs": 480 } },
+    { "seq": 3, "result": { "job": "parseIntent", "output": { "intent": "find_item", "item": "eggs", "reply": "Eggs." }, "fallback": true, "latencyMs": 1500 } },
+    { "seq": "*", "result": { "job": "parseIntent", "output": { "intent": "find_item", "item": "eggs", "reply": "Eggs. Building your route." }, "fallback": false, "latencyMs": 650 } }
+  ]
+}

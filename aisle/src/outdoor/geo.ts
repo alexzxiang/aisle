@@ -108,7 +108,7 @@ export interface PolylineProjection {
 
 export function polylineLengthM(line: readonly LatLng[]): number {
   let total = 0;
-  for (let i = 1; i < line.length; i += 1) total += haversineM(line[i - 1], line[i]);
+  for (let i = 1; i < line.length; i += 1) total += haversineM(line[i - 1]!, line[i]!);
   return total;
 }
 
@@ -116,13 +116,13 @@ export function polylineLengthM(line: readonly LatLng[]): number {
 export function projectOntoPolyline(p: LatLng, line: readonly LatLng[]): PolylineProjection | null {
   if (line.length === 0) return null;
   if (line.length === 1) {
-    return { segIndex: 0, crossTrackM: 0, distM: haversineM(p, line[0]), alongM: 0, point: line[0] };
+    return { segIndex: 0, crossTrackM: 0, distM: haversineM(p, line[0]!), alongM: 0, point: line[0]! };
   }
   let best: PolylineProjection | null = null;
   let cumulative = 0;
   for (let i = 1; i < line.length; i += 1) {
-    const a = line[i - 1];
-    const b = line[i];
+    const a = line[i - 1]!;
+    const b = line[i]!;
     const proj = projectOntoSegment(p, a, b);
     if (best === null || proj.distM < best.distM) {
       best = {
@@ -148,7 +148,7 @@ export function alongTrackUnclampedM(p: LatLng, line: readonly LatLng[]): number
   if (!proj) return 0;
   if (proj.segIndex === line.length - 2) {
     const start = polylineLengthM(line.slice(0, line.length - 1));
-    const seg = projectOntoSegment(p, line[line.length - 2], line[line.length - 1]);
+    const seg = projectOntoSegment(p, line[line.length - 2]!, line[line.length - 1]!);
     return start + seg.alongRawM;
   }
   return proj.alongM;
@@ -161,17 +161,17 @@ export function interpolate(a: LatLng, b: LatLng, t: number): LatLng {
 /** Point `sM` metres along the polyline (clamped to the ends). */
 export function pointAtAlong(line: readonly LatLng[], sM: number): LatLng {
   if (line.length === 0) throw new Error('pointAtAlong: empty polyline');
-  if (line.length === 1 || sM <= 0) return line[0];
+  if (line.length === 1 || sM <= 0) return line[0]!;
   let cumulative = 0;
   for (let i = 1; i < line.length; i += 1) {
-    const segLen = haversineM(line[i - 1], line[i]);
+    const segLen = haversineM(line[i - 1]!, line[i]!);
     if (cumulative + segLen >= sM) {
       const t = segLen === 0 ? 0 : (sM - cumulative) / segLen;
-      return interpolate(line[i - 1], line[i], t);
+      return interpolate(line[i - 1]!, line[i]!, t);
     }
     cumulative += segLen;
   }
-  return line[line.length - 1];
+  return line[line.length - 1]!;
 }
 
 /** Bearing of the polyline at `sM` metres along it. */
@@ -179,13 +179,13 @@ export function bearingAtAlong(line: readonly LatLng[], sM: number): number {
   if (line.length < 2) return 0;
   let cumulative = 0;
   for (let i = 1; i < line.length; i += 1) {
-    const segLen = haversineM(line[i - 1], line[i]);
+    const segLen = haversineM(line[i - 1]!, line[i]!);
     if (cumulative + segLen >= sM || i === line.length - 1) {
-      return initialBearingDeg(line[i - 1], line[i]);
+      return initialBearingDeg(line[i - 1]!, line[i]!);
     }
     cumulative += segLen;
   }
-  return initialBearingDeg(line[line.length - 2], line[line.length - 1]);
+  return initialBearingDeg(line[line.length - 2]!, line[line.length - 1]!);
 }
 
 export interface BBox { s: number; w: number; n: number; e: number }

@@ -1,0 +1,36 @@
+{
+  "note": "Crossing objects per 01 §10 for the demo route. Coordinates match fixtures/track.json (synthetic until the venue walk pins them).",
+  "crossings": [
+    {
+      "crossingId": "crossing-forbes-01",
+      "street": "Forbes",
+      "signalized": true,
+      "pushButtonLikely": false,
+      "bearingDeg": 180,
+      "nearCurb": { "lat": 40.444569, "lng": -79.944072 },
+      "farCurb":  { "lat": 40.444372, "lng": -79.944072 },
+      "roadSide": "LEFT",
+      "signalType": "fixed-time",
+      "afterStep": 1,
+      "osmCandidates": [
+        { "nodeId": "n-4411", "distToPolylineM": 2.1, "tags": { "highway": "crossing", "crossing": "traffic_signals", "crossing:markings": "zebra" }, "wprdcOperationType": "Fixed Time" },
+        { "nodeId": "n-4412", "distToPolylineM": 19.4, "tags": { "highway": "crossing", "crossing": "uncontrolled" } }
+      ]
+    },
+    {
+      "crossingId": "crossing-side-01",
+      "street": "the side street",
+      "signalized": false,
+      "pushButtonLikely": false,
+      "bearingDeg": 90,
+      "nearCurb": { "lat": 40.444372, "lng": -79.944072 },
+      "farCurb":  { "lat": 40.444372, "lng": -79.943978 },
+      "roadSide": "RIGHT",
+      "signalType": "none",
+      "afterStep": 2,
+      "osmCandidates": [
+        { "nodeId": "n-4420", "distToPolylineM": 3.3, "tags": { "highway": "crossing", "crossing": "unmarked" } }
+      ]
+    }
+  ]
+}

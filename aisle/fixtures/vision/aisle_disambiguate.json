@@ -1,0 +1,9 @@
+{
+  "question": "aisle_disambiguate",
+  "entries": [
+    { "seq": 1, "delayMs": 1200, "response": { "speech": "Aisle three, dairy.", "aisle": { "matchedAisleId": "a3", "matchedLandmarkId": null, "confidence": 0.84 }, "confidence": 0.84 } },
+    { "seq": 2, "delayMs": 1300, "response": { "speech": "Tilt the camera up.", "cameraRequest": "up", "aisle": { "matchedAisleId": null, "matchedLandmarkId": null, "confidence": 0.2 }, "confidence": 0.55 } },
+    { "seq": 3, "delayMs": 1000, "response": { "speech": "Checkout ahead.", "aisle": { "matchedAisleId": null, "matchedLandmarkId": "checkout", "confidence": 0.78 }, "confidence": 0.78 } },
+    { "seq": "*", "delayMs": 1200, "response": { "speech": "", "aisle": { "matchedAisleId": null, "matchedLandmarkId": null, "confidence": 0.3 }, "confidence": 0.4 } }
+  ]
+}

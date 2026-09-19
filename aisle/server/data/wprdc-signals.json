@@ -1,0 +1,5498 @@
+{
+"source": "WPRDC \u2014 City of Pittsburgh Signalized Intersections",
+"dataset": "https://data.wprdc.org/dataset/city-of-pittsburgh-signalized-intersections",
+"resourceId": "79ddcc74-33d2-4735-9b95-4169c7d0413d",
+"license": "Creative Commons Attribution (CC BY)",
+"fetchedAt": "2026-09-17",
+"fields": [
+"id",
+"description",
+"operation_type",
+"latitude",
+"longitude"
+],
+"rowCount": 783,
+"rows": [
+{
+"id": "1233506574",
+"description": "Aiken Ave - Baum Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.45694102,
+"longitude": -79.93853907
+},
+{
+"id": "322808398",
+"description": "Alexander St - Steuben St",
+"operation_type": "Semi Actuated",
+"latitude": 40.44199257,
+"longitude": -80.03454366
+},
+{
+"id": "1626189126",
+"description": "Beeler St - Forbes Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.44388961,
+"longitude": -79.93879894
+},
+{
+"id": "2085487046",
+"description": "Beeler St - Wilkins Ave",
+"operation_type": "Fixed",
+"latitude": 40.44563613,
+"longitude": -79.93122002
+},
+{
+"id": "1187990770",
+"description": "Bellefield Ave - Fifth Ave",
+"operation_type": "Fixed",
+"latitude": 40.4464843,
+"longitude": -79.95191405
+},
+{
+"id": "1501913538",
+"description": "Bellefield Ave - Forbes Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.4439262,
+"longitude": -79.95069207
+},
+{
+"id": "780829291",
+"description": "Beltzhoover Ave - Warrington Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.42165573,
+"longitude": -79.9974037
+},
+{
+"id": "2111045907",
+"description": "Bennett St - Braddock Ave",
+"operation_type": "Fixed",
+"latitude": 40.45504068,
+"longitude": -79.89038333
+},
+{
+"id": "1038462210",
+"description": "Bennett St - Brushton Ave",
+"operation_type": "Fixed",
+"latitude": 40.45460561,
+"longitude": -79.8884613
+},
+{
+"id": "855106730",
+"description": "Bennett St - Dallas Ave - Frankstown Ave",
+"operation_type": "Actuated",
+"latitude": 40.45809299,
+"longitude": -79.90413865
+},
+{
+"id": "1431836547",
+"description": "Bennett St - Frankstown Ave - Tokay St",
+"operation_type": "Fixed",
+"latitude": 40.45470413,
+"longitude": -79.88070571
+},
+{
+"id": "1309547238",
+"description": "Alger St - Beechwood Blvd - Greenfield Brg - Ronald St",
+"operation_type": "Fixed",
+"latitude": 40.42706572,
+"longitude": -79.93858285
+},
+{
+"id": "1080282479",
+"description": "Bennett St - Homewood Ave",
+"operation_type": "Fixed",
+"latitude": 40.45647165,
+"longitude": -79.89666312
+},
+{
+"id": "2118968168",
+"description": "Bennett St - Lang Ave",
+"operation_type": "Fixed",
+"latitude": 40.45697897,
+"longitude": -79.89889671
+},
+{
+"id": "2129935165",
+"description": "Bennett St - Murtland Ave",
+"operation_type": "Fixed",
+"latitude": 40.4575624,
+"longitude": -79.90148233
+},
+{
+"id": "579431089",
+"description": "Bennett St - Oakwood St",
+"operation_type": "Fixed",
+"latitude": 40.45403452,
+"longitude": -79.88565164
+},
+{
+"id": "1159606674",
+"description": "Benton Ave - Brighton  Rd (OSM)",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.48431934,
+"longitude": -80.03582337
+},
+{
+"id": "2023927709",
+"description": "Bigelow Blvd - Bloomfield Brg",
+"operation_type": "Fully Actuated",
+"latitude": 40.45864166,
+"longitude": -79.95734231
+},
+{
+"id": "34205616",
+"description": "Bigelow Blvd - Centre Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.45098373,
+"longitude": -79.95490677
+},
+{
+"id": "1668969701",
+"description": "Bigelow Blvd - Chatham Sq",
+"operation_type": "Fixed",
+"latitude": 40.44105999,
+"longitude": -79.99379635
+},
+{
+"id": "2113803900",
+"description": "Bigelow Blvd - Craig St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45701847,
+"longitude": -79.95520067
+},
+{
+"id": "2140540832",
+"description": "Bigelow Blvd - Fifth Ave",
+"operation_type": "Fixed",
+"latitude": 40.44442608,
+"longitude": -79.95477868
+},
+{
+"id": "1047157777",
+"description": "Bigelow Blvd - Forbes Ave",
+"operation_type": "Fixed",
+"latitude": 40.44317877,
+"longitude": -79.95354911
+},
+{
+"id": "1355502213",
+"description": "Grant St - Oliver Ave",
+"operation_type": "Fixed",
+"latitude": 40.44011738,
+"longitude": -79.99634491
+},
+{
+"id": "184546041",
+"description": "Bigelow Blvd - Herron Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45574066,
+"longitude": -79.96586173
+},
+{
+"id": "828937106",
+"description": "Bigelow Blvd - O'Hara St - Parkman Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.44571123,
+"longitude": -79.95638322
+},
+{
+"id": "1167672234",
+"description": "Bingham St - S 10th St",
+"operation_type": "Fixed",
+"latitude": 40.42942257,
+"longitude": -79.98861234
+},
+{
+"id": "748144809",
+"description": "Black St - Chislett St",
+"operation_type": "Fixed",
+"latitude": 40.46967382,
+"longitude": -79.9300943
+},
+{
+"id": "1768891284",
+"description": "Black St - Negley Ave",
+"operation_type": "Master",
+"latitude": 40.46875811,
+"longitude": -79.92752058
+},
+{
+"id": "2106555654",
+"description": "Blackadore Ave - Frankstown Ave",
+"operation_type": "Fixed",
+"latitude": 40.45545896,
+"longitude": -79.88336704
+},
+{
+"id": "98755868",
+"description": "Bloomfield Brg - Liberty Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46362239,
+"longitude": -79.95282909
+},
+{
+"id": "1547702695",
+"description": "Allegheny Ave - North Ave",
+"operation_type": "Fixed",
+"latitude": 40.45311019,
+"longitude": -80.01943264
+},
+{
+"id": "2105552586",
+"description": "Bouquet St - Fifth Ave",
+"operation_type": "Fixed",
+"latitude": 40.44252154,
+"longitude": -79.95744107
+},
+{
+"id": "79865242",
+"description": "Bouquet St - Forbes Ave",
+"operation_type": "Fixed",
+"latitude": 40.44195697,
+"longitude": -79.95644147
+},
+{
+"id": "466970229",
+"description": "Braddock Ave - Forbes Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.43966933,
+"longitude": -79.89764546
+},
+{
+"id": "1457717099",
+"description": "Braddock Ave - Hamilton Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45317292,
+"longitude": -79.89111169
+},
+{
+"id": "113208382",
+"description": "Braddock Ave - Meade St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.44802004,
+"longitude": -79.89453868
+},
+{
+"id": "1160048083",
+"description": "Braddock Ave - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.44714048,
+"longitude": -79.89516529
+},
+{
+"id": "1524907386",
+"description": "Carson St - S 22nd St",
+"operation_type": "Fixed",
+"latitude": 40.42842055,
+"longitude": -79.974642
+},
+{
+"id": "287170893",
+"description": "Birmingham Brdg - Fifth Ave - Kirkpatrick St",
+"operation_type": "Actuated",
+"latitude": 40.43772939,
+"longitude": -79.97264902
+},
+{
+"id": "1205419201",
+"description": "Birmingham Brg - Brady St - Forbes Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.43715688,
+"longitude": -79.97346118
+},
+{
+"id": "568154260",
+"description": "Allegheny Ave - Pennsylvania Ave",
+"operation_type": "Fixed",
+"latitude": 40.45520827,
+"longitude": -80.02011209
+},
+{
+"id": "202507238",
+"description": "Second Ave - Brady St",
+"operation_type": "Semi Actuated",
+"latitude": 40.43580709,
+"longitude": -79.97261281
+},
+{
+"id": "946636336",
+"description": "Brierly Ln - Interboro Ave - West Run Rd",
+"operation_type": "Fixed",
+"latitude": 40.37690263,
+"longitude": -79.90933924
+},
+{
+"id": "1417293667",
+"description": "Brighton Rd - California Ave - Charles St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.45966358,
+"longitude": -80.01707294
+},
+{
+"id": "1591950783",
+"description": "Brighton Rd - Davis Ave",
+"operation_type": "Fixed",
+"latitude": 40.48171495,
+"longitude": -80.03396445
+},
+{
+"id": "1155067887",
+"description": "Brighton Rd - Jacksonia St",
+"operation_type": "Fixed",
+"latitude": 40.45680492,
+"longitude": -80.01557714
+},
+{
+"id": "1770015732",
+"description": "Brighton Rd - Marshall Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46689545,
+"longitude": -80.02501582
+},
+{
+"id": "1642910405",
+"description": "Brighton Rd - North Ave (OSM)",
+"operation_type": "Fixed",
+"latitude": 40.45397431,
+"longitude": -80.01457128
+},
+{
+"id": "197122036",
+"description": "Brighton Rd - Schimmer St - Westborn St",
+"operation_type": "Fully Actuated",
+"latitude": 40.47365948,
+"longitude": -80.02879609
+},
+{
+"id": "1273941664",
+"description": "Brighton Rd - Termon Ave",
+"operation_type": "Fixed",
+"latitude": 40.48306069,
+"longitude": -80.03542423
+},
+{
+"id": "1598724684",
+"description": "Brighton Rd - Western Ave",
+"operation_type": "Fixed",
+"latitude": 40.45241305,
+"longitude": -80.01402147
+},
+{
+"id": "1468195834",
+"description": "Allegheny Ave - Ridge Ave",
+"operation_type": "Fixed",
+"latitude": 40.44968628,
+"longitude": -80.01831551
+},
+{
+"id": "438328071",
+"description": "Brighton Rd - Woods Run Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.47649707,
+"longitude": -80.03172145
+},
+{
+"id": "2022833379",
+"description": "Broad St - East Liberty Blvd - Frankstown Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46081444,
+"longitude": -79.915792
+},
+{
+"id": "173350294",
+"description": "Broad St - Larimer Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.46122199,
+"longitude": -79.92083477
+},
+{
+"id": "2075281814",
+"description": "Broad St - Centre Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.46167148,
+"longitude": -79.92208005
+},
+{
+"id": "2090425771",
+"description": "Brookline Blvd - Castlegate Ave",
+"operation_type": "Actuated",
+"latitude": 40.3948568,
+"longitude": -80.02154964
+},
+{
+"id": "189748274",
+"description": "Brookline Blvd - Flatbush Ave",
+"operation_type": "Actuated",
+"latitude": 40.39372381,
+"longitude": -80.01997171
+},
+{
+"id": "490332586",
+"description": "Brookline Blvd - Glenarm Ave",
+"operation_type": "Actuated",
+"latitude": 40.39212404,
+"longitude": -80.01774069
+},
+{
+"id": "954686217",
+"description": "Brookline Blvd - Wenzell Ave -W Liberty Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.39825736,
+"longitude": -80.02627859
+},
+{
+"id": "166264234",
+"description": "Brookline Blvd - Pioneer Ave",
+"operation_type": "Actuated/PED",
+"latitude": 40.39607729,
+"longitude": -80.02363934
+},
+{
+"id": "614269418",
+"description": "Brookside Ave - W Liberty Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.4104383,
+"longitude": -80.01554063
+},
+{
+"id": "2022050036",
+"description": "Allegheny River Blvd - Washington Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.48427707,
+"longitude": -79.90784949
+},
+{
+"id": "607546384",
+"description": "Browns Hill Rd -Parkview Blvd",
+"operation_type": "Semi Actuated",
+"latitude": 40.41400099,
+"longitude": -79.92306042
+},
+{
+"id": "1236566133",
+"description": "Browns Hill Rd - Imogene Rd",
+"operation_type": "Semi Actuated",
+"latitude": 40.41545648,
+"longitude": -79.92491166
+},
+{
+"id": "935294140",
+"description": "Brownsville Rd - Crailo Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.39669764,
+"longitude": -79.98766896
+},
+{
+"id": "1968966319",
+"description": "Brownsville Rd - Knox Ave - Margaret St",
+"operation_type": "Fixed",
+"latitude": 40.41072595,
+"longitude": -79.99021219
+},
+{
+"id": "1428136597",
+"description": "Brownsville Rd - Maytide St - Sankey Ave",
+"operation_type": "Fixed",
+"latitude": 40.38435902,
+"longitude": -79.97779814
+},
+{
+"id": "1648755973",
+"description": "Brownsville Rd - Mckinley St",
+"operation_type": "Fixed",
+"latitude": 40.40875321,
+"longitude": -79.9911139
+},
+{
+"id": "1864861521",
+"description": "Brownsville Rd - Nobles Ln",
+"operation_type": "Fixed",
+"latitude": 40.40384539,
+"longitude": -79.99011628
+},
+{
+"id": "681274432",
+"description": "Brownsville Rd - Parkfield St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.39133896,
+"longitude": -79.98660924
+},
+{
+"id": "1848524786",
+"description": "Brushton Ave - Frankstown Ave",
+"operation_type": "Fixed",
+"latitude": 40.45553452,
+"longitude": -79.88809625
+},
+{
+"id": "1188540770",
+"description": "Allegheny Ave - Western Ave",
+"operation_type": "Fixed",
+"latitude": 40.45152588,
+"longitude": -80.01890037
+},
+{
+"id": "368170496",
+"description": "Brushton Ave - Hamilton Ave",
+"operation_type": "Fixed",
+"latitude": 40.45273351,
+"longitude": -79.88919316
+},
+{
+"id": "161626785",
+"description": "Bryn Mawr Rd - Centre Ave",
+"operation_type": "Fixed",
+"latitude": 40.44898042,
+"longitude": -79.95771355
+},
+{
+"id": "1500771844",
+"description": "Buncher - Carson St",
+"operation_type": "Fully Actuated",
+"latitude": 40.44167613,
+"longitude": -80.02143088
+},
+{
+"id": "521606798",
+"description": "Butler St - 51st St - Stanton Ave",
+"operation_type": "Fixed",
+"latitude": 40.47835523,
+"longitude": -79.95570257
+},
+{
+"id": "349413014",
+"description": "Butler St - 52nd St",
+"operation_type": "Fixed",
+"latitude": 40.48042235,
+"longitude": -79.95445498
+},
+{
+"id": "1035343189",
+"description": "Butler St - 40th St",
+"operation_type": "Fully Actuated",
+"latitude": 40.46871496,
+"longitude": -79.96229339
+},
+{
+"id": "1732838793",
+"description": "Butler St - 44th St",
+"operation_type": "Fixed",
+"latitude": 40.47146906,
+"longitude": -79.95979816
+},
+{
+"id": "1182647053",
+"description": "Butler St - 46th St",
+"operation_type": "Fixed",
+"latitude": 40.47282549,
+"longitude": -79.95881069
+},
+{
+"id": "696280378",
+"description": "Butler St - 54th St",
+"operation_type": "Fixed",
+"latitude": 40.48286312,
+"longitude": -79.95121697
+},
+{
+"id": "641680212",
+"description": "Butler St - 57th St",
+"operation_type": "Semi Actuated",
+"latitude": 40.48516621,
+"longitude": -79.94630157
+},
+{
+"id": "450949955",
+"description": "Blvd of the Allies - Bates St",
+"operation_type": "Semi Actuated",
+"latitude": 40.43513204,
+"longitude": -79.95641096
+},
+{
+"id": "1913335443",
+"description": "Butler St - Main St",
+"operation_type": "Fixed",
+"latitude": 40.46980375,
+"longitude": -79.96091343
+},
+{
+"id": "965564505",
+"description": "Butler St - Mccandless Ave",
+"operation_type": "Fixed",
+"latitude": 40.48159828,
+"longitude": -79.95344475
+},
+{
+"id": "1604252664",
+"description": "Butler St - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46268154,
+"longitude": -79.96721699
+},
+{
+"id": "1623738500",
+"description": "Butler St - 48th St - Plummer St",
+"operation_type": "Fixed",
+"latitude": 40.47586149,
+"longitude": -79.95764492
+},
+{
+"id": "1675513167",
+"description": "Butler St - 62nd St",
+"operation_type": "Fully Actuated",
+"latitude": 40.48843721,
+"longitude": -79.93715878
+},
+{
+"id": "458331583",
+"description": "Butler St -37th St",
+"operation_type": "Fixed",
+"latitude": 40.46620306,
+"longitude": -79.9647339
+},
+{
+"id": "1793262027",
+"description": "California Ave - Davis Ave",
+"operation_type": "Fixed",
+"latitude": 40.48007504,
+"longitude": -80.04108247
+},
+{
+"id": "1603723371",
+"description": "California Ave - Termon Ave",
+"operation_type": "Fixed",
+"latitude": 40.48191135,
+"longitude": -80.04176745
+},
+{
+"id": "10423150",
+"description": "Cape May Ave - W Liberty Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.40845654,
+"longitude": -80.01778297
+},
+{
+"id": "452184134",
+"description": "Capital Ave - W Liberty Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.40536288,
+"longitude": -80.01880332
+},
+{
+"id": "889974294",
+"description": "Carnegie Pl - Penn Ave",
+"operation_type": "Actuated/PED",
+"latitude": 40.44815998,
+"longitude": -79.89820288
+},
+{
+"id": "345272195",
+"description": "Carson St - Corliss St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45288321,
+"longitude": -80.03939135
+},
+{
+"id": "1212786957",
+"description": "Carson St - S 18th St",
+"operation_type": "Fixed",
+"latitude": 40.42876672,
+"longitude": -79.98056514
+},
+{
+"id": "1446942669",
+"description": "Carson St - Main St",
+"operation_type": "Fully Actuated",
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1922941271",
+"description": "Carson St - S 17th St",
+"operation_type": "Fixed",
+"latitude": 40.42884298,
+"longitude": -79.98205031
+},
+{
+"id": "307839969",
+"description": "Carson St - Tabor St",
+"operation_type": "Fully Actuated",
+"latitude": 40.46275205,
+"longitude": -80.05189037
+},
+{
+"id": "2011109930",
+"description": "Aiken Ave - Centre Ave - Liberty Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45591767,
+"longitude": -79.93859438
+},
+{
+"id": "626662746",
+"description": "Blvd of the Allies - Cherry Way",
+"operation_type": "Fixed",
+"latitude": 40.43745252,
+"longitude": -79.99931216
+},
+{
+"id": "1275543187",
+"description": "Carson St - S 10th St",
+"operation_type": "Fixed",
+"latitude": 40.42871045,
+"longitude": -79.98857658
+},
+{
+"id": "481445183",
+"description": "Carson St - S 12th St",
+"operation_type": "Fixed",
+"latitude": 40.42875786,
+"longitude": -79.98642537
+},
+{
+"id": "1792407600",
+"description": "Carson St - S 20th St",
+"operation_type": "Fixed",
+"latitude": 40.42859587,
+"longitude": -79.97763867
+},
+{
+"id": "547113883",
+"description": "Carson St - West End Br - Main St",
+"operation_type": "Actuated",
+"latitude": 40.44426464,
+"longitude": -80.02820606
+},
+{
+"id": "262270363",
+"description": "Cedar Ave - North Ave",
+"operation_type": "Fixed",
+"latitude": 40.45622694,
+"longitude": -80.00262399
+},
+{
+"id": "1510247005",
+"description": "Cedar Ave - East Ohio St",
+"operation_type": "Actuated",
+"latitude": 40.45332005,
+"longitude": -80.00169657
+},
+{
+"id": "350209643",
+"description": "Centre Ave - Craig St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.4518915,
+"longitude": -79.95202093
+},
+{
+"id": "1548280263",
+"description": "Centre Ave - Crawford St",
+"operation_type": "Fixed",
+"latitude": 40.44103751,
+"longitude": -79.98601351
+},
+{
+"id": "274826791",
+"description": "Blvd of the Allies - Commonwealth Pl",
+"operation_type": "Fixed",
+"latitude": 40.4403047,
+"longitude": -80.00701499
+},
+{
+"id": "1535156430",
+"description": "Centre Ave - Francis St",
+"operation_type": "Fixed",
+"latitude": 40.4471124,
+"longitude": -79.96748785
+},
+{
+"id": "1997983572",
+"description": "Centre Ave - S Graham St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45657258,
+"longitude": -79.93649344
+},
+{
+"id": "1285388780",
+"description": "Centre Ave - Kirkpatrick St - Mahon St",
+"operation_type": "Fixed",
+"latitude": 40.44531449,
+"longitude": -79.97623874
+},
+{
+"id": "2084743863",
+"description": "Centre Ave - Melwood Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45224148,
+"longitude": -79.95086462
+},
+{
+"id": "170752439",
+"description": "Centre Ave - Millvale Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45329867,
+"longitude": -79.94734956
+},
+{
+"id": "489596708",
+"description": "Centre Ave - Morewood Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45416769,
+"longitude": -79.94445193
+},
+{
+"id": "427262988",
+"description": "Centre Ave - Negley Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45726977,
+"longitude": -79.93406042
+},
+{
+"id": "1090595147",
+"description": "Centre Ave - Neville St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45259255,
+"longitude": -79.94969125
+},
+{
+"id": "1996392775",
+"description": "Blvd of the Allies - Craft Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.43584438,
+"longitude": -79.96153038
+},
+{
+"id": "166260431",
+"description": "Centre Ave - Washington Pl",
+"operation_type": "Fixed",
+"latitude": 40.44044607,
+"longitude": -79.99145205
+},
+{
+"id": "1724665899",
+"description": "Charles St - Perrysville Ave",
+"operation_type": "Fixed",
+"latitude": 40.47101409,
+"longitude": -80.00860156
+},
+{
+"id": "462552568",
+"description": "Chartiers Ave - Lorenz Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.44398115,
+"longitude": -80.04063288
+},
+{
+"id": "1073457786",
+"description": "Chaucer St - Deary St - Lincoln Ave",
+"operation_type": "Fixed",
+"latitude": 40.46421488,
+"longitude": -79.90075852
+},
+{
+"id": "1182969737",
+"description": "Cherry Way - Fifth Ave - WIlliam Penn Pl",
+"operation_type": "Fixed",
+"latitude": 40.43974842,
+"longitude": -79.99772074
+},
+{
+"id": "849705252",
+"description": "Cherry Way - Forbes Ave",
+"operation_type": "Fixed",
+"latitude": 40.43905892,
+"longitude": -79.99821616
+},
+{
+"id": "248558072",
+"description": "Cherry Way - Fourth Ave",
+"operation_type": "Fixed",
+"latitude": 40.43840401,
+"longitude": -79.99866647
+},
+{
+"id": "1086050341",
+"description": "Blvd of the Allies - Dawson St",
+"operation_type": "Fixed",
+"latitude": 40.43439129,
+"longitude": -79.95319393
+},
+{
+"id": "1179327304",
+"description": "Chestnut St - East Ohio St",
+"operation_type": "Fixed",
+"latitude": 40.45492703,
+"longitude": -79.9945075
+},
+{
+"id": "141655232",
+"description": "Chestnut St - Progress St",
+"operation_type": "Fixed",
+"latitude": 40.45319413,
+"longitude": -79.99269077
+},
+{
+"id": "583715480",
+"description": "Chislett St - Stanton Ave",
+"operation_type": "Fixed",
+"latitude": 40.4732605,
+"longitude": -79.93074285
+},
+{
+"id": "333438521",
+"description": "Collier St - Frankstown Ave",
+"operation_type": "Fixed",
+"latitude": 40.45640084,
+"longitude": -79.89190477
+},
+{
+"id": "1123714228",
+"description": "Centre Ave - Station St",
+"operation_type": "Semi Actuated",
+"latitude": 40.46287917,
+"longitude": -79.92130109
+},
+{
+"id": "1757953109",
+"description": "Commons - Federal St N",
+"operation_type": "Fully Actuated",
+"latitude": 40.45392567,
+"longitude": -80.0060741
+},
+{
+"id": "2055879282",
+"description": "Commons - Federal St S",
+"operation_type": "Fully Actuated",
+"latitude": 40.45021479,
+"longitude": -80.00496805
+},
+{
+"id": "2058810229",
+"description": "Commons - East Ohio St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45297138,
+"longitude": -80.00367899
+},
+{
+"id": "517929728",
+"description": "Commons - Ridge Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45219124,
+"longitude": -80.00765178
+},
+{
+"id": "831550141",
+"description": "Blvd of the Allies - Grant St",
+"operation_type": "Fixed",
+"latitude": 40.43707158,
+"longitude": -79.99836601
+},
+{
+"id": "713215469",
+"description": "Commons - Sandusky St - Stockton Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45069805,
+"longitude": -80.00294111
+},
+{
+"id": "716179702",
+"description": "Commonwealth Pl - Liberty Ave",
+"operation_type": "Fixed",
+"latitude": 40.44094369,
+"longitude": -80.0067775
+},
+{
+"id": "1358581049",
+"description": "Craft Ave - Fifth Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.4378499,
+"longitude": -79.96393561
+},
+{
+"id": "1318549967",
+"description": "Craft Ave - Forbes Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.43711678,
+"longitude": -79.96311466
+},
+{
+"id": "398270442",
+"description": "Crafton Blvd - Stratmore St",
+"operation_type": "Fixed",
+"latitude": 40.43777463,
+"longitude": -80.05586093
+},
+{
+"id": "963888247",
+"description": "Craig St - Fifth Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.44694438,
+"longitude": -79.94900943
+},
+{
+"id": "1769921946",
+"description": "Craig St - Forbes Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.44442364,
+"longitude": -79.94860112
+},
+{
+"id": "1432370983",
+"description": "Crosstown Blvd  Ramp - Liberty Br",
+"operation_type": "Fully Actuated",
+"latitude": 40.43614664,
+"longitude": -79.99448192
+},
+{
+"id": "1120565715",
+"description": "East Liberty Blvd - Penn Ave",
+"operation_type": "Actuated",
+"latitude": 40.45748904,
+"longitude": -79.91741515
+},
+{
+"id": "68099917",
+"description": "Dallas Ave - Forbes Ave",
+"operation_type": "Fixed",
+"latitude": 40.43803562,
+"longitude": -79.91308603
+},
+{
+"id": "718017143",
+"description": "Blvd of the Allies - Halket St - Zulema St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.43591205,
+"longitude": -79.95812186
+},
+{
+"id": "1831431118",
+"description": "Dallas Ave - Hamilton Ave",
+"operation_type": "Fixed",
+"latitude": 40.45627195,
+"longitude": -79.90476258
+},
+{
+"id": "178719949",
+"description": "DALLAS  KELLY",
+"operation_type": "Fixed",
+"latitude": 40.4572061,
+"longitude": -79.90438872
+},
+{
+"id": "1799478826",
+"description": "Dallas Ave - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.4514949,
+"longitude": -79.90819488
+},
+{
+"id": "1046132809",
+"description": "Dallas Ave - Reynolds St",
+"operation_type": "Semi Actuated",
+"latitude": 40.4487689,
+"longitude": -79.91016129
+},
+{
+"id": "343769548",
+"description": "Dallas Ave - Thomas Blvd",
+"operation_type": "Fixed",
+"latitude": 40.45322974,
+"longitude": -79.90693572
+},
+{
+"id": "1511921944",
+"description": "Dallas Ave - Wilkins Ave",
+"operation_type": "Fixed",
+"latitude": 40.44685123,
+"longitude": -79.91162423
+},
+{
+"id": "1041996339",
+"description": "Darlington Rd - Murray Ave",
+"operation_type": "Fixed",
+"latitude": 40.43698195,
+"longitude": -79.92293055
+},
+{
+"id": "1980836391",
+"description": "Darragh St - Fifth Ave - Mckee Pl",
+"operation_type": "Fixed",
+"latitude": 40.44046791,
+"longitude": -79.96027767
+},
+{
+"id": "1342515581",
+"description": "Desoto St - Fifth Ave - Oakland Ave",
+"operation_type": "Fixed",
+"latitude": 40.4422237,
+"longitude": -79.95811006
+},
+{
+"id": "464172533",
+"description": "Desoto St - O'Hara St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.44315486,
+"longitude": -79.95988098
+},
+{
+"id": "2124966773",
+"description": "Blvd of the Allies - Market St",
+"operation_type": "Fixed",
+"latitude": 40.43908631,
+"longitude": -80.00363784
+},
+{
+"id": "1818599358",
+"description": "Dinwiddie St - Fifth Ave",
+"operation_type": "Fixed",
+"latitude": 40.43836768,
+"longitude": -79.98077836
+},
+{
+"id": "872988999",
+"description": "Dithridge St - Fifth Ave",
+"operation_type": "Fixed",
+"latitude": 40.44679192,
+"longitude": -79.9506046
+},
+{
+"id": "750516954",
+"description": "East St - Evergreen Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.48634869,
+"longitude": -80.00974827
+},
+{
+"id": "466869787",
+"description": "East St - North Ave",
+"operation_type": "Fixed",
+"latitude": 40.45692814,
+"longitude": -79.99883116
+},
+{
+"id": "2077005411",
+"description": "East St - East Ohio St",
+"operation_type": "Actuated",
+"latitude": 40.45398082,
+"longitude": -79.99786794
+},
+{
+"id": "1775799773",
+"description": "East St - Tripoli St",
+"operation_type": "Fixed",
+"latitude": 40.45642642,
+"longitude": -79.99866345
+},
+{
+"id": "1586208469",
+"description": "East Liberty Blvd - Euclid Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46671083,
+"longitude": -79.92531983
+},
+{
+"id": "804718321",
+"description": "Blvd of the Allies - Smithfield St",
+"operation_type": "Semi Actuated",
+"latitude": 40.437786,
+"longitude": -80.00018353
+},
+{
+"id": "203299372",
+"description": "East Liberty Blvd - Hamilton Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45986644,
+"longitude": -79.91577414
+},
+{
+"id": "830008298",
+"description": "East Liberty Blvd - Highland Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46594061,
+"longitude": -79.922742
+},
+{
+"id": "1272586530",
+"description": "East Liberty Blvd - Larimer Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46345409,
+"longitude": -79.91740914
+},
+{
+"id": "82517090",
+"description": "East Liberty Blvd - Negley Ave",
+"operation_type": "Fixed",
+"latitude": 40.46773118,
+"longitude": -79.92812602
+},
+{
+"id": "1343464850",
+"description": "Centre Ave - East Liberty Blvd - Negley Run Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.46507797,
+"longitude": -79.91990734
+},
+{
+"id": "4024980",
+"description": "East Hills Dr - Eastwood Rd - Frankstown Rd",
+"operation_type": null,
+"latitude": 40.46117001,
+"longitude": -79.87025562
+},
+{
+"id": "928670804",
+"description": "Edgebrook Ave - Saw Mill Run Blvd",
+"operation_type": "Semi Actuated",
+"latitude": 40.40207568,
+"longitude": -80.00066818
+},
+{
+"id": "519788769",
+"description": "Edmond St - Friendship Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.46287139,
+"longitude": -79.94781695
+},
+{
+"id": "1902792470",
+"description": "Edmond St - Liberty Ave",
+"operation_type": "Fixed",
+"latitude": 40.4611356,
+"longitude": -79.9480691
+},
+{
+"id": "1774002994",
+"description": "S 18th St - Jane St",
+"operation_type": "Fixed",
+"latitude": 40.42696077,
+"longitude": -79.98074393
+},
+{
+"id": "775912801",
+"description": "Blvd of the Allies - Stanwix St",
+"operation_type": "Fixed",
+"latitude": 40.43960655,
+"longitude": -80.00502447
+},
+{
+"id": "729040956",
+"description": "S 18th St - Mission St - Pius St",
+"operation_type": "Fixed",
+"latitude": 40.42383496,
+"longitude": -79.97769572
+},
+{
+"id": "1936587336",
+"description": "S 18th St - Sarah St",
+"operation_type": "Fixed",
+"latitude": 40.4278464,
+"longitude": -79.98065508
+},
+{
+"id": "913547561",
+"description": "Grant St - Liberty Ave - 11th St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.44413207,
+"longitude": -79.99345422
+},
+{
+"id": "102678072",
+"description": "Penn Ave - 11th St",
+"operation_type": "Fixed",
+"latitude": 40.44494448,
+"longitude": -79.99386221
+},
+{
+"id": "1428073226",
+"description": "Elizabeth St - Second Ave",
+"operation_type": "Fixed",
+"latitude": 40.40709873,
+"longitude": -79.94327492
+},
+{
+"id": "2039081875",
+"description": "Ella St - Liberty Ave",
+"operation_type": "Fixed",
+"latitude": 40.46315364,
+"longitude": -79.95181482
+},
+{
+"id": "688688248",
+"description": "Ellsworth Ave -  Morewood Ave",
+"operation_type": "Fixed",
+"latitude": 40.45088412,
+"longitude": -79.94305338
+},
+{
+"id": "1283244208",
+"description": "Ellsworth Ave - Negley Ave",
+"operation_type": "Fixed",
+"latitude": 40.45475415,
+"longitude": -79.93257125
+},
+{
+"id": "559360352",
+"description": "Englert St - Saw Mill Run Blvd",
+"operation_type": "Semi Actuated",
+"latitude": 40.38796638,
+"longitude": -79.99641824
+},
+{
+"id": "1238936023",
+"description": "Estella Ave - Warrington Ave",
+"operation_type": "Fixed",
+"latitude": 40.42102202,
+"longitude": -80.00055595
+},
+{
+"id": "1365504850",
+"description": "Blvd of the Allies - Ward St",
+"operation_type": "Fixed",
+"latitude": 40.43459492,
+"longitude": -79.95459306
+},
+{
+"id": "1787369165",
+"description": "Evaline St - Penn Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.4647531,
+"longitude": -79.94113839
+},
+{
+"id": "1190277941",
+"description": "Evergreen Rd - Mcknight Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.49305386,
+"longitude": -80.01141577
+},
+{
+"id": "1163822607",
+"description": "Federal St - General Robinson St",
+"operation_type": "Fixed",
+"latitude": 40.44825382,
+"longitude": -80.00425325
+},
+{
+"id": "2030251548",
+"description": "Federal St - Lacock St",
+"operation_type": "Fixed",
+"latitude": 40.44914478,
+"longitude": -80.00452968
+},
+{
+"id": "777251213",
+"description": "Federal St - North Ave",
+"operation_type": "Fixed",
+"latitude": 40.45545733,
+"longitude": -80.00663553
+},
+{
+"id": "475738090",
+"description": "Fifth Ave - Frankstown Ave - Washington Blvd",
+"operation_type": "Fixed",
+"latitude": 40.45868215,
+"longitude": -79.90804293
+},
+{
+"id": "750851804",
+"description": "Fifth Ave - Grant St",
+"operation_type": "Fixed",
+"latitude": 40.43939234,
+"longitude": -79.99678031
+},
+{
+"id": "518147947",
+"description": "Fifth Ave - Halket St",
+"operation_type": "Fixed",
+"latitude": 40.43913938,
+"longitude": -79.96207414
+},
+{
+"id": "1623563026",
+"description": "Fifth Ave - Hamilton Ave",
+"operation_type": "Fixed",
+"latitude": 40.45728994,
+"longitude": -79.90906285
+},
+{
+"id": "947320557",
+"description": "Fifth Ave - Highland Ave",
+"operation_type": "Fixed",
+"latitude": 40.45193977,
+"longitude": -79.9239745
+},
+{
+"id": "375348238",
+"description": "Aiken Ave - Ellsworth Ave",
+"operation_type": "Fixed",
+"latitude": 40.4527532,
+"longitude": -79.93672997
+},
+{
+"id": "814034741",
+"description": "Blvd of the Allies - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.43844503,
+"longitude": -80.0019359
+},
+{
+"id": "723932146",
+"description": "Chatham Sq - Fifth Ave - Washington Pl",
+"operation_type": "Fixed",
+"latitude": 40.43881458,
+"longitude": -79.99094683
+},
+{
+"id": "723398801",
+"description": "Fifth Ave - Liberty Ave",
+"operation_type": "Fixed",
+"latitude": 40.44169649,
+"longitude": -80.00270302
+},
+{
+"id": "1000188368",
+"description": "Fifth Ave - Lytton Ave",
+"operation_type": "Fixed",
+"latitude": 40.44501881,
+"longitude": -79.95394357
+},
+{
+"id": "496582826",
+"description": "Fifth Ave - Magee St",
+"operation_type": "Fixed",
+"latitude": 40.43869366,
+"longitude": -79.98826907
+},
+{
+"id": "168819256",
+"description": "Fifth Ave - Market St",
+"operation_type": "Fixed",
+"latitude": 40.44139104,
+"longitude": -80.00211151
+},
+{
+"id": "336310886",
+"description": "Fifth Ave - Maryland Ave",
+"operation_type": "Fixed",
+"latitude": 40.45052191,
+"longitude": -79.92751099
+},
+{
+"id": "1087401421",
+"description": "Fifth Ave - Morewood Ave",
+"operation_type": "Fixed",
+"latitude": 40.44742241,
+"longitude": -79.94245562
+},
+{
+"id": "456277966",
+"description": "Fifth Ave - Negley Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.44983522,
+"longitude": -79.92964943
+},
+{
+"id": "1333689282",
+"description": "Fifth Ave - Neville St",
+"operation_type": "Fixed",
+"latitude": 40.4470844,
+"longitude": -79.94728611
+},
+{
+"id": "1642941472",
+"description": "Fifth Ave - Penn Ave - Cecil Pl",
+"operation_type": "Fixed",
+"latitude": 40.44249759,
+"longitude": -80.0030995
+},
+{
+"id": "1545556265",
+"description": "Amanda St - Bausman St - Brownsville Rd",
+"operation_type": "Semi Actuated",
+"latitude": 40.41444194,
+"longitude": -79.98804176
+},
+{
+"id": "1550114750",
+"description": "Fifth Ave - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45404544,
+"longitude": -79.91242677
+},
+{
+"id": "2096881856",
+"description": "Fifth Ave - Pride St",
+"operation_type": "Fixed",
+"latitude": 40.43854957,
+"longitude": -79.98506002
+},
+{
+"id": "246116498",
+"description": "Fifth Ave - Shady Ave",
+"operation_type": "Fixed",
+"latitude": 40.45290175,
+"longitude": -79.92071525
+},
+{
+"id": "1408041440",
+"description": "Fifth Ave - Sixth Ave",
+"operation_type": "Fixed",
+"latitude": 40.43895496,
+"longitude": -79.9946652
+},
+{
+"id": "814400539",
+"description": "Fifth Ave - Smithfield St",
+"operation_type": "Fixed",
+"latitude": 40.44009323,
+"longitude": -79.99864955
+},
+{
+"id": "200096614",
+"description": "Fifth Ave - Tennyson Ave",
+"operation_type": "Fixed",
+"latitude": 40.44558174,
+"longitude": -79.95317666
+},
+{
+"id": "451018339",
+"description": "Fifth Ave - Thackeray Ave",
+"operation_type": "Fixed",
+"latitude": 40.44315955,
+"longitude": -79.95657245
+},
+{
+"id": "1971344963",
+"description": "Fifth Ave - Wilkins Ave",
+"operation_type": "Fixed",
+"latitude": 40.44780036,
+"longitude": -79.93729453
+},
+{
+"id": "2004813443",
+"description": "Fifth Ave - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.4407478,
+"longitude": -80.00039418
+},
+{
+"id": "52473521",
+"description": "Amberson Ave - Ellsworth Ave",
+"operation_type": "Fixed",
+"latitude": 40.45132394,
+"longitude": -79.94095149
+},
+{
+"id": "1354769511",
+"description": "First Ave - Grant St",
+"operation_type": "Fixed",
+"latitude": 40.43656338,
+"longitude": -79.9987255
+},
+{
+"id": "1410225376",
+"description": "Flowers Ave - Second Ave",
+"operation_type": "Fixed",
+"latitude": 40.40999713,
+"longitude": -79.94408036
+},
+{
+"id": "1652887156",
+"description": "Forbes Ave - Grant St",
+"operation_type": "Fixed",
+"latitude": 40.43869788,
+"longitude": -79.99726976
+},
+{
+"id": "418307789",
+"description": "Forbes Ave - Halket St",
+"operation_type": "Fixed",
+"latitude": 40.43847268,
+"longitude": -79.96124325
+},
+{
+"id": "1938459672",
+"description": "Forbes Ave - Liberty Ave - Stanwix St",
+"operation_type": "Fixed",
+"latitude": 40.44126722,
+"longitude": -80.00402382
+},
+{
+"id": "428762601",
+"description": "Forbes Ave - Magee St",
+"operation_type": "Fixed",
+"latitude": 40.43781917,
+"longitude": -79.9883582
+},
+{
+"id": "1846795534",
+"description": "Forbes Ave - Margaret Morrison St",
+"operation_type": "Fixed",
+"latitude": 40.44267285,
+"longitude": -79.93760761
+},
+{
+"id": "1740199771",
+"description": "Forbes Ave - Mckee Pl",
+"operation_type": "Semi Actuated",
+"latitude": 40.43978811,
+"longitude": -79.95943557
+},
+{
+"id": "2115162682",
+"description": "Amberson Ave - Fifth Ave",
+"operation_type": "Fixed",
+"latitude": 40.44769411,
+"longitude": -79.93884107
+},
+{
+"id": "584750453",
+"description": "Forbes Ave - Meyran Ave",
+"operation_type": "Fixed",
+"latitude": 40.4405848,
+"longitude": -79.9583377
+},
+{
+"id": "305034168",
+"description": "Forbes Ave - Miltenberger St",
+"operation_type": "Fixed",
+"latitude": 40.43750782,
+"longitude": -79.98143453
+},
+{
+"id": "981294975",
+"description": "Forbes Ave - Morewood Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.44465516,
+"longitude": -79.94300496
+},
+{
+"id": "2037977315",
+"description": "Forbes Ave - Murray Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.43806403,
+"longitude": -79.92298697
+},
+{
+"id": "280750047",
+"description": "Forbes Ave - Pride St",
+"operation_type": "Fixed",
+"latitude": 40.43766567,
+"longitude": -79.98514349
+},
+{
+"id": "1620044783",
+"description": "Forbes Ave - Ross St",
+"operation_type": "Fixed",
+"latitude": 40.43823557,
+"longitude": -79.99605899
+},
+{
+"id": "783037922",
+"description": "Forbes Ave - Schenley Dr Ext",
+"operation_type": "Semi Actuated",
+"latitude": 40.44353772,
+"longitude": -79.95212185
+},
+{
+"id": "244153097",
+"description": "Forbes Ave - Shady Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.43804856,
+"longitude": -79.91936228
+},
+{
+"id": "513072102",
+"description": "Diamond St - Forbes Ave - Sixth Ave",
+"operation_type": "Fixed",
+"latitude": 40.4380461,
+"longitude": -79.99428817
+},
+{
+"id": "402272722",
+"description": "Forbes Ave - Smithfield St",
+"operation_type": "Fixed",
+"latitude": 40.43942114,
+"longitude": -79.99909704
+},
+{
+"id": "1009690203",
+"description": "Anderson St - Canal St - Stockton Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.45078354,
+"longitude": -80.00134366
+},
+{
+"id": "2012610053",
+"description": "Forbes Ave - Stevenson St",
+"operation_type": "Fixed",
+"latitude": 40.43773946,
+"longitude": -79.98653669
+},
+{
+"id": "1761971183",
+"description": "Forbes Ave - Wightman St",
+"operation_type": "Fixed",
+"latitude": 40.43804723,
+"longitude": -79.92771746
+},
+{
+"id": "1560977632",
+"description": "Forbes Ave - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.44009704,
+"longitude": -80.00082979
+},
+{
+"id": "1400594827",
+"description": "Fort Duquesne Blvd - 9th St",
+"operation_type": "Fixed",
+"latitude": 40.44515286,
+"longitude": -79.99899837
+},
+{
+"id": "668200088",
+"description": "Fort Duquesne Blvd - 7th St",
+"operation_type": "Fixed",
+"latitude": 40.44456329,
+"longitude": -80.00085706
+},
+{
+"id": "843007644",
+"description": "Fort Duquesne Blvd - 6th St",
+"operation_type": "Fixed",
+"latitude": 40.44409286,
+"longitude": -80.00269388
+},
+{
+"id": "901056335",
+"description": "Fort Duquesne Blvd - Stanwix St",
+"operation_type": "Fixed",
+"latitude": 40.44346604,
+"longitude": -80.00467863
+},
+{
+"id": "1540656064",
+"description": "Fort Duquesne Blvd - 10th St",
+"operation_type": "Fixed",
+"latitude": 40.44644249,
+"longitude": -79.99653557
+},
+{
+"id": "281471273",
+"description": "Fort Duquesne Blvd - 10th St Bypass",
+"operation_type": "Fixed",
+"latitude": 40.44579196,
+"longitude": -79.99828418
+},
+{
+"id": "1763708638",
+"description": "Anderson St - General Robinson St",
+"operation_type": "Fixed",
+"latitude": 40.44895016,
+"longitude": -80.00074422
+},
+{
+"id": "851647010",
+"description": "Fort Pitt Blvd - Grant St",
+"operation_type": "Fixed",
+"latitude": 40.43614394,
+"longitude": -79.99899901
+},
+{
+"id": "2036025722",
+"description": "Fort Pitt Blvd - Market St",
+"operation_type": "Fixed",
+"latitude": 40.43803435,
+"longitude": -80.00437356
+},
+{
+"id": "531364141",
+"description": "Fort Pitt Blvd - Smithfield St",
+"operation_type": "Fixed",
+"latitude": 40.43672777,
+"longitude": -80.00089481
+},
+{
+"id": "1329434032",
+"description": "Fort Pitt Blvd - Stanwix St",
+"operation_type": "Fixed",
+"latitude": 40.43857088,
+"longitude": -80.00578676
+},
+{
+"id": "1653014619",
+"description": "Fort Pitt Blvd - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.43741187,
+"longitude": -80.00262823
+},
+{
+"id": "1376495411",
+"description": "Liberty Ave - 40th St",
+"operation_type": "Fixed",
+"latitude": 40.46282471,
+"longitude": -79.95728779
+},
+{
+"id": "1328315278",
+"description": "Penn Ave - 40th St",
+"operation_type": "Semi Actuated",
+"latitude": 40.46519029,
+"longitude": -79.95796426
+},
+{
+"id": "146457270",
+"description": "Penn Ave - Friendship Ave - 45th St",
+"operation_type": "Fixed",
+"latitude": 40.4661503,
+"longitude": -79.95230993
+},
+{
+"id": "1478025335",
+"description": "Penn Ave - 44th St",
+"operation_type": "Fixed",
+"latitude": 40.46593909,
+"longitude": -79.95356358
+},
+{
+"id": "1301651730",
+"description": "Forward Ave - Murray Ave - Pocussett St",
+"operation_type": "Fully Actuated",
+"latitude": 40.4297459,
+"longitude": -79.92348802
+},
+{
+"id": "1572648454",
+"description": "Anderson St - Lacock St",
+"operation_type": "Semi Actuated",
+"latitude": 40.44976229,
+"longitude": -80.00101528
+},
+{
+"id": "1652910915",
+"description": "Forward Ave -  Shady Ave",
+"operation_type": "Fixed",
+"latitude": 40.42917853,
+"longitude": -79.921202
+},
+{
+"id": "892191634",
+"description": "Forward Ave - Tilbury Ave",
+"operation_type": "Fixed",
+"latitude": 40.42844905,
+"longitude": -79.91851737
+},
+{
+"id": "814711193",
+"description": "Fourth Ave - Grant St",
+"operation_type": "Fixed",
+"latitude": 40.43805044,
+"longitude": -79.99770279
+},
+{
+"id": "223602636",
+"description": "Fourth Ave - Ross St",
+"operation_type": "Fixed",
+"latitude": 40.43758962,
+"longitude": -79.99646379
+},
+{
+"id": "334986552",
+"description": "Fourth Ave - Smithfield St",
+"operation_type": "Fixed",
+"latitude": 40.43873285,
+"longitude": -79.99954712
+},
+{
+"id": "982280278",
+"description": "Fourth Ave - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.43938732,
+"longitude": -80.00130519
+},
+{
+"id": "1481260664",
+"description": "Frankstown Ave - Homewood Ave",
+"operation_type": "Fixed",
+"latitude": 40.45740448,
+"longitude": -79.896301
+},
+{
+"id": "1892564004",
+"description": "Frankstown Ave - Lang Ave",
+"operation_type": "Fixed",
+"latitude": 40.45791392,
+"longitude": -79.89853153
+},
+{
+"id": "1048745279",
+"description": "Frankstown Ave - Lincoln Ave - Lowell St",
+"operation_type": "Fixed",
+"latitude": 40.46043416,
+"longitude": -79.91379365
+},
+{
+"id": "1567904674",
+"description": "Ansley St - Euclid Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.4635026,
+"longitude": -79.92724348
+},
+{
+"id": "2026511400",
+"description": "Frankstown Ave - Murtland St",
+"operation_type": "Fixed",
+"latitude": 40.45849769,
+"longitude": -79.9011181
+},
+{
+"id": "1062261996",
+"description": "Frankstown Ave - Standard Ave",
+"operation_type": "Fixed",
+"latitude": 40.45710168,
+"longitude": -79.87768918
+},
+{
+"id": "1178273823",
+"description": "Frankstown Ave - Woods Ave",
+"operation_type": "Fixed",
+"latitude": 40.45985557,
+"longitude": -79.87385867
+},
+{
+"id": "1192650330",
+"description": "Friendship Ave - Gross St",
+"operation_type": "Fixed",
+"latitude": 40.4624565,
+"longitude": -79.94448393
+},
+{
+"id": "1666706610",
+"description": "Friendship Ave - Negley Ave",
+"operation_type": "Fixed",
+"latitude": 40.46068636,
+"longitude": -79.93240195
+},
+{
+"id": "865247784",
+"description": "Friendship Ave - Roup Ave",
+"operation_type": "Fixed",
+"latitude": 40.46161677,
+"longitude": -79.93506353
+},
+{
+"id": "1546796693",
+"description": "Friendship Ave - Taylor St",
+"operation_type": "Fixed",
+"latitude": 40.46400758,
+"longitude": -79.94962949
+},
+{
+"id": "1660030442",
+"description": "Galveston Ave - North Ave",
+"operation_type": "Fixed",
+"latitude": 40.45355099,
+"longitude": -80.01705439
+},
+{
+"id": "207963309",
+"description": "Galveston Ave - Western Ave",
+"operation_type": "Fixed",
+"latitude": 40.45196954,
+"longitude": -80.01652856
+},
+{
+"id": "1231569867",
+"description": "General Robinson St - Sandusky St",
+"operation_type": "Fixed",
+"latitude": 40.4486344,
+"longitude": -80.00228057
+},
+{
+"id": "381384950",
+"description": "Ansonia Pl - Saw Mill Run Blvd",
+"operation_type": "Fixed",
+"latitude": 40.39449219,
+"longitude": -79.99732764
+},
+{
+"id": "2111342855",
+"description": "Glass Run Rd - Mifflin Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.38980358,
+"longitude": -79.93336274
+},
+{
+"id": "2034252664",
+"description": "Glenwood Ave - Second Ave",
+"operation_type": "Fixed",
+"latitude": 40.40101609,
+"longitude": -79.9394151
+},
+{
+"id": "12135633",
+"description": "Graham St - Penn Ave (OSM)",
+"operation_type": "Fixed",
+"latitude": 40.46474199,
+"longitude": -79.93511132
+},
+{
+"id": "1828107748",
+"description": "Grandview Ave - P J Mcardle Rdwy - Merrimac St",
+"operation_type": "Fully Actuated",
+"latitude": 40.43535757,
+"longitude": -80.01293658
+},
+{
+"id": "1905858304",
+"description": "Grant St - Seventh Ave",
+"operation_type": "Fixed",
+"latitude": 40.44214583,
+"longitude": -79.99498485
+},
+{
+"id": "1423513398",
+"description": "Grant St - Sixth Ave",
+"operation_type": "Fixed",
+"latitude": 40.44079085,
+"longitude": -79.99587902
+},
+{
+"id": "699752046",
+"description": "Grant St - Third Ave",
+"operation_type": "Fixed",
+"latitude": 40.43752955,
+"longitude": -79.99805245
+},
+{
+"id": "690981318",
+"description": "Antrim St - California Ave",
+"operation_type": "Fixed",
+"latitude": 40.4752685,
+"longitude": -80.03957568
+},
+{
+"id": "1403772108",
+"description": "Bartlett Rd - Greenfield Rd - Panther Hollow Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.4328561,
+"longitude": -79.93652077
+},
+{
+"id": "130989722",
+"description": "Greenwood St - Morningside Ave",
+"operation_type": "Fixed",
+"latitude": 40.48642738,
+"longitude": -79.92726777
+},
+{
+"id": "592917029",
+"description": "Hamilton Ave - Homewood Ave",
+"operation_type": "Fixed",
+"latitude": 40.45463615,
+"longitude": -79.89752804
+},
+{
+"id": "1941303135",
+"description": "Hazelwood Ave - Second Ave",
+"operation_type": "Fixed",
+"latitude": 40.41132046,
+"longitude": -79.94472643
+},
+{
+"id": "1668255726",
+"description": "Herron Ave - Liberty Ave",
+"operation_type": "Fixed",
+"latitude": 40.46160079,
+"longitude": -79.96721246
+},
+{
+"id": "2020887860",
+"description": "East Ohio St - 31st St",
+"operation_type": "Fully Actuated",
+"latitude": 40.46475297,
+"longitude": -79.97965875
+},
+{
+"id": "1467299341",
+"description": "Highland Ave - Station St",
+"operation_type": "Semi Actuated",
+"latitude": 40.46376818,
+"longitude": -79.9238233
+},
+{
+"id": "1684501876",
+"description": "Aiken Ave - Fifth Ave",
+"operation_type": "Fixed",
+"latitude": 40.4484079,
+"longitude": -79.93420838
+},
+{
+"id": "605285201",
+"description": "Arch St - North Ave",
+"operation_type": "Fixed",
+"latitude": 40.45509863,
+"longitude": -80.00863069
+},
+{
+"id": "1392826003",
+"description": "Centre Ave - Highland Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.45996213,
+"longitude": -79.92504598
+},
+{
+"id": "1926852084",
+"description": "Highland Ave - Stanton Ave",
+"operation_type": "Fixed",
+"latitude": 40.46969795,
+"longitude": -79.92102809
+},
+{
+"id": "2102768392",
+"description": "Highland Ave - Walnut St",
+"operation_type": "Fixed",
+"latitude": 40.45416919,
+"longitude": -79.92534398
+},
+{
+"id": "2030833239",
+"description": "Hobart St - Murray Ave",
+"operation_type": "Fixed",
+"latitude": 40.43373699,
+"longitude": -79.9229572
+},
+{
+"id": "1053130876",
+"description": "Hobart St - Wightman St",
+"operation_type": "Fixed",
+"latitude": 40.43261552,
+"longitude": -79.9275637
+},
+{
+"id": "484820394",
+"description": "Homewood Ave - Kelly St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.45553415,
+"longitude": -79.89702734
+},
+{
+"id": "867584605",
+"description": "Homewood Ave - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.44918928,
+"longitude": -79.90131904
+},
+{
+"id": "168825978",
+"description": "Homewood Ave - Thomas Blvd",
+"operation_type": "Fixed",
+"latitude": 40.45093267,
+"longitude": -79.90008923
+},
+{
+"id": "661451491",
+"description": "Horace - Liberty Brg - Ramp B",
+"operation_type": "Fully Actuated",
+"latitude": 40.43431951,
+"longitude": -79.99578039
+},
+{
+"id": "435587464",
+"description": "Independence St - Mccartney St - Wabash St",
+"operation_type": "Fixed",
+"latitude": 40.43606358,
+"longitude": -80.03385549
+},
+{
+"id": "717145004",
+"description": "Ingram Ave - Steuben St - Thornburg Brg - Woodmere Dr",
+"operation_type": "Fully Actuated",
+"latitude": 40.44056424,
+"longitude": -80.08047407
+},
+{
+"id": "1685422502",
+"description": "Interboro Ave - Mifflin Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.36972011,
+"longitude": -79.91292709
+},
+{
+"id": "684604920",
+"description": "Kelly St - Lang Ave",
+"operation_type": "Fixed",
+"latitude": 40.45604346,
+"longitude": -79.89925916
+},
+{
+"id": "1871687298",
+"description": "Kirkpatrick St - Webster Ave",
+"operation_type": "Fixed",
+"latitude": 40.4473486,
+"longitude": -79.97790305
+},
+{
+"id": "252273851",
+"description": "Kirkpatrick St - Wylie Ave",
+"operation_type": "Fixed",
+"latitude": 40.44593691,
+"longitude": -79.97680155
+},
+{
+"id": "2023651434",
+"description": "Centre Ave - Kirkwood St",
+"operation_type": "Semi Actuated",
+"latitude": 40.46122419,
+"longitude": -79.92235772
+},
+{
+"id": "169526237",
+"description": "Lacock St - Sandusky St",
+"operation_type": "Fixed",
+"latitude": 40.44949491,
+"longitude": -80.00256136
+},
+{
+"id": "886187341",
+"description": "Lang Ave - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45000592,
+"longitude": -79.90376403
+},
+{
+"id": "1904113130",
+"description": "Highland Dr - Washington Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.47422407,
+"longitude": -79.90827834
+},
+{
+"id": "1361587711",
+"description": "Arch St - Ridge Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45199538,
+"longitude": -80.00873435
+},
+{
+"id": "32436915",
+"description": "Lemington Ave - Lincoln Ave",
+"operation_type": "Fixed",
+"latitude": 40.46875735,
+"longitude": -79.89605025
+},
+{
+"id": "298195580",
+"description": "Liberty Ave - Market St - 6th St",
+"operation_type": "Fixed",
+"latitude": 40.44193148,
+"longitude": -80.00179801
+},
+{
+"id": "665159596",
+"description": "Liberty Ave - Millvale Ave",
+"operation_type": "Fixed",
+"latitude": 40.4600116,
+"longitude": -79.94596588
+},
+{
+"id": "1827112239",
+"description": "Liberty Ave - Ninth St",
+"operation_type": "Fixed",
+"latitude": 40.4429442,
+"longitude": -79.99797682
+},
+{
+"id": "223715294",
+"description": "Liberty Ave - Pearl St",
+"operation_type": "Fixed",
+"latitude": 40.46210054,
+"longitude": -79.9498805
+},
+{
+"id": "2135544262",
+"description": "Liberty Tunl - Saw Mill Run Blvd - W Liberty Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.41420607,
+"longitude": -80.00960013
+},
+{
+"id": "1618769366",
+"description": "Liberty Ave - Seventh Ave",
+"operation_type": "Fixed",
+"latitude": 40.44308356,
+"longitude": -79.99732266
+},
+{
+"id": "2007331390",
+"description": "Arlington Ave - Brownsville Rd - S 18th St",
+"operation_type": "Fixed",
+"latitude": 40.41761027,
+"longitude": -79.98645112
+},
+{
+"id": "1317007354",
+"description": "Liberty Ave - 7th St - Sixth Ave",
+"operation_type": "Fixed",
+"latitude": 40.44239214,
+"longitude": -79.99998495
+},
+{
+"id": "1115003096",
+"description": "Liberty Ave - 16th St",
+"operation_type": "Fixed",
+"latitude": 40.44822892,
+"longitude": -79.98689348
+},
+{
+"id": "1300143665",
+"description": "Liberty Ave - Smithfield St",
+"operation_type": "Fixed",
+"latitude": 40.44331783,
+"longitude": -79.9965328
+},
+{
+"id": "988626690",
+"description": "Liberty Ave -10th St - William Penn Pl",
+"operation_type": "Fixed",
+"latitude": 40.44365812,
+"longitude": -79.99524041
+},
+{
+"id": "1300803184",
+"description": "Liberty Brg -  Liberty Tunl - P J Mcardle Rdwy",
+"operation_type": "Fully Actuated",
+"latitude": 40.42915463,
+"longitude": -79.99927134
+},
+{
+"id": "1109342238",
+"description": "Liberty Ave - 31st St",
+"operation_type": "Fixed",
+"latitude": 40.45923037,
+"longitude": -79.97068891
+},
+{
+"id": "1186899788",
+"description": "Liberty Ave - 28th St",
+"operation_type": "Fixed",
+"latitude": 40.45630182,
+"longitude": -79.97495012
+},
+{
+"id": "1286731887",
+"description": "Liberty Ave - 25th St",
+"operation_type": "Fixed",
+"latitude": 40.45338784,
+"longitude": -79.97918628
+},
+{
+"id": "666914042",
+"description": "Liberty Ave - 21st St",
+"operation_type": "Fixed",
+"latitude": 40.45113576,
+"longitude": -79.98246049
+},
+{
+"id": "1781568461",
+"description": "Arlington Ave - Carson St",
+"operation_type": "Fully Actuated",
+"latitude": 40.43095447,
+"longitude": -80.00148792
+},
+{
+"id": "1733775106",
+"description": "Liberty Ave - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.44263291,
+"longitude": -79.99915291
+},
+{
+"id": "1714252530",
+"description": "Library Rd - McNeilly Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.37788676,
+"longitude": -80.00375674
+},
+{
+"id": "1087175753",
+"description": "Library Rd - Saw Mill Run Blvd",
+"operation_type": "Fixed",
+"latitude": 40.38230847,
+"longitude": -79.99595971
+},
+{
+"id": "2085644210",
+"description": "Lilac St - Murray Ave",
+"operation_type": "Fixed",
+"latitude": 40.42321465,
+"longitude": -79.92865526
+},
+{
+"id": "841555113",
+"description": "Lincoln Ave - Meadow St",
+"operation_type": "Fixed",
+"latitude": 40.461064,
+"longitude": -79.90979166
+},
+{
+"id": "968857587",
+"description": "Lincoln Ave - Shetland St",
+"operation_type": "Fixed",
+"latitude": 40.46160786,
+"longitude": -79.90792535
+},
+{
+"id": "1534140968",
+"description": "Linden Ave - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45263797,
+"longitude": -79.9103836
+},
+{
+"id": "1505834885",
+"description": "East Ohio St - Madison Ave",
+"operation_type": "Actuated",
+"latitude": 40.45416882,
+"longitude": -79.99683088
+},
+{
+"id": "883537589",
+"description": "Main St - Penn Ave",
+"operation_type": "Fixed",
+"latitude": 40.46565955,
+"longitude": -79.9551871
+},
+{
+"id": "1656142287",
+"description": "Arlington Ave - P J Mcardle Rdwy",
+"operation_type": "Fully Actuated",
+"latitude": 40.42899827,
+"longitude": -79.99836422
+},
+{
+"id": "1106146604",
+"description": "Main St - Sanctus St",
+"operation_type": "Fixed",
+"latitude": 40.44162188,
+"longitude": -80.03291068
+},
+{
+"id": "1328076333",
+"description": "Main St - Saw Mill Run Rd",
+"operation_type": "Fixed",
+"latitude": 40.44326769,
+"longitude": -80.02907269
+},
+{
+"id": "1996254180",
+"description": "Main St - Wabash St",
+"operation_type": "Fixed",
+"latitude": 40.44092587,
+"longitude": -80.03480807
+},
+{
+"id": "1621194912",
+"description": "West End Brg - Western Ave Ramp",
+"operation_type": "Fully Actuated",
+"latitude": 40.4497931,
+"longitude": -80.02494399
+},
+{
+"id": "2117538567",
+"description": "Marshall Ave - Perrysville Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.47495788,
+"longitude": -80.011252
+},
+{
+"id": "330802691",
+"description": "Mathilda St - Penn Ave (OSM)",
+"operation_type": "Semi Actuated",
+"latitude": 40.46547443,
+"longitude": -79.94644936
+},
+{
+"id": "1214625585",
+"description": "Maytide St - Overbrook Blvd - Saw Mill Run Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.38473459,
+"longitude": -79.99501149
+},
+{
+"id": "47255719",
+"description": "Merrimac St - Virginia Ave",
+"operation_type": "Fixed",
+"latitude": 40.43172284,
+"longitude": -80.01370403
+},
+{
+"id": "517078947",
+"description": "Arlington Ave - Warrington Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.42181615,
+"longitude": -79.99232785
+},
+{
+"id": "465375336",
+"description": "Midwood Ave - Saw Mill Run Blvd",
+"operation_type": "Semi Actuated",
+"latitude": 40.39299803,
+"longitude": -79.99734748
+},
+{
+"id": "664804940",
+"description": "Millvale Ave - Penn Ave",
+"operation_type": "Fixed",
+"latitude": 40.46530495,
+"longitude": -79.94523453
+},
+{
+"id": "1432346625",
+"description": "Monitor St - Shady Ave",
+"operation_type": "Fixed",
+"latitude": 40.42533368,
+"longitude": -79.92388933
+},
+{
+"id": "1792590032",
+"description": "Monterey St - North Ave",
+"operation_type": "Fixed",
+"latitude": 40.45434202,
+"longitude": -80.01261199
+},
+{
+"id": "477507792",
+"description": "Muriel St - S 10th St",
+"operation_type": "Fixed",
+"latitude": 40.43003734,
+"longitude": -79.98864621
+},
+{
+"id": "717531239",
+"description": "Murray Ave - Northumberland St",
+"operation_type": "Fixed",
+"latitude": 40.44142804,
+"longitude": -79.92337385
+},
+{
+"id": "1499185748",
+"description": "Murray Ave - Phillips Ave",
+"operation_type": "Fixed",
+"latitude": 40.43236166,
+"longitude": -79.92314513
+},
+{
+"id": "240886970",
+"description": "Armstrong Tunl - Forbes Ave",
+"operation_type": "Fixed",
+"latitude": 40.43797868,
+"longitude": -79.99205468
+},
+{
+"id": "162779170",
+"description": "Negley Ave - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46350122,
+"longitude": -79.93067622
+},
+{
+"id": "641314959",
+"description": "Negley Ave - Rippey St",
+"operation_type": "Semi Actuated",
+"latitude": 40.46661886,
+"longitude": -79.92880014
+},
+{
+"id": "1222635389",
+"description": "Negley Ave - Rural St",
+"operation_type": "Semi Actuated",
+"latitude": 40.4656189,
+"longitude": -79.92940372
+},
+{
+"id": "960549217",
+"description": "Negley Ave - Stanton Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.47152986,
+"longitude": -79.92628023
+},
+{
+"id": "545142627",
+"description": "Negley Ave - Walnut St",
+"operation_type": "Fixed",
+"latitude": 40.4520698,
+"longitude": -79.93098238
+},
+{
+"id": "919923400",
+"description": "Negley Ave - Wilkins Ave",
+"operation_type": "Fixed",
+"latitude": 40.44402986,
+"longitude": -79.92601074
+},
+{
+"id": "1015329897",
+"description": "Negley Run Blvd - Washington Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.47028904,
+"longitude": -79.90862517
+},
+{
+"id": "439802635",
+"description": "Neptune St - Wabash St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.44020778,
+"longitude": -80.03436282
+},
+{
+"id": "1988880510",
+"description": "Ninth St - Penn Ave",
+"operation_type": "Fixed",
+"latitude": 40.44375043,
+"longitude": -79.99834871
+},
+{
+"id": "1170469070",
+"description": "Armstrong Tunl - Second Ave - S 10th St",
+"operation_type": "Fully Actuated",
+"latitude": 40.43448854,
+"longitude": -79.98982211
+},
+{
+"id": "713723195",
+"description": "Noblestown Rd - Poplar St",
+"operation_type": "Fully Actuated",
+"latitude": 40.42794621,
+"longitude": -80.05377648
+},
+{
+"id": "341538404",
+"description": "North Ave - Palo Alto St",
+"operation_type": "Fixed",
+"latitude": 40.45472516,
+"longitude": -80.01059882
+},
+{
+"id": "648684866",
+"description": "Northumberland St - Shady Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.44182297,
+"longitude": -79.91990548
+},
+{
+"id": "1849869181",
+"description": "Northumberland St - Wightman St",
+"operation_type": "Fixed",
+"latitude": 40.44090939,
+"longitude": -79.9277874
+},
+{
+"id": "1527793865",
+"description": "Oliver Ave - Smithfield St",
+"operation_type": "Fixed",
+"latitude": 40.44080925,
+"longitude": -79.99816309
+},
+{
+"id": "1552058558",
+"description": "Oliver Ave - William Penn Pl",
+"operation_type": "Fixed",
+"latitude": 40.44045593,
+"longitude": -79.9972259
+},
+{
+"id": "1551451073",
+"description": "Oliver Ave - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.44145648,
+"longitude": -79.99991917
+},
+{
+"id": "649032132",
+"description": "Atlantic Ave - Baum Blvd - Liberty Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45663481,
+"longitude": -79.93964302
+},
+{
+"id": "1708291684",
+"description": "Oranmore St - Stanton Ave",
+"operation_type": "Fixed",
+"latitude": 40.48059626,
+"longitude": -79.93478057
+},
+{
+"id": "433363363",
+"description": "Pauline Ave - W Liberty Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.40174845,
+"longitude": -80.02217442
+},
+{
+"id": "115917577",
+"description": "Penn Ave - 7th St",
+"operation_type": "Fixed",
+"latitude": 40.44323848,
+"longitude": -80.00026298
+},
+{
+"id": "724061015",
+"description": "Penn Ave - Shady Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45981376,
+"longitude": -79.92083348
+},
+{
+"id": "849315938",
+"description": "Penn Ave - 16th St (OSM)",
+"operation_type": "Fixed",
+"latitude": 40.44882448,
+"longitude": -79.98750719
+},
+{
+"id": "1868448111",
+"description": "Penn Ave - 6th St",
+"operation_type": "Fixed",
+"latitude": 40.44274962,
+"longitude": -80.00215282
+},
+{
+"id": "407228916",
+"description": "Penn Ave - Stanwix St",
+"operation_type": "Fixed",
+"latitude": 40.44222092,
+"longitude": -80.00411724
+},
+{
+"id": "183014806",
+"description": "Penn Ave - Tenth St",
+"operation_type": "Fixed",
+"latitude": 40.44446444,
+"longitude": -79.99561272
+},
+{
+"id": "982547027",
+"description": "Penn Ave - 31st St",
+"operation_type": "Fixed",
+"latitude": 40.45980759,
+"longitude": -79.97137701
+},
+{
+"id": "1751436229",
+"description": "Aiken Ave - Friendship Ave",
+"operation_type": "Fixed",
+"latitude": 40.46190619,
+"longitude": -79.93762711
+},
+{
+"id": "1802655427",
+"description": "Atlantic Ave - Friendship Ave",
+"operation_type": "Fixed",
+"latitude": 40.46200445,
+"longitude": -79.93895458
+},
+{
+"id": "515948848",
+"description": "Penn Ave - 12th St",
+"operation_type": "Fixed",
+"latitude": 40.44577122,
+"longitude": -79.99239141
+},
+{
+"id": "306346190",
+"description": "Penn Ave - 28th St (OSM)",
+"operation_type": "Fixed",
+"latitude": 40.45686595,
+"longitude": -79.97561757
+},
+{
+"id": "391153997",
+"description": "Penn Ave - 22nd St",
+"operation_type": "Fixed",
+"latitude": 40.45227157,
+"longitude": -79.98228466
+},
+{
+"id": "441037240",
+"description": "Penn Ave - 26th St",
+"operation_type": "Fixed",
+"latitude": 40.45491247,
+"longitude": -79.97844811
+},
+{
+"id": "484613315",
+"description": "Penn Ave - 30th St",
+"operation_type": "Fixed",
+"latitude": 40.45882361,
+"longitude": -79.97278431
+},
+{
+"id": "2034847747",
+"description": "Penn Ave - 32nd St",
+"operation_type": "Fixed",
+"latitude": 40.46077997,
+"longitude": -79.9699522
+},
+{
+"id": "278907631",
+"description": "Centre Ave - Penn Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.4606639,
+"longitude": -79.92272567
+},
+{
+"id": "2066168143",
+"description": "Euclid Ave - Penn Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.46251901,
+"longitude": -79.92782556
+},
+{
+"id": "1876425348",
+"description": "Phillips Ave - Shady Ave - Tilbury Ave",
+"operation_type": "Fixed",
+"latitude": 40.43230447,
+"longitude": -79.91825545
+},
+{
+"id": "1292633636",
+"description": "Atlantic Ave - Penn Ave",
+"operation_type": "Fixed",
+"latitude": 40.46456981,
+"longitude": -79.93861094
+},
+{
+"id": "1053879201",
+"description": "Phillips Ave - Wightman St",
+"operation_type": "Fixed",
+"latitude": 40.43103037,
+"longitude": -79.92749727
+},
+{
+"id": "564680432",
+"description": "Pioneer Ave - Stetson St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.4056453,
+"longitude": -80.01503357
+},
+{
+"id": "1741780708",
+"description": "Ellsworth Ave - Shady Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45920146,
+"longitude": -79.92207464
+},
+{
+"id": "998352674",
+"description": "Ross St - Second Ave",
+"operation_type": "Fixed",
+"latitude": 40.43658907,
+"longitude": -79.9971182
+},
+{
+"id": "603591335",
+"description": "Sarah St - S 12th St",
+"operation_type": "Fixed",
+"latitude": 40.42774644,
+"longitude": -79.98636265
+},
+{
+"id": "1984116311",
+"description": "Sarah St - S 20th St",
+"operation_type": "Fixed",
+"latitude": 40.4276767,
+"longitude": -79.97773139
+},
+{
+"id": "1479351755",
+"description": "Sarah St - S 22nd St",
+"operation_type": "Fixed",
+"latitude": 40.42750202,
+"longitude": -79.97473298
+},
+{
+"id": "180737034",
+"description": "Sarah St - S 23rd St",
+"operation_type": "Fixed",
+"latitude": 40.42741386,
+"longitude": -79.97313877
+},
+{
+"id": "569863679",
+"description": "Atwood St - Bates St",
+"operation_type": "Fixed",
+"latitude": 40.43812573,
+"longitude": -79.95393221
+},
+{
+"id": "1344463389",
+"description": "Saw Mill Run Blvd - Warrington Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.41504308,
+"longitude": -80.01138948
+},
+{
+"id": "1842296611",
+"description": "Saw Mill Run Blvd - Whited St",
+"operation_type": "Semi Actuated",
+"latitude": 40.39628567,
+"longitude": -79.99819723
+},
+{
+"id": "1305271765",
+"description": "Saw Mill Run Blvd - Woodruff St",
+"operation_type": "Semi Actuated",
+"latitude": 40.42583287,
+"longitude": -80.0198927
+},
+{
+"id": "1383055199",
+"description": "Seventh Ave - Smithfield St",
+"operation_type": "Fixed",
+"latitude": 40.44283845,
+"longitude": -79.99684434
+},
+{
+"id": "1449482414",
+"description": "Seventh Ave - William Penn Pl",
+"operation_type": "Fixed",
+"latitude": 40.44247733,
+"longitude": -79.99582196
+},
+{
+"id": "1169419580",
+"description": "Shady Ave - Walnut St",
+"operation_type": "Fixed",
+"latitude": 40.45586968,
+"longitude": -79.92254876
+},
+{
+"id": "1362229814",
+"description": "Shady Ave - Wilkins Ave",
+"operation_type": "Fixed",
+"latitude": 40.44385912,
+"longitude": -79.92051591
+},
+{
+"id": "842420919",
+"description": "Atwood St - Fifth Ave",
+"operation_type": "Fixed",
+"latitude": 40.44177634,
+"longitude": -79.95847194
+},
+{
+"id": "1881972314",
+"description": "Shiloh St - Virginia Ave",
+"operation_type": "Fixed",
+"latitude": 40.42947386,
+"longitude": -80.00733989
+},
+{
+"id": "1982986125",
+"description": "Sixth Ave - Smithfield St",
+"operation_type": "Fixed",
+"latitude": 40.44146441,
+"longitude": -79.99773478
+},
+{
+"id": "993653062",
+"description": "Sixth Ave - William Penn Pl",
+"operation_type": "Fixed",
+"latitude": 40.4411131,
+"longitude": -79.9967689
+},
+{
+"id": "1571050793",
+"description": "Sixth Ave - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.44210758,
+"longitude": -79.99950152
+},
+{
+"id": "157250934",
+"description": "Smithfield St - Third Ave",
+"operation_type": "Fixed",
+"latitude": 40.43821988,
+"longitude": -79.99989118
+},
+{
+"id": "419321724",
+"description": "Stanwix St - Third Ave",
+"operation_type": "Fixed",
+"latitude": 40.4400486,
+"longitude": -80.00472299
+},
+{
+"id": "305646355",
+"description": "Atwood St - Forbes Ave",
+"operation_type": "Fixed",
+"latitude": 40.44109818,
+"longitude": -79.957629
+},
+{
+"id": "1442572187",
+"description": "Third Ave - Wood St",
+"operation_type": "Fixed",
+"latitude": 40.43888636,
+"longitude": -80.00164022
+},
+{
+"id": "908687903",
+"description": "Wightman St - Wilkins Ave",
+"operation_type": "Fixed",
+"latitude": 40.44412923,
+"longitude": -79.92792818
+},
+{
+"id": "1918624202",
+"description": "Allegheny Ave - Reedsdale St",
+"operation_type": "Fully Actuated",
+"latitude": 40.44804494,
+"longitude": -80.017829
+},
+{
+"id": "1980726487",
+"description": "Greenfield Ave - Irvine St - Saline St",
+"operation_type": "Fully Actuated",
+"latitude": 40.42488272,
+"longitude": -79.95191128
+},
+{
+"id": "781685585",
+"description": "Allegheny Ave - North Shore Dr",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.44680774,
+"longitude": -80.01746618
+},
+{
+"id": "446686173",
+"description": "General Robinson St - Mazeroski Way",
+"operation_type": "Fully Actuated",
+"latitude": 40.44769384,
+"longitude": -80.00767282
+},
+{
+"id": "989089016",
+"description": "Lacock St - Reedsdale St - Mazeroski Way",
+"operation_type": "Fully Actuated",
+"latitude": 40.44834238,
+"longitude": -80.00818655
+},
+{
+"id": "1294005697",
+"description": "Auditorium- Retired",
+"operation_type": "Fully Actuated",
+"latitude": 40.44280671,
+"longitude": -79.99097726
+},
+{
+"id": "1316852736",
+"description": "Forbes Ave - Jumonville St",
+"operation_type": "Fixed",
+"latitude": 40.43734699,
+"longitude": -79.97773582
+},
+{
+"id": "1775114305",
+"description": "Forbes Ave - Oakland Ave",
+"operation_type": "Fixed",
+"latitude": 40.44157208,
+"longitude": -79.9569738
+},
+{
+"id": "694384663",
+"description": "Braddock Ave - Frankstown Ave",
+"operation_type": "Fixed",
+"latitude": 40.45596563,
+"longitude": -79.89002402
+},
+{
+"id": "1920641743",
+"description": "Lebanon Rd - Mifflin Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.37961468,
+"longitude": -79.9255102
+},
+{
+"id": "232081543",
+"description": "Fifth Ave - Jumonville St",
+"operation_type": "Fixed",
+"latitude": 40.43824216,
+"longitude": -79.9776679
+},
+{
+"id": "359836640",
+"description": "Allequippa St - Centre Ave - University A Dr",
+"operation_type": "Fully Actuated",
+"latitude": 40.44845708,
+"longitude": -79.95847682
+},
+{
+"id": "1733523558",
+"description": "Beaver Ave - Island Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.4620696,
+"longitude": -80.03213431
+},
+{
+"id": "1844638107",
+"description": "Doerrville Ave - Hillburn St - Mifflin Rd",
+"operation_type": "Semi Actuated",
+"latitude": 40.38329164,
+"longitude": -79.93047302
+},
+{
+"id": "203551117",
+"description": "Brookline Blvd - Merrick Ave - Whited St",
+"operation_type": "Fixed",
+"latitude": 40.39216409,
+"longitude": -80.01314024
+},
+{
+"id": "1992239442",
+"description": "AUDITORIUM  CENTRE  MARIO_LEMIEUX",
+"operation_type": "Fixed",
+"latitude": 40.44049464,
+"longitude": -79.98928816
+},
+{
+"id": "1294357818",
+"description": "Mansion St - Second Ave",
+"operation_type": "Fixed",
+"latitude": 40.40371976,
+"longitude": -79.94231296
+},
+{
+"id": "1177376251",
+"description": "Centre Ave - Herron Ave - Robinson St Ext",
+"operation_type": "Fixed",
+"latitude": 40.44878542,
+"longitude": -79.96487367
+},
+{
+"id": "988911897",
+"description": "Grant St - Strawberry Way",
+"operation_type": "Fixed",
+"latitude": 40.44145635,
+"longitude": -79.99543487
+},
+{
+"id": "555635447",
+"description": "Butler St - One Wild Pl",
+"operation_type": "Fully Actuated",
+"latitude": 40.48734851,
+"longitude": -79.91799216
+},
+{
+"id": "371613703",
+"description": "California Ave - Marshall Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.46210894,
+"longitude": -80.03073672
+},
+{
+"id": "1406738155",
+"description": "Mckees Rocks Brg - Ohio River Bvld - Termon Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.47886964,
+"longitude": -80.04307996
+},
+{
+"id": "1768913186",
+"description": "Chartiers Ave - Steuben St",
+"operation_type": "Fully Actuated",
+"latitude": 40.44120483,
+"longitude": -80.03807003
+},
+{
+"id": "1229660030",
+"description": "Obey Ave - Steuben St",
+"operation_type": "Fixed",
+"latitude": 40.44300297,
+"longitude": -80.05265945
+},
+{
+"id": "386492862",
+"description": "Beechview Blvd - Crane Ave - Tropical Ave",
+"operation_type": "Fixed",
+"latitude": 40.41706705,
+"longitude": -80.02517945
+},
+{
+"id": "580307551",
+"description": "Baker St - Butler St",
+"operation_type": "Fully Actuated",
+"latitude": 40.4878503,
+"longitude": -79.92007347
+},
+{
+"id": "648862288",
+"description": "Crane Ave - Saw Mill Run Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.41704209,
+"longitude": -80.01454084
+},
+{
+"id": "118467825",
+"description": "Carson St - S 14th St",
+"operation_type": "Fixed",
+"latitude": 40.42880721,
+"longitude": -79.98414936
+},
+{
+"id": "1307608314",
+"description": "Irvine St - Mobile St",
+"operation_type": "Semi Actuated",
+"latitude": 40.4160256,
+"longitude": -79.94673363
+},
+{
+"id": "1580146304",
+"description": "Second Ave - Tecumseh St",
+"operation_type": "Fixed",
+"latitude": 40.40857914,
+"longitude": -79.94368359
+},
+{
+"id": "1701363052",
+"description": "Beechview Ave - Broadway Ave - Hampshire Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.41057566,
+"longitude": -80.02467592
+},
+{
+"id": "1452067746",
+"description": "Birmingham Brg - Carson St",
+"operation_type": "Fixed",
+"latitude": 40.42837039,
+"longitude": -79.97361045
+},
+{
+"id": "227895511",
+"description": "Cypress St - Millvale Ave",
+"operation_type": "Fixed",
+"latitude": 40.45875308,
+"longitude": -79.94709365
+},
+{
+"id": "762134573",
+"description": "James St - North Ave",
+"operation_type": "Fixed",
+"latitude": 40.45642107,
+"longitude": -80.00157004
+},
+{
+"id": "1736769202",
+"description": "Benton Ave - California Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.48439303,
+"longitude": -80.04048209
+},
+{
+"id": "152149489",
+"description": "Banksville Rd - Crane Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.41590736,
+"longitude": -80.02994766
+},
+{
+"id": "713514147",
+"description": "BENNETT  STERRETT",
+"operation_type": "Fixed",
+"latitude": 40.45597336,
+"longitude": -79.89450245
+},
+{
+"id": "491703835",
+"description": "Bigelow Blvd - Ross St - Sixth Ave",
+"operation_type": "Fixed",
+"latitude": 40.44043532,
+"longitude": -79.99487798
+},
+{
+"id": "1677195305",
+"description": "Centre Ave - Sixth Ave",
+"operation_type": "Fixed",
+"latitude": 40.43997837,
+"longitude": -79.99418085
+},
+{
+"id": "1659896031",
+"description": "Carson St - S 26th St",
+"operation_type": "Semi Actuated",
+"latitude": 40.42745159,
+"longitude": -79.96840382
+},
+{
+"id": "937651403",
+"description": "Freeport Rd - Waterworks I",
+"operation_type": "Fully Actuated",
+"latitude": 40.48698478,
+"longitude": -79.88674408
+},
+{
+"id": "69266538",
+"description": "Liberty Ave -26th St",
+"operation_type": "Fixed",
+"latitude": 40.4543504,
+"longitude": -79.97776409
+},
+{
+"id": "640260433",
+"description": "Carson St - S 24th St",
+"operation_type": "Fixed",
+"latitude": 40.42821902,
+"longitude": -79.97117064
+},
+{
+"id": "1254801023",
+"description": "Fifth Ave - Ross St",
+"operation_type": "Fixed",
+"latitude": 40.43900379,
+"longitude": -79.99560121
+},
+{
+"id": "851778926",
+"description": "Chatham Sq - Forbes Ave - Mcanulty Dr",
+"operation_type": "Fixed",
+"latitude": 40.43793801,
+"longitude": -79.99104125
+},
+{
+"id": "1096218171",
+"description": "Fifth Ave - Marion St",
+"operation_type": "Fixed",
+"latitude": 40.43850521,
+"longitude": -79.98408873
+},
+{
+"id": "227817448",
+"description": "Banksville Rd - McMonagle Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.39963687,
+"longitude": -80.04435536
+},
+{
+"id": "1079872343",
+"description": "Forbes Ave - Marion St",
+"operation_type": "Fixed",
+"latitude": 40.43762311,
+"longitude": -79.98421176
+},
+{
+"id": "1977783821",
+"description": "Fifth Ave - Meyran Ave",
+"operation_type": "Fixed",
+"latitude": 40.4411626,
+"longitude": -79.95927662
+},
+{
+"id": "2043131763",
+"description": "Cedarville St - Liberty Ave",
+"operation_type": "Fixed",
+"latitude": 40.46160413,
+"longitude": -79.9489476
+},
+{
+"id": "1918584543",
+"description": "Highland Ave - Penn Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.46147169,
+"longitude": -79.92481112
+},
+{
+"id": "839502071",
+"description": "Centre Ave - Reed St",
+"operation_type": "Fixed",
+"latitude": 40.44541303,
+"longitude": -79.97087647
+},
+{
+"id": "1031545114",
+"description": "Brighton Rd - Pennsylvania Ave",
+"operation_type": "Fixed",
+"latitude": 40.45610391,
+"longitude": -80.01535139
+},
+{
+"id": "1538823462",
+"description": "Famco - Second Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.43605125,
+"longitude": -79.99571413
+},
+{
+"id": "1631632787",
+"description": "Carson St - Smithfield St",
+"operation_type": "Fully Actuated",
+"latitude": 40.43217246,
+"longitude": -80.00396523
+},
+{
+"id": "1331141723",
+"description": "Carson St - Commerce Dr",
+"operation_type": "Fully Actuated",
+"latitude": 40.43383853,
+"longitude": -80.00677846
+},
+{
+"id": "1642344328",
+"description": "Freeport Rd - Waterworks II",
+"operation_type": "Fully Actuated",
+"latitude": 40.48673139,
+"longitude": -79.89234568
+},
+{
+"id": "993149963",
+"description": "Aiken Ave - Penn Ave",
+"operation_type": "Fixed",
+"latitude": 40.46468358,
+"longitude": -79.9364441
+},
+{
+"id": "1372577339",
+"description": "Banksville Rd - Potomac Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.40333515,
+"longitude": -80.04081866
+},
+{
+"id": "751354865",
+"description": "Centre Ave - Dinwiddie St",
+"operation_type": "Fixed",
+"latitude": 40.44348601,
+"longitude": -79.98053515
+},
+{
+"id": "513879076",
+"description": "Lane Control - Liberty Brg",
+"operation_type": "Fixed",
+"latitude": 40.43365101,
+"longitude": -79.99617588
+},
+{
+"id": "220477942",
+"description": "Lane Control - General Robinson St",
+"operation_type": "Fixed",
+"latitude": 40.44672135,
+"longitude": -80.01322214
+},
+{
+"id": "1217539679",
+"description": "North Ave - Sandusky St",
+"operation_type": "Fixed",
+"latitude": 40.45585087,
+"longitude": -80.00456783
+},
+{
+"id": "1572036969",
+"description": "East St - Hazlett St",
+"operation_type": "Fully Actuated",
+"latitude": 40.47464496,
+"longitude": -80.00517514
+},
+{
+"id": "1061215744",
+"description": "Penn Ave - Station St",
+"operation_type": "Fixed",
+"latitude": 40.45881011,
+"longitude": -79.91933721
+},
+{
+"id": "130520310",
+"description": "East St - Milroy St",
+"operation_type": "Fully Actuated",
+"latitude": 40.47683986,
+"longitude": -80.0067579
+},
+{
+"id": "872568642",
+"description": "East St - Venture St",
+"operation_type": "Fully Actuated",
+"latitude": 40.4853398,
+"longitude": -80.00953959
+},
+{
+"id": "1451226258",
+"description": "Browns Hill Rd - Wendy's",
+"operation_type": "Semi Actuated",
+"latitude": 40.41653453,
+"longitude": -79.92577909
+},
+{
+"id": "780501747",
+"description": "Madison Ave - Tripoli St",
+"operation_type": "Fixed",
+"latitude": 40.45658738,
+"longitude": -79.9976277
+},
+{
+"id": "512612257",
+"description": "Banksville Rd - Carnahan Rd - Wenzell Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.40701535,
+"longitude": -80.03423979
+},
+{
+"id": "1681130241",
+"description": "Madison Ave - E. North Ave - Spring Garden Ave",
+"operation_type": "Fixed",
+"latitude": 40.45726475,
+"longitude": -79.99785293
+},
+{
+"id": "385581450",
+"description": "Fifth Ave - Stevenson St",
+"operation_type": "Fixed",
+"latitude": 40.43861505,
+"longitude": -79.98646555
+},
+{
+"id": "2107725517",
+"description": "Second Ave -Technology Dr  (West)",
+"operation_type": "Fully Actuated",
+"latitude": 40.43402132,
+"longitude": -79.96521603
+},
+{
+"id": "18739015",
+"description": "Allen St - Warrington Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.42181017,
+"longitude": -79.99374054
+},
+{
+"id": "1181991901",
+"description": "Chartiers Ave - Corliss St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45029738,
+"longitude": -80.0450915
+},
+{
+"id": "792845911",
+"description": "Carson St - Fuhrer Driveway",
+"operation_type": "Semi Actuated",
+"latitude": 40.42326272,
+"longitude": -79.96131239
+},
+{
+"id": "426094024",
+"description": "Friendship Ave - Pearl St",
+"operation_type": "Fixed",
+"latitude": 40.46351714,
+"longitude": -79.94893763
+},
+{
+"id": "60431571",
+"description": "Allequippa St - Darragh St",
+"operation_type": "Fixed",
+"latitude": 40.44326341,
+"longitude": -79.96518249
+},
+{
+"id": "1079212655",
+"description": "Darragh St - Terrace St",
+"operation_type": "Fixed",
+"latitude": 40.44196746,
+"longitude": -79.96283984
+},
+{
+"id": "1027054833",
+"description": "Bartlett St - Murray Ave",
+"operation_type": "Fixed",
+"latitude": 40.4360297,
+"longitude": -79.92288281
+},
+{
+"id": "413526654",
+"description": "Freeport Rd - St Margaret Dr - Waterworks III",
+"operation_type": "Fully Actuated",
+"latitude": 40.48722582,
+"longitude": -79.89544603
+},
+{
+"id": "218571261",
+"description": "East St - Mt Pleasant Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.48236663,
+"longitude": -80.00597915
+},
+{
+"id": "1253941024",
+"description": "Brighton Rd - Ridge Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.45060429,
+"longitude": -80.01341665
+},
+{
+"id": "1161898126",
+"description": "Brookline Blvd - Wedgemere St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.39548872,
+"longitude": -80.02244274
+},
+{
+"id": "376420214",
+"description": "Becks Run Rd - Wagner St",
+"operation_type": "Semi Actuated",
+"latitude": 40.40438335,
+"longitude": -79.97589534
+},
+{
+"id": "1620088610",
+"description": "Lane Control - Fort Duquesne Brg",
+"operation_type": "Fixed",
+"latitude": 40.44838696,
+"longitude": -80.01223718
+},
+{
+"id": "1041204423",
+"description": "Centre Ave - Cypress St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45504768,
+"longitude": -79.94149662
+},
+{
+"id": "1395611149",
+"description": "Penn Ave - 21st St",
+"operation_type": "Fixed",
+"latitude": 40.45169248,
+"longitude": -79.98311827
+},
+{
+"id": "203348141",
+"description": "Fulton St - Western Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45065519,
+"longitude": -80.02357573
+},
+{
+"id": "307759113",
+"description": "Bascom St - Perrysville Ave - Vinceton St",
+"operation_type": "Fixed",
+"latitude": 40.49278656,
+"longitude": -80.02180115
+},
+{
+"id": "855802527",
+"description": "Reedsdale St - Tony Dorsett Dr",
+"operation_type": "Fully Actuated",
+"latitude": 40.44830441,
+"longitude": -80.01050674
+},
+{
+"id": "144717567",
+"description": "County Driveway - Second Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.43453196,
+"longitude": -79.98709717
+},
+{
+"id": "739895155",
+"description": "Carson St - S 21st St",
+"operation_type": "Fixed",
+"latitude": 40.42851374,
+"longitude": -79.9762683
+},
+{
+"id": "1641002780",
+"description": "Forbes Ave - Morewood Gardens",
+"operation_type": "Semi Actuated",
+"latitude": 40.4445501,
+"longitude": -79.94556471
+},
+{
+"id": "1953688427",
+"description": "Liberty Ave - Winebiddle St",
+"operation_type": "Fixed",
+"latitude": 40.45881967,
+"longitude": -79.94373201
+},
+{
+"id": "24027769",
+"description": "Carson St Ramp - Station Square Dr W",
+"operation_type": "Fixed",
+"latitude": 40.44068385,
+"longitude": -80.01894452
+},
+{
+"id": "1938267442",
+"description": "Lane Control - Smithfield St Brg",
+"operation_type": "Fixed",
+"latitude": 40.4360013,
+"longitude": -80.00137133
+},
+{
+"id": "1151704640",
+"description": "Lane Control - Lacock St",
+"operation_type": "Fixed",
+"latitude": 40.44945496,
+"longitude": -80.00319818
+},
+{
+"id": "1584606386",
+"description": "Liberty Ave - Taylor St",
+"operation_type": "Fixed",
+"latitude": 40.46264419,
+"longitude": -79.9508873
+},
+{
+"id": "278722006",
+"description": "Aspen St - Liberty Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.45831849,
+"longitude": -79.94279501
+},
+{
+"id": "693909886",
+"description": "Bates St - Second Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.43114382,
+"longitude": -79.95920595
+},
+{
+"id": "643133511",
+"description": "Municipal Courts Dr - Second Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.43568615,
+"longitude": -79.99478464
+},
+{
+"id": "224760074",
+"description": "Butler St - 56th St",
+"operation_type": "Fixed",
+"latitude": 40.48440578,
+"longitude": -79.94805419
+},
+{
+"id": "2025210441",
+"description": "Pioneer Ave - W Liberty Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.41292009,
+"longitude": -80.01012263
+},
+{
+"id": "808651266",
+"description": "Carson St - Hot Metal St",
+"operation_type": "Semi Actuated",
+"latitude": 40.42547426,
+"longitude": -79.96460021
+},
+{
+"id": "482525367",
+"description": "Hot Metal St - Second Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.43002965,
+"longitude": -79.95782011
+},
+{
+"id": "1346726856",
+"description": "Busway Ramp - Carson St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45076163,
+"longitude": -80.03673726
+},
+{
+"id": "1999021406",
+"description": "General Robinson St - Tony Dorsett Dr",
+"operation_type": "Fully Actuated",
+"latitude": 40.44726543,
+"longitude": -80.01031284
+},
+{
+"id": "369021886",
+"description": "Lane Control - Tony Dorsett Dr",
+"operation_type": "Fixed",
+"latitude": 40.44789896,
+"longitude": -80.01043918
+},
+{
+"id": "1392701913",
+"description": "Centre Ave - Euclid Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.45876606,
+"longitude": -79.92898276
+},
+{
+"id": "1974997695",
+"description": "Second Ave - Bridgeside Point",
+"operation_type": "Fully Actuated",
+"latitude": 40.42892259,
+"longitude": -79.95668514
+},
+{
+"id": "745331741",
+"description": "Baum Blvd - Craig St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45400157,
+"longitude": -79.95333712
+},
+{
+"id": "449865103",
+"description": "Carson St - S 33rd St",
+"operation_type": "Semi Actuated",
+"latitude": 40.42279228,
+"longitude": -79.96061885
+},
+{
+"id": "785791056",
+"description": "Agnew Ave - Becks Run Rd",
+"operation_type": "Semi Actuated",
+"latitude": 40.39697412,
+"longitude": -79.97868765
+},
+{
+"id": "351322417",
+"description": "McMonagle Ave - Meadowcroft Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.40092476,
+"longitude": -80.04840533
+},
+{
+"id": "679847606",
+"description": "Carson St - S 27th St",
+"operation_type": "Semi Actuated",
+"latitude": 40.42708956,
+"longitude": -79.9670719
+},
+{
+"id": "557990913",
+"description": "Carson St - S 28th St",
+"operation_type": "Semi Actuated",
+"latitude": 40.4262469,
+"longitude": -79.96574442
+},
+{
+"id": "686692817",
+"description": "Eleventh St - Smallman St",
+"operation_type": "Semi Actuated",
+"latitude": 40.44565516,
+"longitude": -79.99413519
+},
+{
+"id": "1703928722",
+"description": "Lorenz Ave - Steuben St",
+"operation_type": "Semi Actuated",
+"latitude": 40.44278288,
+"longitude": -80.04241256
+},
+{
+"id": "2031145793",
+"description": "Hot Metal St - Water St",
+"operation_type": "Semi Actuated",
+"latitude": 40.42727637,
+"longitude": -79.96253345
+},
+{
+"id": "1149887471",
+"description": "Hot Metal St - Sidney St",
+"operation_type": "Fully Actuated",
+"latitude": 40.42624174,
+"longitude": -79.96356046
+},
+{
+"id": "374565342",
+"description": "Carson St - Wabash Tunl Entrance Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.4328462,
+"longitude": -80.0050941
+},
+{
+"id": "470681282",
+"description": "Baum Blvd - Cypress St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45594663,
+"longitude": -79.94198818
+},
+{
+"id": "1947330672",
+"description": "Wabash St - Woodruff St",
+"operation_type": "Fully Actuated",
+"latitude": 40.42625537,
+"longitude": -80.01833267
+},
+{
+"id": "956699533",
+"description": "Giant Eagle - Negley Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.45653776,
+"longitude": -79.93362828
+},
+{
+"id": "564149333",
+"description": "Roberto Clemente Dr - Schenley Dr",
+"operation_type": "Fully Actuated",
+"latitude": 40.44181702,
+"longitude": -79.95266287
+},
+{
+"id": "869914145",
+"description": "SchenleyDr - Schenley Dr Ext",
+"operation_type": "Fully Actuated",
+"latitude": 40.4424155,
+"longitude": -79.95167836
+},
+{
+"id": "585819007",
+"description": "Lane Control - West End Brg",
+"operation_type": "Fixed",
+"latitude": 40.44601643,
+"longitude": -80.02718404
+},
+{
+"id": "2061627559",
+"description": "Friendship Ave - Howley St",
+"operation_type": "Semi Actuated",
+"latitude": 40.46521575,
+"longitude": -79.95131502
+},
+{
+"id": "5305491",
+"description": "Butler St -  45th St",
+"operation_type": "Fixed",
+"latitude": 40.47215631,
+"longitude": -79.95929439
+},
+{
+"id": "426471261",
+"description": "Liberty Ave - 17th St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.44915956,
+"longitude": -79.98539677
+},
+{
+"id": "364449727",
+"description": "Casino Dr - Casino Porte Cochere",
+"operation_type": "Semi Actuated",
+"latitude": 40.44682642,
+"longitude": -80.02052833
+},
+{
+"id": "1162411477",
+"description": "Casino Dr - Reedsdale St",
+"operation_type": "Semi Actuated",
+"latitude": 40.44796433,
+"longitude": -80.02122099
+},
+{
+"id": "1361138057",
+"description": "Baum Blvd - Friendship Ave - S Euclid Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.45968993,
+"longitude": -79.92937478
+},
+{
+"id": "1362401580",
+"description": "Beaver Ave - Lighthill St - North Point Dr - Reedsdale St",
+"operation_type": "Semi Actuated",
+"latitude": 40.44858232,
+"longitude": -80.02390993
+},
+{
+"id": "407321807",
+"description": "Second Ave - Technology Dr (Middle)",
+"operation_type": "Fully Actuated",
+"latitude": 40.43274528,
+"longitude": -79.96229097
+},
+{
+"id": "1855408416",
+"description": "Fifth Ave - McPherson Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.45577034,
+"longitude": -79.9105401
+},
+{
+"id": "1265632340",
+"description": "Dahlem PL - East Liberty Blvd",
+"operation_type": "Semi Actuated",
+"latitude": 40.45842433,
+"longitude": -79.91661932
+},
+{
+"id": "234207751",
+"description": "Bakery Square Blvd - Penn Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45614189,
+"longitude": -79.91545595
+},
+{
+"id": "304144050",
+"description": "Butler St - 55Th St",
+"operation_type": "Semi Actuated",
+"latitude": 40.48359826,
+"longitude": -79.94991065
+},
+{
+"id": "715836300",
+"description": "Carson St - Sarah St",
+"operation_type": "Fixed",
+"latitude": 40.42409851,
+"longitude": -79.962486
+},
+{
+"id": "27827760",
+"description": "Penn Ave - Spirit St",
+"operation_type": "Semi Actuated",
+"latitude": 40.46031497,
+"longitude": -79.92166916
+},
+{
+"id": "1391678132",
+"description": "Annie Pl - Centre Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.46029497,
+"longitude": -79.92395116
+},
+{
+"id": "146879751",
+"description": "Brookline Blvd - Queensboro Ave - Starkamp St",
+"operation_type": "Semi Actuated",
+"latitude": 40.39183984,
+"longitude": -80.01677144
+},
+{
+"id": "1069737164",
+"description": "Baum Blvd - Graham Pl",
+"operation_type": "Fully Actuated",
+"latitude": 40.45742448,
+"longitude": -79.93695152
+},
+{
+"id": "109095011",
+"description": "Fifth Ave -University Pl",
+"operation_type": "Fixed",
+"latitude": 40.44380517,
+"longitude": -79.95568009
+},
+{
+"id": "1372296686",
+"description": "Baum Blvd - Luna Driveway",
+"operation_type": "Fully Actuated",
+"latitude": 40.45544763,
+"longitude": -79.94376139
+},
+{
+"id": "1853636852",
+"description": "Smallman St - 13th St",
+"operation_type": "Semi Actuated",
+"latitude": 40.44714281,
+"longitude": -79.99180694
+},
+{
+"id": "349604133",
+"description": "Highland Ave -Spirit St",
+"operation_type": "Fully Actuated",
+"latitude": 40.45929997,
+"longitude": -79.92509016
+},
+{
+"id": "371609836",
+"description": "Centre Ave -Fullerton St",
+"operation_type": "Fully Actuated",
+"latitude": 40.44054786,
+"longitude": -79.98842437
+},
+{
+"id": "166116047",
+"description": "Baum Blvd - Melwood Ave",
+"operation_type": "Fixed",
+"latitude": 40.4540384,
+"longitude": -79.951945
+},
+{
+"id": "715321095",
+"description": "Lane Control Lc#1   Rt51",
+"operation_type": null,
+"latitude": 40.43332264,
+"longitude": -80.02844056
+},
+{
+"id": "570711095",
+"description": "Lane Control Lc#2",
+"operation_type": null,
+"latitude": 40.43752411,
+"longitude": -80.03305396
+},
+{
+"id": "1464539034",
+"description": "Lane Control Lc#3   Rt51",
+"operation_type": null,
+"latitude": 40.44121906,
+"longitude": -80.0308921
+},
+{
+"id": "2029517080",
+"description": "Aiken Ave - Walnut St",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.45064259,
+"longitude": -79.93550596
+},
+{
+"id": "985147153",
+"description": "Baum Blvd - Millvale Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45439121,
+"longitude": -79.94767676
+},
+{
+"id": "181739837",
+"description": "Baum Blvd - Morewood Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45497769,
+"longitude": -79.94521652
+},
+{
+"id": "435724848",
+"description": "Baum Blvd - Negley Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45835939,
+"longitude": -79.93382206
+},
+{
+"id": "911328080",
+"description": "Baum Blvd - Roup Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45812699,
+"longitude": -79.93460043
+},
+{
+"id": "908093154",
+"description": "Bausman St - Saw Mill Run Blvd",
+"operation_type": "Fully Actuated",
+"latitude": 40.41109516,
+"longitude": -80.00608933
+},
+{
+"id": "1182495922",
+"description": "Bayard St - Bellefield Ave",
+"operation_type": "Fixed / Ped Actuated",
+"latitude": 40.44836628,
+"longitude": -79.95272713
+},
+{
+"id": "246969556",
+"description": "Bayard St - Bigelow Blvd",
+"operation_type": "Fixed",
+"latitude": 40.44762441,
+"longitude": -79.95375195
+},
+{
+"id": "1175243296",
+"description": "Bayard St - Craig St",
+"operation_type": "Fully Actuated",
+"latitude": 40.44980844,
+"longitude": -79.9507412
+},
+{
+"id": "1949317724",
+"description": "Bayard St - Morewood Ave",
+"operation_type": "Fixed",
+"latitude": 40.45181872,
+"longitude": -79.94336637
+},
+{
+"id": "924762073",
+"description": "Bayard St - Neville St",
+"operation_type": "Fixed",
+"latitude": 40.45039988,
+"longitude": -79.94875441
+},
+{
+"id": "411157707",
+"description": "Alder St - Highland Ave",
+"operation_type": "Fixed",
+"latitude": 40.45738628,
+"longitude": -79.92520151
+},
+{
+"id": "1608169474",
+"description": "Baytree St - East ST - Perrysville Ave",
+"operation_type": "Fixed",
+"latitude": 40.48951659,
+"longitude": -80.01835071
+},
+{
+"id": "1252587291",
+"description": "Baytree St - Evergreen Rd",
+"operation_type": "Fully Actuated",
+"latitude": 40.48845669,
+"longitude": -80.0101552
+},
+{
+"id": "649270041",
+"description": "Beacon St - Murray Ave",
+"operation_type": "Fixed",
+"latitude": 40.43476158,
+"longitude": -79.92283613
+},
+{
+"id": "877866287",
+"description": "Beacon St - Shady Ave",
+"operation_type": "Fixed",
+"latitude": 40.43531929,
+"longitude": -79.91897851
+},
+{
+"id": "868247070",
+"description": "Beacon St - Wightman St",
+"operation_type": "Fixed",
+"latitude": 40.43412711,
+"longitude": -79.92761339
+},
+{
+"id": "58760704",
+"description": "Beatty St - Centre Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.45924006,
+"longitude": -79.92747074
+},
+{
+"id": "2136486972",
+"description": "Beaver Ave - Chateau St",
+"operation_type": "Fixed",
+"latitude": 40.45584181,
+"longitude": -80.0298382
+},
+{
+"id": "273681944",
+"description": "Becks Run Rd - Brownsville Rd",
+"operation_type": "Fixed",
+"latitude": 40.38733264,
+"longitude": -79.98380122
+},
+{
+"id": "1326079451",
+"description": "Becks Run Rd - Carson St",
+"operation_type": "Fully Actuated",
+"latitude": 40.41103228,
+"longitude": -79.95552654
+},
+{
+"id": "770003264",
+"description": "Bedford Ave - Crawford St",
+"operation_type": "Fixed",
+"latitude": 40.4440581,
+"longitude": -79.98813933
+},
+{
+"id": "1470969083",
+"description": "Alexander St - Main St",
+"operation_type": "Fixed",
+"latitude": 40.44121104,
+"longitude": -80.03405627
+},
+{
+"id": "462019118",
+"description": "Bedford Ave - Herron Ave - Webster Ave",
+"operation_type": "Fully Actuated",
+"latitude": 40.45289115,
+"longitude": -79.96492807
+},
+{
+"id": "42942322",
+"description": "Bedford Ave - Washington Pl",
+"operation_type": "Fixed",
+"latitude": 40.44166098,
+"longitude": -79.99203735
+},
+{
+"id": "301063214",
+"description": "Beechwood Blvd - Browns Hill Rd - Hazelwood Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.41961551,
+"longitude": -79.92715453
+},
+{
+"id": "24837481",
+"description": "Beechwood Blvd - Fifth Ave",
+"operation_type": "Semi Actuated",
+"latitude": 40.45362194,
+"longitude": -79.91535751
+},
+{
+"id": "1732134566",
+"description": "Beechwood Blvd - Forbes Ave",
+"operation_type": "Fixed",
+"latitude": 40.43804373,
+"longitude": -79.91614851
+},
+{
+"id": "2091509998",
+"description": "Beechwood Blvd - Forward Ave",
+"operation_type": "Fixed",
+"latitude": 40.42792429,
+"longitude": -79.91611828
+},
+{
+"id": "103297690",
+"description": "Beechwood Blvd - Lilac St",
+"operation_type": "Fixed",
+"latitude": 40.42305107,
+"longitude": -79.9275829
+},
+{
+"id": "1239438940",
+"description": "Beechwood Blvd - Linden Ave - Wilkins Ave",
+"operation_type": "Fixed",
+"latitude": 40.44433428,
+"longitude": -79.91777957
+},
+{
+"id": "197533606",
+"description": "Beechwood Blvd - Northumberland St",
+"operation_type": "Fixed",
+"latitude": 40.44229374,
+"longitude": -79.91717851
+},
+{
+"id": "9330691",
+"description": "Beechwood Blvd - Phillips Ave",
+"operation_type": "Fixed",
+"latitude": 40.43263176,
+"longitude": -79.91512897
+},
+{
+"id": "1408515689",
+"description": "RRFB - Forbes Ave and Boyd St",
+"operation_type": null,
+"latitude": 40.43804036,
+"longitude": -79.99323755
+},
+{
+"id": "287632566",
+"description": "RRFB - Liberty Ave and 29th St",
+"operation_type": null,
+"latitude": 40.457339,
+"longitude": -79.97347896
+},
+{
+"id": "81814505",
+"description": "Bedford Ave - Logan St",
+"operation_type": "Fully Actuated",
+"latitude": 40.44281779,
+"longitude": -79.99088288
+},
+{
+"id": "1555867661",
+"description": "Centre Ave - Logan St",
+"operation_type": "Fully Actuated",
+"latitude": 40.44054351,
+"longitude": -79.98927971
+},
+{
+"id": "1338578659",
+"description": "Forbes Ave - Gist St",
+"operation_type": "Fixed",
+"latitude": 40.43744832,
+"longitude": -79.97952584
+},
+{
+"id": "823311999",
+"description": "RRFB - 14th St and Smallman St",
+"operation_type": null,
+"latitude": 40.44794348,
+"longitude": -79.99057043
+},
+{
+"id": "1220314122",
+"description": "RRFB - N Shore Dr",
+"operation_type": null,
+"latitude": 40.44603651,
+"longitude": -80.01068227
+},
+{
+"id": "921244871",
+"description": "Brashear High School",
+"operation_type": null,
+"latitude": 40.4187126,
+"longitude": -80.01791151
+},
+{
+"id": "1779953525",
+"description": "St Edmond's Academy School",
+"operation_type": null,
+"latitude": 40.43747628,
+"longitude": -79.92464531
+},
+{
+"id": "1651867340",
+"description": "Butler St - Suydam",
+"operation_type": "Fully Actuated",
+"latitude": 40.48667621,
+"longitude": -79.94220703
+},
+{
+"id": "107084279",
+"description": "Banksville Elementary School",
+"operation_type": null,
+"latitude": 40.40719824,
+"longitude": -80.03694342
+},
+{
+"id": "1549420463",
+"description": "FAISON INTERMEDIATE (CLOSED)",
+"operation_type": null,
+"latitude": 40.45250941,
+"longitude": -79.89427485
+},
+{
+"id": "775542206",
+"description": "St Rosalia School (Closed)",
+"operation_type": null,
+"latitude": 40.42575538,
+"longitude": -79.94394692
+},
+{
+"id": "428442419",
+"description": "DePaul Institute  (Sacred Heart) School",
+"operation_type": null,
+"latitude": 40.45664867,
+"longitude": -79.92336331
+},
+{
+"id": "557434659",
+"description": "ST. STEPHEN [CLOSED]",
+"operation_type": null,
+"latitude": 40.40710533,
+"longitude": -79.94186085
+},
+{
+"id": "1941962883",
+"description": "WPA School for the Blind",
+"operation_type": null,
+"latitude": 40.44988624,
+"longitude": -79.95310613
+},
+{
+"id": "1674675301",
+"description": "Winchester Thurston School",
+"operation_type": null,
+"latitude": 40.45150818,
+"longitude": -79.94247348
+},
+{
+"id": "691914902",
+"description": "INCARNATION ACADEMY [CLOSED]",
+"operation_type": null,
+"latitude": 40.49269423,
+"longitude": -80.0201863
+},
+{
+"id": "1356486024",
+"description": "Yeshiva (Girls School)",
+"operation_type": null,
+"latitude": 40.43852571,
+"longitude": -79.91734042
+},
+{
+"id": "1023751888",
+"description": "Grandview School",
+"operation_type": null,
+"latitude": 40.42454213,
+"longitude": -79.99281473
+},
+{
+"id": "986882660",
+"description": "CRAIGHOUSE TECHNOMA (CLOSED)",
+"operation_type": null,
+"latitude": 40.47116827,
+"longitude": -79.92683607
+},
+{
+"id": "1461849415",
+"description": "Schiller School",
+"operation_type": null,
+"latitude": 40.45643342,
+"longitude": -79.99312323
+},
+{
+"id": "957603343",
+"description": "ST. MATTHEWS SCHOOL [CLOSED]",
+"operation_type": null,
+"latitude": 40.45699418,
+"longitude": -79.99999102
+},
+{
+"id": "619147172",
+"description": "Ped Crossing - 4Th Ave And PPG Place",
+"operation_type": null,
+"latitude": 40.44003731,
+"longitude": -80.00303327
+},
+{
+"id": "1702522643",
+"description": "Ped Crossing - 5862 Forbes Ave",
+"operation_type": null,
+"latitude": 40.43803993,
+"longitude": -79.92043961
+},
+{
+"id": "573523758",
+"description": "Ped Crossing - 1000 Brownsville Rd",
+"operation_type": null,
+"latitude": 40.40677267,
+"longitude": -79.99228268
+},
+{
+"id": "691161214",
+"description": "Dilworth School",
+"operation_type": null,
+"latitude": 40.46822563,
+"longitude": -79.91735328
+},
+{
+"id": "1869929446",
+"description": "McCleary Pre-School (Closed)",
+"operation_type": null,
+"latitude": 40.48030991,
+"longitude": -79.95124884
+},
+{
+"id": "2032161632",
+"description": "Falk School",
+"operation_type": null,
+"latitude": 40.44704701,
+"longitude": -79.95972857
+},
+{
+"id": "551638088",
+"description": "Warning Sign - Brighton Rd And Acacia Ln",
+"operation_type": null,
+"latitude": 40.47999875,
+"longitude": -80.03128651
+},
+{
+"id": "1158337104",
+"description": "Warning - East St Near Madison Ave",
+"operation_type": null,
+"latitude": 40.4595404,
+"longitude": -79.99873074
+},
+{
+"id": "331421437",
+"description": "Imani Christian Academy School",
+"operation_type": null,
+"latitude": 40.45317854,
+"longitude": -79.87248919
+},
+{
+"id": "1187054101",
+"description": "Warning - Steuben St Near Herschel St",
+"operation_type": null,
+"latitude": 40.44282945,
+"longitude": -80.04441814
+},
+{
+"id": "392673269",
+"description": "Community Day School",
+"operation_type": null,
+"latitude": 40.42740833,
+"longitude": -79.91788347
+},
+{
+"id": "846208481",
+"description": "Ped Crossing - Centre Ave (Hill House)",
+"operation_type": null,
+"latitude": 40.44336383,
+"longitude": -79.9806928
+},
+{
+"id": "2110544957",
+"description": "Warning - Panther Hollow Anderson Playground",
+"operation_type": null,
+"latitude": 40.43565306,
+"longitude": -79.94749788
+},
+{
+"id": "1544515301",
+"description": "Childrens Institute School",
+"operation_type": null,
+"latitude": 40.44315066,
+"longitude": -79.91996667
+},
+{
+"id": "419725968",
+"description": "Ped Crossing - River Ave",
+"operation_type": null,
+"latitude": 40.46060955,
+"longitude": -79.98210894
+},
+{
+"id": "1201961587",
+"description": "Warning - Second Ave And Swinburne St",
+"operation_type": null,
+"latitude": 40.42595234,
+"longitude": -79.95376145
+},
+{
+"id": "227387572",
+"description": "Arlington School (Closed)",
+"operation_type": null,
+"latitude": 40.41720288,
+"longitude": -79.97160304
+},
+{
+"id": "1574994564",
+"description": "Ped Crossing - S Braddock Ave And Biddle Ave",
+"operation_type": null,
+"latitude": 40.43690137,
+"longitude": -79.89644469
+},
+{
+"id": "108162291",
+"description": "Urban League G.P Charter School (Closed)",
+"operation_type": null,
+"latitude": 40.46228907,
+"longitude": -79.90992843
+},
+{
+"id": "1778263797",
+"description": "Warning Radar Limit Sign - 40Th St",
+"operation_type": null,
+"latitude": 40.46718825,
+"longitude": -79.9603302
+},
+{
+"id": "1520279679",
+"description": "Environmental Charter School",
+"operation_type": null,
+"latitude": 40.44496112,
+"longitude": -79.89578027
+},
+{
+"id": "443117040",
+"description": "RRFB - W Ohio St and Ridge Ave",
+"operation_type": null,
+"latitude": 40.45161738,
+"longitude": -80.01122943
+},
+{
+"id": "378744786",
+"description": "Watson Institute School",
+"operation_type": null,
+"latitude": 40.46114786,
+"longitude": -79.93178363
+},
+{
+"id": "1212335100",
+"description": "Pittsburgh Montessori School",
+"operation_type": null,
+"latitude": 40.46240687,
+"longitude": -79.9356001
+},
+{
+"id": "621278366",
+"description": "Fulton School",
+"operation_type": null,
+"latitude": 40.47498054,
+"longitude": -79.92210853
+},
+{
+"id": "408275157",
+"description": "MORNINGSIDE SCHOOL    [CLOSED]",
+"operation_type": null,
+"latitude": 40.4861583,
+"longitude": -79.92589157
+},
+{
+"id": "1029047981",
+"description": "HOMEWOOD PRE-SCHOOL (CLOSED)",
+"operation_type": null,
+"latitude": 40.45465097,
+"longitude": -79.8994247
+},
+{
+"id": "473558409",
+"description": "Martin Luther King School",
+"operation_type": null,
+"latitude": 40.45484791,
+"longitude": -80.00461449
+},
+{
+"id": "57300805",
+"description": "LINCOLN INTERMEDIATE (CLOSED)",
+"operation_type": null,
+"latitude": 40.4609822,
+"longitude": -79.89683256
+},
+{
+"id": "1958229601",
+"description": "LEMINGTON SCHOOL [CLOSED]",
+"operation_type": null,
+"latitude": 40.47011323,
+"longitude": -79.89652613
+},
+{
+"id": "471412582",
+"description": "Liberty Elementary School",
+"operation_type": null,
+"latitude": 40.45323386,
+"longitude": -79.93349052
+},
+{
+"id": "1787441882",
+"description": "Lincoln Primary School",
+"operation_type": null,
+"latitude": 40.46000836,
+"longitude": -79.91155575
+},
+{
+"id": "1962748043",
+"description": "Linden School",
+"operation_type": null,
+"latitude": 40.44554415,
+"longitude": -79.91621442
+},
+{
+"id": "1299631356",
+"description": "MADISON SCHOOL  [CLOSED]",
+"operation_type": null,
+"latitude": 40.45481014,
+"longitude": -79.96115534
+},
+{
+"id": "1078132826",
+"description": "Manchester School",
+"operation_type": null,
+"latitude": 40.45648471,
+"longitude": -80.02652978
+},
+{
+"id": "790567418",
+"description": "McKelvy Miller African Academy School",
+"operation_type": null,
+"latitude": 40.44736515,
+"longitude": -79.98139267
+},
+{
+"id": "1978737105",
+"description": "Mifflin School",
+"operation_type": null,
+"latitude": 40.37000854,
+"longitude": -79.91509843
+},
+{
+"id": "236697131",
+"description": "John Minadeo School",
+"operation_type": null,
+"latitude": 40.42375533,
+"longitude": -79.92522943
+},
+{
+"id": "1753336656",
+"description": "John Morrow Elementary School",
+"operation_type": null,
+"latitude": 40.48012245,
+"longitude": -80.03979348
+},
+{
+"id": "180410284",
+"description": "PHILLIP MURRAY(ALA)CLOSED 2012",
+"operation_type": null,
+"latitude": 40.40913819,
+"longitude": -79.97929418
+},
+{
+"id": "560649704",
+"description": "NORTHVIEW ELEM ALA CLOSED 2012",
+"operation_type": null,
+"latitude": 40.48123036,
+"longitude": -80.00432467
+},
+{
+"id": "102740357",
+"description": "Phillips School",
+"operation_type": null,
+"latitude": 40.42798562,
+"longitude": -79.97827904
+},
+{
+"id": "522232198",
+"description": "ROGERS SCHOOL (CLOSED)",
+"operation_type": null,
+"latitude": 40.46919771,
+"longitude": -79.93061017
+},
+{
+"id": "914186294",
+"description": "SCHAEFFER INTERM (CLOSED 2012)",
+"operation_type": null,
+"latitude": 40.45430901,
+"longitude": -80.05535221
+},
+{
+"id": "1258652617",
+"description": "Spring Garden Pre-School",
+"operation_type": null,
+"latitude": 40.46431324,
+"longitude": -79.98542254
+},
+{
+"id": "942873758",
+"description": "Greentree & Hamburg Special School",
+"operation_type": null,
+"latitude": 40.42379468,
+"longitude": -80.04269352
+},
+{
+"id": "1840904161",
+"description": "HORACE MANN SCHOOL    [CLOSED]",
+"operation_type": null,
+"latitude": 40.47033237,
+"longitude": -80.03113966
+},
+{
+"id": "909218040",
+"description": "ELIZABETH SETON (CLOSED)",
+"operation_type": null,
+"latitude": 40.45575575,
+"longitude": -80.05567109
+},
+{
+"id": "1771272482",
+"description": "BELTZHOOVER SCHOOL    [CLOSED]",
+"operation_type": null,
+"latitude": 40.41799109,
+"longitude": -80.00181692
+},
+{
+"id": "1537621726",
+"description": "Warning Sign - E Ohio St Near Heinz",
+"operation_type": null,
+"latitude": 40.45601457,
+"longitude": -79.99134353
+},
+{
+"id": "2043102099",
+"description": "Spring Hill School",
+"operation_type": null,
+"latitude": 40.46525785,
+"longitude": -79.98952419
+},
+{
+"id": "446836776",
+"description": "Brookline School",
+"operation_type": null,
+"latitude": 40.39436325,
+"longitude": -80.02474862
+},
+{
+"id": "857278976",
+"description": "Sunnyside School",
+"operation_type": null,
+"latitude": 40.48157678,
+"longitude": -79.93347601
+},
+{
+"id": "514479185",
+"description": "Leo Weil School",
+"operation_type": null,
+"latitude": 40.4446113,
+"longitude": -79.97407129
+},
+{
+"id": "1301885130",
+"description": "Westwood School",
+"operation_type": null,
+"latitude": 40.4318771,
+"longitude": -80.05104442
+},
+{
+"id": "930589246",
+"description": "Woolslair School",
+"operation_type": null,
+"latitude": 40.46337484,
+"longitude": -79.95710274
+},
+{
+"id": "280729096",
+"description": "VANN SCHOOL (CLOSED)",
+"operation_type": null,
+"latitude": 40.44950379,
+"longitude": -79.97125023
+},
+{
+"id": "469795792",
+"description": "Arsenal School",
+"operation_type": null,
+"latitude": 40.46769533,
+"longitude": -79.96251218
+},
+{
+"id": "1435613290",
+"description": "COLUMBUS SCHOOL  [CLOSED]",
+"operation_type": null,
+"latitude": 40.46005605,
+"longitude": -80.01586048
+},
+{
+"id": "746489088",
+"description": "Pittsburgh Classic Academy (Greenway) School",
+"operation_type": null,
+"latitude": 40.44863348,
+"longitude": -80.04972515
+},
+{
+"id": "373712998",
+"description": "KNOXVILLE             [CLOSED]",
+"operation_type": null,
+"latitude": 40.41614723,
+"longitude": -79.99425412
+},
+{
+"id": "1883963938",
+"description": "University Prep (Millones) School",
+"operation_type": null,
+"latitude": 40.4498223,
+"longitude": -79.96247122
+},
+{
+"id": "1976047490",
+"description": "REIZENSTEIN  (CLOSED 2012)",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1874085008",
+"description": "Sterrett School",
+"operation_type": null,
+"latitude": 40.44663667,
+"longitude": -79.90547662
+},
+{
+"id": "271184448",
+"description": "Conroy Education Center",
+"operation_type": null,
+"latitude": 40.45174496,
+"longitude": -80.0247701
+},
+{
+"id": "970112126",
+"description": "WASHINGTON EDUCATION  [CLOSED]",
+"operation_type": null,
+"latitude": 40.46952808,
+"longitude": -79.96277706
+},
+{
+"id": "93819084",
+"description": "Allderdice High School",
+"operation_type": null,
+"latitude": 40.42962819,
+"longitude": -79.91942389
+},
+{
+"id": "85783904",
+"description": "Carrick High School",
+"operation_type": null,
+"latitude": 40.39071693,
+"longitude": -79.98920956
+},
+{
+"id": "1414281445",
+"description": "Langley Elementary School",
+"operation_type": null,
+"latitude": 40.45432921,
+"longitude": -80.05539564
+},
+{
+"id": "1740561956",
+"description": "Oliver Citywide Academy School",
+"operation_type": null,
+"latitude": 40.46427996,
+"longitude": -80.02451742
+},
+{
+"id": "137537587",
+"description": "Carmalt Elementary School",
+"operation_type": null,
+"latitude": 40.38755187,
+"longitude": -80.00685913
+},
+{
+"id": "1520608401",
+"description": "Obama School (Formerly Peabody)",
+"operation_type": null,
+"latitude": 40.46709821,
+"longitude": -79.92321865
+},
+{
+"id": "1725740244",
+"description": "Perry High School",
+"operation_type": null,
+"latitude": 40.4891385,
+"longitude": -80.01896763
+},
+{
+"id": "1149202780",
+"description": "ST. AGNES (CLOSED 2011)",
+"operation_type": null,
+"latitude": 40.43847714,
+"longitude": -79.96510785
+},
+{
+"id": "855635976",
+"description": "Roosevelt Elementary (St. Basil) School",
+"operation_type": null,
+"latitude": 40.39768639,
+"longitude": -79.9877541
+},
+{
+"id": "101371225",
+"description": "St Bede School",
+"operation_type": null,
+"latitude": 40.44714727,
+"longitude": -79.91032706
+},
+{
+"id": "1929346181",
+"description": "Canevin School",
+"operation_type": null,
+"latitude": 40.4230227,
+"longitude": -80.07090751
+},
+{
+"id": "1873934483",
+"description": "Chartiers Pre-School",
+"operation_type": null,
+"latitude": 40.45761054,
+"longitude": -80.07594257
+},
+{
+"id": "1243500181",
+"description": "Central Catholic High School",
+"operation_type": null,
+"latitude": 40.44691057,
+"longitude": -79.94589885
+},
+{
+"id": "2116674242",
+"description": "North Side Catholic School",
+"operation_type": null,
+"latitude": 40.48628526,
+"longitude": -80.03606907
+},
+{
+"id": "807312439",
+"description": "Ellis School",
+"operation_type": null,
+"latitude": 40.4537499,
+"longitude": -79.91809838
+},
+{
+"id": "1853069543",
+"description": "ST. BENEDICT THE MOOR (Closed)",
+"operation_type": null,
+"latitude": 40.44951808,
+"longitude": -79.97124755
+},
+{
+"id": "507518740",
+"description": "Colfax School",
+"operation_type": null,
+"latitude": 40.43314168,
+"longitude": -79.91542176
+},
+{
+"id": "1237502376",
+"description": "Hillel Academy School",
+"operation_type": null,
+"latitude": 40.43497305,
+"longitude": -79.9250324
+},
+{
+"id": "1374892240",
+"description": "Holy Rosary School (Closed)",
+"operation_type": null,
+"latitude": 40.45552599,
+"longitude": -79.89816806
+},
+{
+"id": "319241588",
+"description": "St Maria Goretti (Immaculate Conception) School",
+"operation_type": null,
+"latitude": 40.46183379,
+"longitude": -79.9476908
+},
+{
+"id": "1980112935",
+"description": "BISHOP LEONARD REG. [CLOSED]",
+"operation_type": null,
+"latitude": 40.41247312,
+"longitude": -79.97974222
+},
+{
+"id": "462579314",
+"description": "BROOKLINE REG CATH #1 [CLOSED]",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "637196195",
+"description": "ST.JOHN NEUMAN ELEM (CLOSED)",
+"operation_type": null,
+"latitude": 40.47027957,
+"longitude": -79.95897444
+},
+{
+"id": "1953627579",
+"description": "Concord School",
+"operation_type": null,
+"latitude": 40.38736065,
+"longitude": -79.98480984
+},
+{
+"id": "866484208",
+"description": "ST. MARY OF THE MOUNT (CLOSED)",
+"operation_type": null,
+"latitude": 40.4352525,
+"longitude": -80.01438589
+},
+{
+"id": "730034733",
+"description": "Oakland Catholic High School",
+"operation_type": null,
+"latitude": 40.449034,
+"longitude": -79.94980581
+},
+{
+"id": "1234723155",
+"description": "Provident Charter School",
+"operation_type": null,
+"latitude": 40.46060744,
+"longitude": -79.98552198
+},
+{
+"id": "858773013",
+"description": "Allegheny Traditional School",
+"operation_type": null,
+"latitude": 40.45345911,
+"longitude": -80.00842329
+},
+{
+"id": "1768901860",
+"description": "St. John Bosco Academy (CLOSED)",
+"operation_type": null,
+"latitude": 40.39565631,
+"longitude": -80.02901845
+},
+{
+"id": "850832401",
+"description": "St Raphael School (Closed)",
+"operation_type": null,
+"latitude": 40.47809067,
+"longitude": -79.92869732
+},
+{
+"id": "286021892",
+"description": "Forbes Ave - Tepper Driveway",
+"operation_type": "Fully Actuated",
+"latitude": 40.44458253,
+"longitude": -79.94639463
+},
+{
+"id": "1496727504",
+"description": "Forbes Ave  - Cyert Hall",
+"operation_type": null,
+"latitude": 40.44463291,
+"longitude": -79.94445311
+},
+{
+"id": "1525575818",
+"description": "Washington Blvd - Emergency Flood Gate",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1858411412",
+"description": "USX Antenna",
+"operation_type": null,
+"latitude": 40.44123693,
+"longitude": -79.99469073
+},
+{
+"id": "917216910",
+"description": "Sign Control N.E.L.T",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "373724741",
+"description": "Sign Control S.E.L.T",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "38843963",
+"description": "Scoreboard - Liberty Brg",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1870861204",
+"description": "West End Brg  6 - Daktronic Signs",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1247017832",
+"description": "Lane Control Lc#4   X-Arr + 1 Fo Sign",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1877212468",
+"description": "Lane Control Lc#5  X-Arr",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1026092138",
+"description": "Lane Control Lc#6  X-Arr",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "494879545",
+"description": "Lane Control Lc#7   X-Arr",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "370070705",
+"description": "Lane Control Lc#8  Lt Signs",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1131175059",
+"description": "Lane Control Lc#9  X-Arr",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "499740732",
+"description": "Mux/Tc#1 Blvd of the Allies @ Grant St",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1639735913",
+"description": "Mux/Tc#2 Forbes Ave @ Grant St",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "374945454",
+"description": "Mux/Tc#3 Grant St @ 6Th Ave",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "2001947886",
+"description": "Mux/Tc#4 Liberty Ave @ 6Th Ave/7Th St",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1570399476",
+"description": "Mux/Tc#5 Fort Duquesne Blvd @ 6Th St Bridge",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "843615672",
+"description": "Mux/Tc#6 Stanwix St @ Forbes Ave",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "809264802",
+"description": "Mux/Tc#7 Forbes Ave @ Armstrong Tunnels",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1617391330",
+"description": "West Liberty Ave Repeater",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1572316087",
+"description": "Penn Ave - Repeater",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "81963683",
+"description": "Second Ave - Blair St",
+"operation_type": "Fully Actuated",
+"latitude": 40.42738986,
+"longitude": -79.95518708
+},
+{
+"id": "1196440031",
+"description": "W Carson St - Speed Control",
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1754333894",
+"description": "McArdle Sign Control Liberty Bridge",
+"operation_type": null,
+"latitude": 40.42900698,
+"longitude": -79.99953042
+},
+{
+"id": "1033839045",
+"description": "Forbes Ave - Lawrence Hall",
+"operation_type": null,
+"latitude": 40.442727,
+"longitude": -79.95523507
+},
+{
+"id": "825834781",
+"description": "Faison School",
+"operation_type": null,
+"latitude": 40.45217139,
+"longitude": -79.89443131
+},
+{
+"id": "1955949291",
+"description": "Penn Ave - Sally's Path",
+"operation_type": "Fully Actuated",
+"latitude": 40.45663416,
+"longitude": -79.91623183
+},
+{
+"id": "1563096966",
+"description": "RRFB - Chateau and Juniata",
+"operation_type": null,
+"latitude": 40.45644922,
+"longitude": -80.0291215
+},
+{
+"id": "757243668",
+"description": "RRFB - Cohassett and Grandview",
+"operation_type": null,
+"latitude": 40.43778745,
+"longitude": -80.01821918
+},
+{
+"id": "1687028145",
+"description": "RRFB - 40th and Davison",
+"operation_type": null,
+"latitude": 40.46759572,
+"longitude": -79.96092907
+},
+{
+"id": "1973209422",
+"description": "RRFB - Marion Street",
+"operation_type": null,
+"latitude": 40.43616885,
+"longitude": -79.98434733
+},
+{
+"id": "1192275495",
+"description": "Clyde St - Fifth Avenue",
+"operation_type": null,
+"latitude": 40.44725085,
+"longitude": -79.94534436
+},
+{
+"id": "854480118",
+"description": "RRFB - Shady and Pittock",
+"operation_type": null,
+"latitude": 40.42997188,
+"longitude": -79.92032569
+},
+{
+"id": "994278722",
+"description": null,
+"operation_type": null,
+"latitude": null,
+"longitude": null
+},
+{
+"id": "1113074895",
+"description": "RRFB - Shady Alder",
+"operation_type": null,
+"latitude": 40.45681394,
+"longitude": -79.92243683
+},
+{
+"id": "1150087908",
+"description": "Butler St - 39th St",
+"operation_type": null,
+"latitude": 40.46755392,
+"longitude": -79.96371702
+},
+{
+"id": "1741138031",
+"description": "Smallman St - 15th St",
+"operation_type": null,
+"latitude": 40.44870471,
+"longitude": -79.98933883
+},
+{
+"id": "1614046252",
+"description": "Flashing Beacon and Speed Minder",
+"operation_type": null,
+"latitude": 40.42675082,
+"longitude": -79.92702652
+},
+{
+"id": "1830263951",
+"description": "Flashing Warning Device - Carson St - S 2nd St",
+"operation_type": null,
+"latitude": 40.43012993,
+"longitude": -79.99906586
+},
+{
+"id": "2132586828",
+"description": "RRFB - Carson St - Terminal Way",
+"operation_type": null,
+"latitude": 40.42943542,
+"longitude": -79.99706426
+},
+{
+"id": "1367398325",
+"description": "Sycamore St Approach",
+"operation_type": null,
+"latitude": 40.43024087,
+"longitude": -80.00061551
+},
+{
+"id": "2116421282",
+"description": "Pioneer Avenue at Seton Center Driveway",
+"operation_type": null,
+"latitude": 40.40337538,
+"longitude": -80.01555791
+}
+]
+}

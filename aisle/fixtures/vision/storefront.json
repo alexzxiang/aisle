@@ -1,0 +1,12 @@
+{
+  "question": "storefront",
+  "note": "Keyed by seq; '*' is the default. Hard cases: seq 2 low confidence, seq 3 malformed body, seq 4 four-second timeout, seq 5 stale seq (lower than the last applied — must be dropped, never spoken).",
+  "entries": [
+    { "seq": 1, "delayMs": 900, "response": { "speech": "Store entrance ahead.", "storefront": { "visible": true, "confidence": 0.86 }, "confidence": 0.86 } },
+    { "seq": 2, "delayMs": 1100, "response": { "speech": "", "storefront": { "visible": true, "confidence": 0.3 }, "confidence": 0.3 } },
+    { "seq": 3, "delayMs": 600, "malformed": true, "body": "{\"speech\": \"Store entrance" },
+    { "seq": 4, "timeoutMs": 4000 },
+    { "seq": 5, "delayMs": 700, "response": { "speech": "Store entrance ahead.", "storefront": { "visible": true, "confidence": 0.8 }, "confidence": 0.8, "seq": 1 } },
+    { "seq": "*", "delayMs": 850, "response": { "speech": "", "storefront": { "visible": true, "confidence": 0.82 }, "confidence": 0.82 } }
+  ]
+}
