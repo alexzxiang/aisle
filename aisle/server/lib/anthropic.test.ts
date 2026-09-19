@@ -133,3 +133,32 @@ describe('which questions get the stronger model', () => {
     expect(visionTimeoutFor('curb_crop')).toBeLessThan(visionTimeoutFor('task_step'));
   });
 });
+
+describe('token usage', () => {
+  const req = sampleRequest({ seq: 1 });
+
+  it('reports input, output and cache counts from the stream', async () => {
+    const stream = fakeClaude({ speech: 'Doors ahead.', usage: { input_tokens: 1300, cache_read_input_tokens: 1228, cache_creation_input_tokens: 0 } });
+    const r = await runVision(req, {}, { stream });
+    expect(r.usage).toEqual({ inputTokens: 1300, outputTokens: 10, cacheReadTokens: 1228, cacheWriteTokens: 0 });
+  });
+
+  it('reports usage even when the answer is unusable, so a failed call is still costed', async () => {
+    const stream = fakeClaude({ speech: 'Hi.', stopReason: 'max_tokens' });
+    const r = await runVision(req, {}, { stream });
+    expect(r.response).toBeNull();
+    expect(r.usage?.inputTokens).toBe(1200);
+  });
+
+  it('is null when the stream dies before it says anything', async () => {
+    const stream = fakeClaude({ throwError: new Error('socket hang up') });
+    expect((await runVision(req, {}, { stream })).usage).toBeNull();
+  });
+
+  // The whole point of logging usage: a prompt under the model's minimum caches silently-not-at-all.
+  it('shows a cache miss as zero reads rather than an error', async () => {
+    const stream = fakeClaude({ speech: 'Hi.', usage: { input_tokens: 802, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } });
+    const r = await runVision(req, {}, { stream });
+    expect(r.usage).toMatchObject({ inputTokens: 802, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  });
+});

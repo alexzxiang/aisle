@@ -12,9 +12,19 @@ export interface PlanAttempt {
 }
 
 /** Five completed or deadline-limited samples; cancellations are not latency samples. */
+/**
+ * How many recent log lines to look through for those samples. This runs before every planner
+ * call, and reading the whole buffer to use ten samples measured 10 ms at the 50k-line cap.
+ * The budget is generous because most `nim` attempts are cancelled once it loses a race — a
+ * live run had 50 cancellations in 60 calls — and cancellations are not latency samples.
+ * Bounding it also keeps the median rolling: a switch about current latency should not reach
+ * back hours into the retention window to fill its window.
+ */
+export const PLANNER_SAMPLE_LINES = 200;
+
 export function plannerPrimary(job: PlannerJob, log: RequestLog): 'nim' | 'anthropic' {
   if (job !== 'parseIntent') return 'nim';
-  const samples = log.recent({ route: 'plan', key: job })
+  const samples = log.tail(PLANNER_SAMPLE_LINES, { route: 'plan', key: job })
     .flatMap((line) => (line.extra?.attempts ?? []) as PlanAttempt[])
     .filter((a) => a.provider === 'nim' && ['valid', 'invalid', 'timeout'].includes(a.status))
     .slice(-10).map((a) => a.elapsedMs).sort((a, b) => a - b);

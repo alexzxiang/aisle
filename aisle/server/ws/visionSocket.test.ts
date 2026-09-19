@@ -154,7 +154,7 @@ describe('/ws vision → speech relay', () => {
 
   it('a Claude timeout yields { confidence: 0 } and closes the TTS socket', async () => {
     const tts = fakeTts();
-    const deps = fakeDeps({ vision: async (_req, hooks) => { hooks.onSpeechReady?.('', 'pass'); return { response: null, speech: '', verdict: 'pass', model: 'm', stopReason: null, firstTokenMs: null, speechClosedMs: null, totalMs: 4000, error: 'timeout' }; }, ttsFactory: () => tts });
+    const deps = fakeDeps({ vision: async (_req, hooks) => { hooks.onSpeechReady?.('', 'pass'); return { response: null, usage: null, speech: '', verdict: 'pass', model: 'm', stopReason: null, firstTokenMs: null, speechClosedMs: null, totalMs: 4000, error: 'timeout' }; }, ttsFactory: () => tts });
     srv = await startTestServer(deps, {}, (s) => attachVisionSocket(s, deps));
     const c = await connect(srv.wsUrl);
     c.ws.send(JSON.stringify({ type: 'vision', req: sampleRequest({ seq: 1 }) }));

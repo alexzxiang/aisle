@@ -32,6 +32,13 @@ export interface RequestLog {
   write(line: Omit<RequestLogLine, 'ts'> & { ts?: string }): RequestLogLine;
   /** Lines newer than the retention window, oldest first. */
   recent(filter?: Partial<Pick<RequestLogLine, 'route' | 'key' | 'provider'>>): RequestLogLine[];
+  /**
+   * The newest `limit` matching lines, oldest first — scanned from the end and stopped early.
+   * `recent()` copies and filters the whole buffer, which at the 50k cap measured 10 ms per
+   * call; callers that want the last handful (the planner's rolling median, on every job)
+   * should use this instead.
+   */
+  tail(limit: number, filter?: Partial<Pick<RequestLogLine, 'route' | 'key' | 'provider'>>): RequestLogLine[];
   size(): number;
   clear(): void;
 }
@@ -74,6 +81,17 @@ export function createRequestLog(opts: RequestLogOptions = {}): RequestLog {
       return lines
         .map((l) => l.line)
         .filter((l) => !filter || Object.entries(filter).every(([k, v]) => v === undefined || (l as unknown as Record<string, unknown>)[k] === v));
+    },
+    tail(limit, filter) {
+      prune();
+      const matches = (l: RequestLogLine): boolean =>
+        !filter || Object.entries(filter).every(([k, v]) => v === undefined || (l as unknown as Record<string, unknown>)[k] === v);
+      const out: RequestLogLine[] = [];
+      for (let i = lines.length - 1; i >= 0 && out.length < limit; i -= 1) {
+        const l = lines[i]!.line;
+        if (matches(l)) out.push(l);
+      }
+      return out.reverse();
     },
     size: () => lines.length,
     clear() {

@@ -73,6 +73,26 @@ describe('request log', () => {
     expect(log.recent().map((l) => l.seq ?? l.route)).toEqual(['tts', 2]);
     expect(log.recent({ route: 'vision' }).length).toBe(1);
   });
+
+  it('tail returns the newest matches oldest-first, and agrees with recent()', () => {
+    const log = createRequestLog({ sink: () => {} });
+    for (let i = 0; i < 100; i += 1) log.write({ route: i % 2 ? 'plan' : 'vision', key: 'parseIntent', seq: i, totalMs: 1 });
+    expect(log.tail(3, { route: 'plan' }).map((l) => l.seq)).toEqual([95, 97, 99]);
+    // Same answer as the full scan it replaces, just without copying the whole buffer.
+    expect(log.tail(50, { route: 'plan' })).toEqual(log.recent({ route: 'plan' }).slice(-50));
+    expect(log.tail(0, { route: 'plan' })).toEqual([]);
+    expect(log.tail(5, { route: 'nope' })).toEqual([]);
+  });
+
+  it('tail stops early instead of reading the whole buffer', () => {
+    const log = createRequestLog({ sink: () => {} });
+    for (let i = 0; i < 50_000; i += 1) log.write({ route: 'plan', key: 'parseIntent', seq: i, totalMs: 1 });
+    const t0 = performance.now();
+    for (let i = 0; i < 200; i += 1) log.tail(10, { route: 'plan', key: 'parseIntent' });
+    const perCall = (performance.now() - t0) / 200;
+    // recent() measured ~10 ms per call at this size; a bounded scan is orders of magnitude less.
+    expect(perCall).toBeLessThan(1);
+  });
 });
 
 describe('health service', () => {

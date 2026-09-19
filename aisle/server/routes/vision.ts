@@ -52,7 +52,7 @@ export function createVisionRouter(src: DepsSource): Router {
         route: 'vision', seq: vr.seq, key: vr.question, model: r.model, provider: 'anthropic',
         firstTokenMs: r.firstTokenMs, totalMs: Date.now() - t0, status: 200, verdict: r.response ? r.verdict : 'n/a', error: r.error,
         // `image` says whether the phone attached a still (a camera that is not producing frames shows up here first).
-        extra: { speechClosedMs: r.speechClosedMs, stopReason: r.stopReason, image: vr.image ? `${vr.image.width}x${vr.image.height}` : 'none', detections: vr.facts.detections.length },
+        extra: { speechClosedMs: r.speechClosedMs, stopReason: r.stopReason, image: vr.image ? `${vr.image.width}x${vr.image.height}` : 'none', detections: vr.facts.detections.length, usage: r.usage },
       });
       if (!r.response) {
         res.json({ confidence: 0, seq: vr.seq });

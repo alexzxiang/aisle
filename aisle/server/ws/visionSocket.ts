@@ -159,7 +159,7 @@ async function handleVision(
   try {
     const r = await deps.vision(req, { onSpeechReady });
     deps.latency.record(`vision.${req.question}`, r.totalMs);
-    logExtra = { transport: 'ws', speechClosedMs: r.speechClosedMs, stopReason: r.stopReason, model: r.model, verdict: r.verdict, firstTokenMs: r.firstTokenMs, error: r.error };
+    logExtra = { transport: 'ws', speechClosedMs: r.speechClosedMs, stopReason: r.stopReason, model: r.model, verdict: r.verdict, firstTokenMs: r.firstTokenMs, error: r.error, usage: r.usage };
     if (r.response) result = r.response;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

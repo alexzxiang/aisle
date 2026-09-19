@@ -50,6 +50,8 @@ export interface FakeClaudeOptions {
   delayMs?: number;
   /** Throw before yielding anything. */
   throwError?: Error;
+  /** Token counts on `message_start`, as the real stream reports them. */
+  usage?: { input_tokens: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
 }
 
 export function visionBody(speech: string, over: Partial<VisionResponse> = {}): string {
@@ -66,6 +68,8 @@ export function fakeClaude(opts: FakeClaudeOptions = {}): StreamFactory & { call
     const stop = opts.stopReason === undefined ? 'end_turn' : opts.stopReason;
     return (async function* (): AsyncGenerator<Anthropic.RawMessageStreamEvent> {
       if (opts.throwError) throw opts.throwError;
+      // The real stream opens with message_start; it is the only place input and cache counts appear.
+      yield { type: 'message_start', message: { usage: opts.usage ?? { input_tokens: 1200, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } } as unknown as Anthropic.RawMessageStreamEvent;
       for (const d of deltas) {
         if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
         if (signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });

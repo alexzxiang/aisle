@@ -2,12 +2,19 @@
  * Claude Tier 1 (01 §8, 07 §3, 05 Part 2 "/api/vision").
  *
  * One streamed Messages call per VisionRequest with the byte-stable superset schema
- * as `output_config.format`. Routing: `curb_crop` → claude-sonnet-5 with
+ * as `output_config.format`. Routing: `curb_crop` and `task_step` → claude-sonnet-5 with
  * `thinking: { type: 'disabled' }` and a `cache_control` breakpoint on the system
- * prompt; everything else → claude-haiku-4-5 (no thinking field, no cache chase).
+ * prompt; everything else → claude-haiku-4-5 (no thinking field, no cache marker).
  * `max_tokens: 300`, `maxRetries: 0`, 4 s timeout. On timeout, a stop_reason other
  * than `end_turn`, or unparsable JSON the caller gets `response: null` and answers
  * `{ confidence: 0, seq }`.
+ *
+ * Why Haiku carries no cache marker, measured 2026-09-19 so nobody "fixes" it again: the
+ * minimum cacheable prefix is per-model and not monotonic — Sonnet 5 caches from 1024 tokens,
+ * Haiku 4.5 only from 4096. Our system prompts are task_step 1228, situate 1153,
+ * hand_guidance 1091, curb_crop 802. So only task_step actually caches; the marker on
+ * curb_crop is inert (802 < 1024), and marking the Haiku questions would do nothing at all.
+ * `VisionUsage.cacheReadTokens` in the log is how to check this rather than assume it.
  *
  * Speech is extracted while streaming (lib/speechExtract.ts). The proxy holds it
  * until the string closes, runs the language rule, and only then hands it to TTS:
@@ -89,8 +96,23 @@ export function buildVisionParams(req: VisionRequest, model: VisionModel = model
   return params;
 }
 
+/**
+ * What the call actually cost. Read it before trusting any caching change: a prompt below the
+ * model's minimum cacheable prefix caches silently-not-at-all, and `cacheReadTokens` staying 0
+ * is the only way to see that. Minimums differ sharply by model — Sonnet 5 needs 1024 tokens,
+ * Haiku 4.5 needs 4096 — so "it is cached on Sonnet" says nothing about Haiku.
+ */
+export interface VisionUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
 export interface VisionCallResult {
   response: VisionResponse | null;
+  /** Null when the stream failed before `message_start`. */
+  usage: VisionUsage | null;
   /** Sanitized speech ('' when blanked or empty). */
   speech: string;
   verdict: LanguageVerdict;
@@ -155,6 +177,7 @@ export async function runVision(req: VisionRequest, hooks: VisionHooks, deps: An
   let verdict: LanguageVerdict = 'pass';
   let speechReadyFired = false;
   let stopReason: string | null = null;
+  let usage: VisionUsage | null = null;
   let error: string | undefined;
 
   const fireSpeech = (): void => {
@@ -175,8 +198,18 @@ export async function runVision(req: VisionRequest, hooks: VisionHooks, deps: An
           speechClosedMs = now() - t0;
           fireSpeech();
         }
+      } else if (ev.type === 'message_start') {
+        // The only place input and cache counts appear; output_tokens arrives on message_delta.
+        const u = ev.message.usage;
+        usage = {
+          inputTokens: u.input_tokens,
+          outputTokens: u.output_tokens ?? 0,
+          cacheReadTokens: u.cache_read_input_tokens ?? 0,
+          cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
+        };
       } else if (ev.type === 'message_delta') {
         stopReason = ev.delta.stop_reason ?? stopReason;
+        if (usage && ev.usage?.output_tokens != null) usage.outputTokens = ev.usage.output_tokens;
       }
     }
   } catch (e) {
@@ -194,15 +227,15 @@ export async function runVision(req: VisionRequest, hooks: VisionHooks, deps: An
   }
 
   if (error || stopReason !== 'end_turn') {
-    return { response: null, speech: '', verdict, model, stopReason, firstTokenMs, speechClosedMs, totalMs, error: error ?? `stop_reason:${stopReason ?? 'none'}` };
+    return { response: null, usage, speech: '', verdict, model, stopReason, firstTokenMs, speechClosedMs, totalMs, error: error ?? `stop_reason:${stopReason ?? 'none'}` };
   }
   const parsed = parseFinalJson(scanner.raw());
   const coerced = coerceVisionResponse(parsed, req.seq);
   if (!coerced) {
-    return { response: null, speech: '', verdict, model, stopReason, firstTokenMs, speechClosedMs, totalMs, error: 'invalid_json' };
+    return { response: null, usage, speech: '', verdict, model, stopReason, firstTokenMs, speechClosedMs, totalMs, error: 'invalid_json' };
   }
   coerced.speech = speech;
-  return { response: coerced, speech, verdict, model, stopReason, firstTokenMs, speechClosedMs, totalMs };
+  return { response: coerced, usage, speech, verdict, model, stopReason, firstTokenMs, speechClosedMs, totalMs };
 }
 
 /** Cheap liveness for /api/health: the model list. */
