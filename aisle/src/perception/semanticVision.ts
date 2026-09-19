@@ -191,6 +191,9 @@ export function createHttpVisionTransport(opts: HttpTransportOptions): VisionTra
   const fetchFn: FetchLike = opts.fetchFn ?? ((input, init) => fetch(input, init));
   const timeoutMs = opts.timeoutMs ?? VISION_TIMEOUT_MS;
   const url = `${opts.proxyUrl.replace(/\/+$/, '')}/api/vision`;
+  // The proxy's monotonic sequence belongs to this JS runtime, not the phone's IP.
+  // Without this, a Metro reload resets seq to one and every frame is rejected.
+  const clientId = `vision-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   return {
     async ask(req) {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -198,7 +201,7 @@ export function createHttpVisionTransport(opts: HttpTransportOptions): VisionTra
       try {
         const res = await fetchFn(url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'x-aisle-client': clientId },
           body: JSON.stringify(req),
           signal: controller?.signal,
         });
@@ -658,11 +661,11 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       const text = sanitizeSpeech(res.speech);
       if (text) speech.say({ text, priority: meta.priority, dedupeKey: `vision-${text}`, cooldownMs: 8000 });
     }
-    if (res.cameraRequest !== 'none') {
+    if (!meta.silent && res.cameraRequest !== 'none') {
       bus.emit({ type: 'CAMERA_REQUEST', direction: res.cameraRequest });
       sayPrompt(cameraPrompt(res.cameraRequest), 'INFO');
     }
-    if (res.userAction !== 'none') {
+    if (!meta.silent && res.userAction !== 'none') {
       bus.emit({ type: 'USER_ACTION', action: res.userAction });
       sayPrompt(userActionPrompt(res.userAction), 'INFO');
     }
@@ -697,7 +700,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       },
     };
     if (image) req.image = image;
-    if ((question === 'free' || question === 'task_step' || question === 'situate') && o.userText) req.userText = o.userText;
+    if ((question === 'free' || question === 'task_step' || question === 'situate' || question === 'hand_guidance') && o.userText) req.userText = o.userText.slice(0, 500);
     return req;
   };
 

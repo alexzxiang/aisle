@@ -27,6 +27,7 @@ export function spokenFormOf(text: string): string {
 /** The same service with `say` / `prefetch` text mapped through `spokenFormOf`. */
 export function withSpokenForms(speech: AisleSpeechService): AisleSpeechService {
   return {
+    setSuspended: (on) => speech.setSuspended(on),
     say(req: SpeechRequest) {
       const text = spokenFormOf(req.text);
       speech.say(text === req.text ? req : { ...req, text });

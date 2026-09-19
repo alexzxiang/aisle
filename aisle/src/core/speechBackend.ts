@@ -3,9 +3,8 @@
  *
  * Kept apart from `speech.ts` so the queue is testable without native modules.
  * Three players share one audio session (configured by `audio.ts`):
- *   - cached: one AudioPlayer per bundled phrase, created up front at app start
- *     so replay is `seekTo(0); play()` and cached phrase → audio out stays
- *     under 50 ms (01 §11);
+ *   - cached: core alerts preloaded, expanded task vocabulary loaded on first use;
+ *     replay is `seekTo(0); play()` without a network request;
  *   - file: prefetched or live-synthesized clips under the cache directory;
  *   - url: the proxy's Tier-1 stream relay (`GET /api/tts/stream/<streamId>`);
  *   - expo-speech: the offline fallback; iOS mutes it when the ring switch is
@@ -61,8 +60,10 @@ export function createExpoSpeechBackend(opts: ExpoSpeechBackendOptions): SpeechB
   const cached = new Map<string, AudioPlayer>();
   const files = new Map<string, AudioPlayer>();
 
-  // Preload every bundled phrase at construction (02 Task 4: "Preload every file at module scope").
+  // Preload core alerts. The wider indoor vocabulary stays on disk until first use,
+  // avoiding hundreds of AVPlayers and audio-session owners at launch.
   for (const key of Object.keys(manifest)) {
+    if (key.startsWith('guide_') || key.startsWith('mission_')) continue;
     try {
       cached.set(key, createAudioPlayer(manifest[key], { keepAudioSessionActive: true, updateInterval: 100 }));
     } catch {
@@ -71,6 +72,8 @@ export function createExpoSpeechBackend(opts: ExpoSpeechBackendOptions): SpeechB
   }
 
   const playPlayer = (player: AudioPlayer, backend: PlaybackHandle['backend'], rate: number, onDone: () => void, onFinal?: () => void): PlaybackHandle => {
+    let stopped = false;
+    player.volume = 1;
     applyRate(player, rate);
     const detach = attachDone(player, () => {
       onFinal?.();
@@ -82,10 +85,22 @@ export function createExpoSpeechBackend(opts: ExpoSpeechBackendOptions): SpeechB
     } catch {
       // not yet loaded: play() below still works
     }
-    player.seekTo(0).then(() => player.play(), () => player.play());
+    const play = (): void => {
+      if (stopped) return;
+      try { player.play(); } catch {
+        // Native shared objects can disappear during reload/session teardown.
+        // This callback runs inside seekTo's promise: never leak a rejection.
+        stopped = true;
+        detach();
+        onFinal?.();
+        onDone();
+      }
+    };
+    player.seekTo(0).then(play, play);
     return {
       backend,
       stop() {
+        stopped = true;
         detach();
         try {
           player.pause();
@@ -104,12 +119,16 @@ export function createExpoSpeechBackend(opts: ExpoSpeechBackendOptions): SpeechB
   };
 
   return {
-    hasCached: (key) => cached.has(key),
+    hasCached: (key) => Object.prototype.hasOwnProperty.call(manifest, key),
 
     playCached(key, rate, onDone) {
-      const player = cached.get(key);
-      if (!player) return null;
       try {
+        let player = cached.get(key);
+        if (!player && manifest[key] !== undefined) {
+          player = createAudioPlayer(manifest[key], { keepAudioSessionActive: true, updateInterval: 100 });
+          cached.set(key, player);
+        }
+        if (!player) return null;
         return playPlayer(player, 'cached', rate, onDone);
       } catch {
         return null;
@@ -155,6 +174,8 @@ export function createExpoSpeechBackend(opts: ExpoSpeechBackendOptions): SpeechB
       try {
         Speech.speak(text, {
           language: 'en-US',
+          volume: 1,
+          useApplicationAudioSession: true,
           rate,
           onDone: done,
           onStopped: done,

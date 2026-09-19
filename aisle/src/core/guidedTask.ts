@@ -37,6 +37,8 @@ import { templateTaskPlan } from '../outdoor/plannerJobs';
 import { createHandGuide, itemOfGoal, type HandGuide } from './handGuide';
 import type { Guide, GuideInstruction, TargetBox } from './guide';
 import { classForWords } from './sceneMemory';
+import { fridgeMission, FRIDGE_STAGES, type FridgeStage } from './fridgeMission';
+import { MISSION_PHRASES } from './preparedGuidance';
 
 export const TASK_TICK_MS = 3000;
 /** A `done` reading at or above this counts toward closing the step on camera evidence alone. */
@@ -63,7 +65,7 @@ export const TASK_DONE_STREAK = 2;
 /** An unanswered step check expires after this; the loop goes back to watching. */
 export const TASK_CHECK_TTL_MS = 15_000;
 /** A geometric instruction that has not changed is said again after this (round 7). */
-export const TASK_GUIDE_REPEAT_MS = 6000;
+export const TASK_GUIDE_REPEAT_MS = 4000;
 /** Geometry waits this long after a step is announced, so the step's sentence is heard first. */
 export const TASK_GUIDE_AFTER_STEP_MS = 4000;
 
@@ -82,7 +84,7 @@ export function stepTarget(instruction: string, lookFor: string, goal: string): 
   const placeKnown = place !== null && classForWords(place) !== null;
   const lf = lookFor.trim().toLowerCase().replace(/^(the|a|an|my)\s+/, '');
   const lfKnown = lf.length > 0 && classForWords(lf) !== null;
-  if (placeKnown && !lfKnown) return place!;
+  if (placeKnown && isWalkingStep(instruction)) return place!;
   if (lfKnown) return lf;
   return place ?? itemOfGoal(goal);
 }
@@ -97,6 +99,11 @@ const REACH_RE = /\b(reach|grab|pick up|take the|take a|get the|grasp|hold the|f
 
 export function isReachStep(instruction: string): boolean {
   return REACH_RE.test(instruction);
+}
+
+export function isWalkingStep(instruction: string): boolean {
+  return /\b(walk|approach|move toward|face|turn toward|turn left|turn right|find the fridge)\b/i.test(instruction)
+    && !/\b(open|pull|reach|grab|pick up)\b/i.test(instruction);
 }
 
 export function isObservationStep(instruction: string): boolean {
@@ -161,6 +168,7 @@ export interface GuidedTaskDeps {
 }
 
 export interface GuidedTaskDebugState {
+  stage: FridgeStage | null;
   active: boolean;
   goal: string | null;
   context: TaskContext | null;
@@ -190,6 +198,8 @@ export interface GuidedTask {
 }
 
 interface RunState {
+  fridge: boolean;
+  lastVisionAt: number;
   gen: number;
   goal: string;
   context: TaskContext;
@@ -242,23 +252,24 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const speakGeometry = (r: RunState): boolean => {
     if (!deps.guide) return false;
     const s = r.steps[r.step];
-    if (!s || isObservationStep(s.instruction)) return false;
+    if (!s || (r.fridge ? r.step !== 0 : !isWalkingStep(s.instruction))) return false;
     const t = now();
-    if (t - r.stepAt < TASK_GUIDE_AFTER_STEP_MS) return false;   // the step's own sentence goes first
-    const target = stepTarget(s.instruction, s.lookFor, r.goal);
+    if (t - r.stepAt < (r.fridge ? 0 : TASK_GUIDE_AFTER_STEP_MS)) return false;
+    const target = r.fridge ? 'fridge' : stepTarget(s.instruction, s.lookFor, r.goal);
     const next = deps.guide.instructionFor(target, r.modelTarget);
     deps.trace?.('guide', { step: r.step, instruction: s.instruction, target, decision: next ? { kind: next.kind, steps: next.steps, relativeDeg: next.relativeDeg, visible: next.targetVisible, text: next.text } : null, modelTarget: r.modelTarget?.box ?? null });
     if (!next) return false;
+    // Two separate live geometry readings must agree. Opening is never completed by
+    // proximity, and cloud replies cannot erase the approach's geometric evidence.
+    if (next.kind === 'arrived') r.doneReadings += 1;
+    else r.doneReadings = 0;
     const prev = r.guided;
     const news = deps.guide.changed(prev?.instruction ?? null, next);
-    if (!news && prev && t - prev.at < guideRepeatMs) return true;
+    if (prev && t - prev.at < (news ? 2500 : guideRepeatMs)) return true;
+    if (next.kind.startsWith('turn') || next.kind === 'scan_remembered') deps.haptics.play('TURN');
+    else if (next.kind === 'forward' && prev?.instruction.kind !== 'forward') deps.haptics.play('CONFIRM');
     speech.say({ text: next.text, priority: 'NAV', dedupeKey: 'task-guide', cooldownMs: 800 });
-    deps.conversation?.pushAisle(next.text, 'prompt');
     r.guided = { at: t, instruction: next };
-    if (next.kind === 'arrived' && !isReachStep(s.instruction)) {
-      // At the thing the step was walking to: that step is done.
-      r.doneReadings = doneStreak;
-    }
     return true;
   };
   let run: RunState | null = null;
@@ -301,11 +312,14 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const speakStep = (r: RunState, reminder: boolean): void => {
     const s = r.steps[r.step];
     if (!s) return;
-    speech.say({ text: s.instruction, priority: 'NAV', dedupeKey: `task-step-${r.step}`, cooldownMs: reminder ? 0 : 1500 });
+    if (!reminder) r.stepAt = now();
+    const geometrySpoke = deps.guide && (r.fridge ? r.step === 0 : false) ? speakGeometry(r) : false;
+    if (!geometrySpoke) speech.say({ text: s.instruction, priority: 'NAV', dedupeKey: `task-step-${r.step}`, cooldownMs: reminder ? 0 : 1500 });
     if (!reminder) {
       r.stepAt = now();
       deps.conversation?.pushAisle(s.instruction, 'prompt');
       bus.emit({ type: 'TASK_STEP', index: r.step, total: r.steps.length, instruction: s.instruction });
+      deps.trace?.('mission_checkpoint', { goal: r.goal, stage: r.fridge ? FRIDGE_STAGES[r.step] : null, step: r.step, instruction: s.instruction });
     }
     scheduleRemind(r);
     scheduleReassure(r);
@@ -349,6 +363,11 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
 
   const giveUp = (r: RunState): void => {
     if (run !== r) return;
+    if (r.fridge) {
+      speech.say({ text: MISSION_PHRASES.mission_paused, priority: 'NAV' });
+      scheduleGiveUp(r);
+      return;
+    }
     stop();
     deps.haptics.play('CONFIRM');
     speech.say({ text: phraseText('ask_staff'), priority: 'NAV', cacheKey: 'ask_staff', dedupeKey: 'task-give-up', cooldownMs: 0 });
@@ -380,7 +399,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     sayPhrase(byUser ? 'task_next' : 'task_step_done', 0);
     r.step += 1;
     r.guided = null;
-    r.modelTarget = null;
+    if (!(r.fridge && r.step === 3)) r.modelTarget = null;
     speakStep(r, false);
   };
 
@@ -390,7 +409,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     const where = place ? ` Place: ${place}.` : '';
     const seen = deps.seen?.();
     const memory = seen ? ` Seen: ${seen}.` : '';
-    return `Goal: ${r.goal}.${where}${memory} Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${s.lookFor}.`;
+    return `Goal: ${r.goal}. Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${s.lookFor}.${r.fridge ? ` Stage: ${FRIDGE_STAGES[r.step]}. Preserve this mission; do not describe the room or plan a route.` : ''}${where}${memory}`.slice(0, 500);
   };
 
   /** 'done' closes on the streak; 'ask' puts it to the user; 'no' resets. */
@@ -418,33 +437,62 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       stop();
       return;
     }
+    // Schedule before awaiting anything. Geometry keeps running even with a stalled
+    // vision request, and advancing a step can never accidentally kill the loop.
+    r.timer = setT(() => { void tick(r); }, deps.guide ? Math.min(tickMs, 500) : tickMs);
     const step = r.steps[r.step];
-    if (step && isReachStep(step.instruction) && !r.handing) {
+    if (r.fridge && r.step === 4) return; // only the person's confirmation completes pickup
+    const geometric = speakGeometry(r);
+    if (geometric && r.doneReadings >= doneStreak) {
+      advanceRun(r, false);
+      return;
+    }
+    if (step && (r.fridge ? r.step === 3 || (r.step === 1 && !r.checked.has(-1)) : isReachStep(step.instruction)) && !r.handing) {
       // The reach: steer the hand word by word until it touches the item, then close the task step.
       r.handing = true;
-      const item = itemOfGoal(r.goal);
-      void handGuide.start(item).then((res) => {
-        if (run !== r) return;
+      const handleStage = r.fridge && r.step === 1;
+      const item = handleStage ? 'fridge handle' : itemOfGoal(r.goal);
+      const handStep = r.step;
+      void handGuide.start(item, { goal: r.goal, target: handleStage ? null : r.modelTarget }).then((res) => {
+        if (run !== r || r.step !== handStep) return;
         r.handing = false;
-        if (res.done === 'touching') advanceRun(r, false);
+        // A missing/hidden handle must not lock out checking an already-open door.
+        // After one attempt, resume observing the opening checkpoint.
+        if (handleStage) r.checked.add(-1);
+        if (res.done === 'touching') {
+          if (handleStage) {
+            speech.say({ text: 'Find the handle by touch. Open the door slowly.', priority: 'NAV', dedupeKey: 'handle-open', cooldownMs: 4000 });
+          } else advanceRun(r, false);
+        }
         // gave up / stopped: the step stays open; the reminder and the next reach retry it.
       });
     }
-    if (!r.asking && !r.handing) {
+    if (!r.asking && !r.handing && now() - r.lastVisionAt >= tickMs) {
       r.asking = true;
+      r.lastVisionAt = now();
+      const askedStep = r.step;
       asks += 1;
       lastAskAt = now();
       try {
         if (r.check && now() - r.check.at > checkTtlMs) r.check = null; // no answer: back to watching
-        const geometric = speakGeometry(r);
-        if (geometric && r.doneReadings >= doneStreak && run === r) {
-          advanceRun(r, false);   // the guide said "arrived"
-          return;
-        }
-        const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: r.check !== null || geometric });
+        const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: true, force: true });
+        if (run !== r || r.step !== askedStep || mode() !== 'GUIDED_TASK') return;
         deps.trace?.('task_step', { step: r.step, geometric, status: out.status, speech: out.response?.speech ?? null, done: out.response?.task ?? null, target: out.response?.target ?? null, latencyMs: out.latencyMs });
         if (run === r && out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= 0.4) {
-          r.modelTarget = { box: out.response.target.box, at: now() };
+          r.modelTarget = { box: out.response.target.box, at: now() - (out.latencyMs ?? 0) };
+        }
+        if (r.fridge && r.step === 2) {
+          const found = out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= doneConfidence;
+          r.doneReadings = found ? r.doneReadings + 1 : 0;
+          if (r.doneReadings >= doneStreak) advanceRun(r, false);
+          return;
+        }
+        if (geometric) return;
+        if (out.status === 'applied' && out.response?.speech && !r.check) {
+          const text = out.response.speech;
+          if (!hasDigit(text) && !findForbiddenTerm(text) && countWords(text) <= MAX_UTTERANCE_WORDS) {
+            speech.say({ text, priority: 'NAV', dedupeKey: 'task-model', cooldownMs: 6000 });
+          }
         }
         const observing = isObservationStep(r.steps[r.step]?.instruction ?? '');
         if (run === r && observing && (now() - r.stepAt >= observeMs || (out.status === 'applied' && out.response?.task.done === true))) {
@@ -468,8 +516,6 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         r.asking = false;
       }
     }
-    if (run !== r) return;
-    r.timer = setT(() => { void tick(r); }, tickMs);
   };
 
   const factsForPlanner = (description: string | null): NonNullable<TaskPlanInput['facts']> | undefined => {
@@ -494,9 +540,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const begin = async (goal: string, context: TaskContext): Promise<void> => {
     stop();
     const gen = ++generation;
-    sayPhrase('let_me_see', 0);
+    const fixed = deps.guide ? fridgeMission(goal) : null;
+    if (!fixed) sayPhrase('let_me_see', 0);
     let description: string | null = null;
-    if (deps.describe) {
+    if (!fixed && deps.describe) {
       try {
         description = await deps.describe();
       } catch {
@@ -508,9 +555,12 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     let plan: TaskPlanOutput;
     try {
       const facts = factsForPlanner(description);
-      const result = await deps.planner.run('taskPlan', { goal, context, ...(facts ? { facts } : {}) });
-      plan = result.output;
-      plannerFallback = result.fallback;
+      if (fixed) { plan = fixed; plannerFallback = false; }
+      else {
+        const result = await deps.planner.run('taskPlan', { goal, context, ...(facts ? { facts } : {}) });
+        plan = result.output;
+        plannerFallback = result.fallback;
+      }
     } catch {
       plan = templateTaskPlan({ goal, context });
       plannerFallback = true;
@@ -518,7 +568,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
-    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, giveUpTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false, guided: null, modelTarget: null };
+    const r: RunState = { fridge: fixed !== null, lastVisionAt: -Infinity, gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, giveUpTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false, guided: null, modelTarget: null };
     run = r;
     deps.conversation?.pushAisle(`Plan: ${plan.steps.length === 1 ? 'one step' : `${plan.steps.length} steps`} to ${goal}.`, 'prompt');
     speakStep(r, false);
@@ -548,8 +598,17 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     },
     intercept(transcript) {
       const r = run;
-      if (!r || !r.check || mode() !== 'GUIDED_TASK') return false;
+      if (!r || mode() !== 'GUIDED_TASK') return false;
       const t = transcript.trim();
+      if (isAdvanceRequest(t)) { advanceRun(r, true); return true; }
+      if (/^(?:repeat|what next|what am i doing|what is my task|what's my task|how far(?: is it)?)\??$/i.test(t)) {
+        r.guided = null;
+        speakStep(r, true);
+        return true;
+      }
+      if (r.fridge && r.step === 1 && /^(?:the )?(?:fridge |refrigerator )?door is open[.!]?$|^i (?:have )?opened (?:it|the fridge)[.!]?$/i.test(t)) { advanceRun(r, true); return true; }
+      if (r.fridge && r.step === 4 && (YES_RE.test(t) || /^(?:i have|i am holding|i'm holding) (?:it|them|the eggs|the milk)[.!]?$/i.test(t))) { complete(r); return true; }
+      if (!r.check) return false;
       if (YES_RE.test(t)) {
         advanceRun(r, false);
         return true;
@@ -571,6 +630,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     isActive: () => run !== null,
     getDebugState() {
       return {
+        stage: run?.fridge ? FRIDGE_STAGES[run.step] ?? null : null,
         active: run !== null,
         goal: run?.goal ?? null,
         context: run?.context ?? null,

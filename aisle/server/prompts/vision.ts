@@ -14,6 +14,7 @@ const COMMON_CORE = [
   'Never use the words: safe, clear, go, cross now, no cars, you can cross.',
   'Do not add pleasantries.',
   'If the image is dark, blurred or ambiguous, lower your confidence rather than guessing.',
+  'Food identification: color alone is not identity. A brown egg can resemble an orange: inspect smooth oval shell versus textured round citrus skin. Eggs may be in a molded multi-well carton, cardboard or plastic, open or closed. Use visible shape, packaging and readable labels together; do not invent a label. If ambiguous, state uncertainty and request a closer stable view. Do not substitute a likely food for the requested item.',
 ].join(' ');
 /** Task questions answer one thing; the scene itself is the describer's and the awareness loop's business. */
 const COMMON = `${COMMON_CORE} Do not describe the scene.`;
@@ -54,11 +55,14 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     COMMON,
     'Question: the user is holding out a hand toward the target item — a package on a shelf, a carton or eggs in a fridge, an object on a table. You get the target item (targetItem) and, when known, a package hint.',
     'Find the hand and the target in the frame. Put the target item\'s box in target.box as [x, y, w, h] in 0..1 with origin top-left (null when it is not visible) with target.confidence. Return exactly one hint in hand.hint for the hand\'s next move: left, right, higher, lower, forward (reach further), touching (the hand is on the item — grab), or not_seen (the target is not visible; say nothing about the hand). Speech is that single word (for example "Higher.") or empty when not_seen.',
-    'Prefer the larger correction first; when the hand is within about a hand-width on every axis, say forward; when it is on the item, touching. You are guiding a hand, not identifying a product.',
+    'Verify the named target item before returning a box; never substitute the fridge, shelf, another package or a nearby item. If the item cannot be identified, target.box is null and hand.hint is not_seen.',
+    'For fridge handle, box the visible handle only, never the whole door. Do not guess which side it is on. For eggs, an identifiable egg carton is a valid target; an orange is not. Return directional hints only when both the hand and identified target are visible and target confidence is at least 0.7.',
+    'Prefer the larger correction first. Image overlap alone does not prove contact or a successful grasp. Use touching only with visible contact evidence; otherwise forward or not_seen. The user confirms pickup.',
   ].join(' '),
   task_step: [
     COMMON,
     'Question: the user is doing a multi-step task with camera guidance. userText names the goal, the place when known, the current step and what to look for.',
+    'The named stage is authoritative. approach means move toward the named appliance; open requires visible open door and interior shelves, never mere proximity. find_item requires identifying the goal item INSIDE the open fridge, with the ITEM box, never a box around the fridge. Do not skip prerequisites, change the goal, propose a street route, or ask the user to confirm the room. Return target.box only for the target of this stage.',
     'Set task.done true only when the camera clearly shows the current step is complete (the named thing is reached, opened, or within arm\'s reach), with task.confidence. When the step\'s target (the thing in "Look for") is visible, put its box in target.box as [x, y, w, h] in 0..1 with origin top-left, with target.confidence; else null.',
     'Otherwise speech is required: one concrete micro-instruction (at most twelve words) that moves the person toward the step from what you see now: a direction, a distance in steps, or what to reach for, e.g. "Door frame ahead, three steps.", "Turn left, the fridge is at your left shoulder.", "Fridge handle at waist height, right hand.", "Eggs: middle shelf, a carton at your right hand." If the target is not in view, say which way to turn to find it. Use cameraRequest when the camera must move to see the target and userAction when the person must move.',
     'Never state that it is fine to proceed into traffic or when to cross a street.',
@@ -130,7 +134,7 @@ export function renderFacts(req: VisionRequest): string {
   if (f.sceneLabels?.length) lines.push(`onDeviceScene: ${f.sceneLabels.slice(0, 8).join(', ')}`);
   if (typeof f.headingDeg === 'number') lines.push(`headingDeg: ${Math.round(f.headingDeg)}`);
   if (f.targetItem) lines.push(`targetItem: ${f.targetItem}`);
-  if (req.userText) lines.push(`userText: ${req.userText.slice(0, 200)}`);
+  if (req.userText) lines.push(`userText: ${req.userText.slice(0, 500)}`);
   return lines.join('\n');
 }
 

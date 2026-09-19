@@ -43,6 +43,17 @@ describe('handGuide (round 7: the phone\'s own hand)', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(T0); });
   afterEach(() => jest.useRealTimers());
 
+  it('does not finish a reach from a hint with an unidentified target', async () => {
+    const r = rig(async () => response('touching', { box: [0.2, 0.3, 0.2, 0.15], confidence: 0.3 }));
+    const done = r.guide.start('eggs');
+    await jest.advanceTimersByTimeAsync(4100);
+    expect(r.guide.isRunning()).toBe(true);
+    expect(r.words()).not.toContain(PHRASES.mission_hand_aligned);
+    r.guide.stop();
+    await jest.advanceTimersByTimeAsync(400);
+    expect((await done).done).toBe('stopped');
+  });
+
   it('itemOfGoal keeps the thing, not the place', () => {
     expect(itemOfGoal('eggs in my fridge')).toBe('eggs');
     expect(itemOfGoal('the milk on the top shelf')).toBe('milk');
@@ -68,7 +79,7 @@ describe('handGuide (round 7: the phone\'s own hand)', () => {
     expect(r.words()).toEqual([PHRASES.right, PHRASES.higher, PHRASES.reach_forward]);
     r.hand(0.7, 0.27); r.see([{ cls: 'cup', box: [0.6, 0.2, 0.2, 0.15], score: 0.8, trackId: 1 }]);
     await jest.advanceTimersByTimeAsync(HAND_WORD_INTERVAL_MS);
-    expect(r.words()).toEqual([PHRASES.right, PHRASES.higher, PHRASES.reach_forward, PHRASES.grab_it]);
+    expect(r.words()).toEqual([PHRASES.right, PHRASES.higher, PHRASES.reach_forward, PHRASES.mission_hand_aligned]);
     const res = await done;
     expect(res).toMatchObject({ done: 'touching', handWords: 3 });
     expect(r.haptic).toEqual(['CONFIRM']);
@@ -85,7 +96,7 @@ describe('handGuide (round 7: the phone\'s own hand)', () => {
     await jest.advanceTimersByTimeAsync(6000);
     r.hand(0.8, 0.4);
     await jest.advanceTimersByTimeAsync(HAND_TICK_MS * 2);
-    expect(r.words().some((w) => w.startsWith('I see your hand, not the eggs.'))).toBe(true);
+    expect(r.words()).toContain(PHRASES.mission_target_missing);
     r.guide.stop();
     await jest.advanceTimersByTimeAsync(HAND_TICK_MS);
     const res = await done;
@@ -94,10 +105,10 @@ describe('handGuide (round 7: the phone\'s own hand)', () => {
 
   it('without an on-device hand, Claude\'s hints steer as before and touching finishes', async () => {
     const hints: Array<VisionResponse['hand']['hint']> = ['higher', 'left', 'touching'];
-    const r = rig(async () => response(hints.shift() ?? 'touching'));
+    const r = rig(async () => response(hints.shift() ?? 'touching', { box: [0.2, 0.3, 0.2, 0.15], confidence: 0.9 }));
     const done = r.guide.start('the milk');
     await jest.advanceTimersByTimeAsync(2000 * 3 + 100);
-    expect(r.words()).toEqual([PHRASES.higher, PHRASES.left, PHRASES.grab_it]);
+    expect(r.words()).toEqual([PHRASES.higher, PHRASES.left, PHRASES.mission_hand_aligned]);
     expect(await done).toMatchObject({ done: 'touching', handWords: 0 });
   });
 });

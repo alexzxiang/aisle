@@ -149,9 +149,9 @@ describe('createAudioChannels', () => {
     const ch = make('IDLE');
     await ch.configureSession();
     expect(be.modes[0]).toEqual(DEFAULT_AUDIO_MODE);
-    expect(DEFAULT_AUDIO_MODE).toEqual({ playsInSilentMode: true, interruptionMode: 'duckOthers', shouldPlayInBackground: false, allowsRecording: false });
+    expect(DEFAULT_AUDIO_MODE).toEqual({ playsInSilentMode: true, interruptionMode: 'doNotMix', shouldPlayInBackground: false, allowsRecording: false });
     await ch.setRecordingMode(true);
-    expect(be.modes[1]).toMatchObject({ allowsRecording: true, interruptionMode: 'duckOthers' });
+    expect(be.modes[1]).toMatchObject({ allowsRecording: true, interruptionMode: 'doNotMix' });
     expect(ch.isRecordingMode()).toBe(true);
     await ch.setRecordingMode(true);            // idempotent
     expect(be.modes).toHaveLength(2);

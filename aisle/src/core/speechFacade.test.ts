@@ -8,6 +8,7 @@ function fake() {
   const said: SpeechRequest[] = [];
   const prefetched: string[] = [];
   const speech: AisleSpeechService = {
+    setSuspended: jest.fn(),
     say: (r) => {
       said.push(r);
     },

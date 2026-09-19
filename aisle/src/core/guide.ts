@@ -32,6 +32,7 @@
 import type { Detection, DetectionClass, HandPoseEvent } from './contracts';
 import { classForWords, spokenName, wrap180, type SceneMemory } from './sceneMemory';
 import { integerToWords } from '../outdoor/numberWords';
+import { guidanceText } from './preparedGuidance';
 
 export type GuideKind = 'arrived' | 'forward' | 'sidestep' | 'turn_little' | 'turn' | 'turn_around' | 'scan_remembered' | 'scan_unknown';
 
@@ -73,7 +74,7 @@ export function stepsFromBox(cls: DetectionClass | null, box: [number, number, n
   const k = ultraWide ? 1.9 : 1.4;
   let distanceM = heightM / (k * h);
   if (typeof near === 'number') {
-    if (near >= 0.75) distanceM = Math.min(distanceM, 1.0);
+    if (near >= 0.75 && h >= 0.75) distanceM = Math.min(distanceM, 1.0);
     else if (near >= 0.5) distanceM = Math.min(distanceM, 2.5);
   }
   return Math.max(0, Math.min(MAX_STEPS, Math.round(distanceM / STEP_M)));
@@ -170,9 +171,7 @@ export function createGuide(deps: GuideDeps): Guide {
   const lastIndex = new Map<GuideKind, number>();
 
   const say = (kind: GuideKind, name: string, steps: number | null, side: string): string => {
-    const r = phraseFor(kind, name, steps, side, lastIndex.get(kind));
-    lastIndex.set(kind, r.index);
-    return r.text;
+    return guidanceText(kind, name, steps, side);
   };
 
   return {
@@ -201,7 +200,7 @@ export function createGuide(deps: GuideDeps): Guide {
         const steps = stepsFromBox(cls, box, near, ultraWide);
         const side = rel < 0 ? 'left' : 'right';
         const a = Math.abs(rel);
-        if (steps <= 1 || (typeof near === 'number' && near >= 0.75 && a <= 25)) {
+        if (a <= hfov * 0.18 && steps <= 1) {
           return { kind: 'arrived', text: say('arrived', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
         }
         if (a <= hfov * 0.12) {

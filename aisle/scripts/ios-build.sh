@@ -31,8 +31,8 @@ if [ "$MODE" = "check" ]; then
   echo "▶ xcodebuild (compile only, no signing)"
   xcodebuild -workspace ios/Aisle.xcworkspace -scheme "$SCHEME" -configuration Debug \
     -destination 'generic/platform=iOS' -derivedDataPath "$DD" \
-    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | grep -E "error:|warning: .*Perception|BUILD (SUCCEEDED|FAILED)" || true
-  exit "${PIPESTATUS[0]}"
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | grep -E "error:|warning: .*Perception|BUILD (SUCCEEDED|FAILED)"
+  exit 0
 fi
 
 DEVICE_ID=$(xcrun devicectl list devices --json-output /tmp/aisle-devices.json >/dev/null 2>&1 && \
@@ -44,9 +44,13 @@ if [ -z "$DEVICE_ID" ]; then
 fi
 echo "▶ building for device $DEVICE_ID"
 xcodebuild -workspace ios/Aisle.xcworkspace -scheme "$SCHEME" -configuration Debug \
-  -destination "id=$DEVICE_ID" -allowProvisioningUpdates -derivedDataPath "$DD" build 2>&1 | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+  -destination "id=$DEVICE_ID" -allowProvisioningUpdates -derivedDataPath "$DD" build 2>&1 | grep -E "error:|BUILD (SUCCEEDED|FAILED)"
 APP="$DD/Build/Products/Debug-iphoneos/$SCHEME.app"
 [ -d "$APP" ] || { echo "✗ build produced no app at $APP" >&2; exit 1; }
 echo "▶ installing"; xcrun devicectl device install app --device "$DEVICE_ID" "$APP"
-echo "▶ launching"; xcrun devicectl device process launch --device "$DEVICE_ID" "$BUNDLE_ID" || true
+echo "▶ launching"
+if ! xcrun devicectl device process launch --device "$DEVICE_ID" "$BUNDLE_ID"; then
+  echo "App installed, but launch failed. Unlock the iPhone and open Aisle manually." >&2
+  exit 3
+fi
 echo "✓ done. Start Metro with: npx expo start --dev-client"

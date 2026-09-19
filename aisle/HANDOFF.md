@@ -1,5 +1,23 @@
 # Aisle — handoff notes (for a person or a model picking this up cold)
 
+## Latest recovery checkpoint — September 19, living-room mission/audio
+
+Read [RECOVERY-CHECKPOINT.md](RECOVERY-CHECKPOINT.md) first; it supersedes older
+in-progress notes below. Main pulled through `f2ed7ff` (sharper native snapshots and
+camera-strip contrast). Local fixes preserve an explicit fridge retrieval mission,
+keep fresh CV guidance running during slow cloud calls, prevent stale/ambient
+responses from interrupting the task, and repair voice-session routing/volume.
+480 prepared clips are bundled (392 added), normalized with an idempotent v2 script.
+Task speech no longer waits for ElevenLabs. Cloud vision requests have runtime
+client IDs so reloads cannot poison the server's sequence tracking.
+
+Verified: app lint; 1105 full-suite tests plus two new playback tests; server types
+and 189 tests; native typecheck and 113 checks; signed iPhone build/install. Phone
+was locked, so launch and physical rehearsal remain outstanding. Unlock/open Aisle
+and use the supervised eggs/fridge checklist in the recovery document. No claim of
+safe autonomous navigation, calibrated distance, or reliable physical pickup.
+Changes are local/unpushed. Existing services: Metro 8081, proxy 8787.
+
 Last updated 2026-09-19 after "round 6" (Stream A: eyes). Read this first, then
 `TEAM-PLAN.md` (who does what), then `IMPLEMENTATION-STATUS.md` (the dated log of
 what was verified and how). The design documents that shaped the code are one

@@ -307,7 +307,11 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   const prompts = wirePrompts({ bus, store, conversation });
 
   // --- Awareness loop: where the user seems to be, checked with them --------------------
-  const situate = createSituate({ store, speech, vision, perception, conversation, now, narrate: () => store.getState().describeSurroundings });
+  let dialogueBusy = (): boolean => false;
+  const situate = createSituate({ store, speech, vision, perception, conversation, now,
+    narrate: () => store.getState().describeSurroundings,
+    mayspeak: () => !dialogueBusy() && ['IDLE', 'DONE'].includes(store.getState().mode) && store.getState().targetItem === null,
+  });
   // --- Scene memory: bearings of what the detector saw in the last minute ----------------
   const sceneMemory = createSceneMemory({
     perception, speech, conversation, headingDeg: () => sensors.getFusedHeadingDeg(), now,
@@ -339,13 +343,14 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   // --- Round 7: instructions from geometry (guide.ts) and the phone's own hand ------------
   const lensHfov = (): number => ((perception.debugLog?.() ?? []).some((l) => l.includes('ultrawide')) ? 100 : 56);
   let latestDetections: readonly Detection[] = [];
-  unsubs.push(perception.onDetections((d) => { latestDetections = d; }));
+  let latestDetectionAt = -Infinity;
+  unsubs.push(perception.onDetections((d) => { latestDetections = d; latestDetectionAt = now(); }));
   let latestDepth: { at: number; center: number; left?: number; right?: number } | null = null;
   unsubs.push(perception.onDepth((d) => {
     latestDepth = { at: now(), center: d.centerBottomRel, ...(typeof d.leftBottomRel === 'number' ? { left: d.leftBottomRel } : {}), ...(typeof d.rightBottomRel === 'number' ? { right: d.rightBottomRel } : {}) };
   }));
   const guide = createGuide({
-    detections: () => latestDetections,
+    detections: () => now() - latestDetectionAt <= 1500 ? latestDetections : [],
     memory: sceneMemory,
     hfovDeg: lensHfov,
     path: () => (latestDepth && now() - latestDepth.at <= 1000 ? latestDepth : null),
@@ -380,9 +385,15 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     askScene: (question) => describer.describeNow(question),
     // Open questions answer first: the awareness loop's, then the guided task's step check,
     // then "where is the X" from memory — never a store trip for a fridge.
-    intercept: (transcript) => situate.intercept(transcript) || (guidedTaskRef?.intercept(transcript) ?? false) || sceneMemory.intercept(transcript),
-    sceneContext: () => situate.getContext(),
+    intercept: (transcript) => (guidedTaskRef?.intercept(transcript) ?? false) || (store.getState().mode !== 'GUIDED_TASK' && situate.intercept(transcript)) || sceneMemory.intercept(transcript),
+    sceneContext: () => {
+      const scene = situate.getScene();
+      if (scene?.confirmed || scene?.setting === 'store') return situate.getContext();
+      const homeObjects = now() - latestDetectionAt <= 1500 && latestDetections.some((d) => ['fridge', 'couch', 'bed', 'oven'].includes(d.cls) && d.score >= 0.5);
+      return homeObjects ? 'home' : situate.getContext();
+    },
   });
+  dialogueBusy = () => voice.isListening() || voice.isAwaitingConfirmation();
 
   // --- A: persisted prefs ----------------------------------------------------------
   const prefs = bindPrefs(store, platform.prefsStorage ?? createMemoryPrefsStorage(), { onError: (stage, err) => report(`prefs-${stage}`, err) });

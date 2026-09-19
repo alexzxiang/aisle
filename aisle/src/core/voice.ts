@@ -24,6 +24,7 @@
  */
 import type { AppMode, ParseIntentInput, ParseIntentOutput, PlannerResult, SpeechService, TaskContext } from './contracts';
 import { classifyGoalPhrase } from '../outdoor/plannerJobs';
+import { explicitHomeGoal } from './indoorIntent';
 import type { AppEventBus } from './bus';
 import type { ConversationLog } from './conversation';
 import type { AppStore } from './store';
@@ -149,7 +150,7 @@ const ON_TRIP: ReadonlySet<AppMode> = new Set<AppMode>([
   'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV',
 ]);
 
-const CONFIRM_YES_RE = /^(?:ok(?:ay)?[,. ]*)?(?:yes|yeah|yep|yup|correct|right|that's right|thats right|that is right|exactly|sure|uh huh|mhm|affirmative|yes please)[.!]?$/i;
+const CONFIRM_YES_RE = /^(?:(?:ok(?:ay)?|yes|yeah|yep|yup)\s+)?(?:yes|yeah|yep|yup|ok|okay|correct|right|(?:that's|thats|that is|it's|it is) (?:right|correct)|exactly|sure|uh huh|mhm|affirmative)(?: please)?$/i;
 const CONFIRM_NO_RE = /^(?:no|nope|nah|wrong|incorrect|not really|that's wrong|thats wrong|not that|negative)[.!]?$/i;
 
 /** "Pasta. Did I get that right?" — null when the goal cannot be spoken safely (digits, forbidden word, too long). */
@@ -239,7 +240,7 @@ export interface Recognizer {
 }
 
 export interface VoiceInputOptions {
-  speech: SpeechService;
+  speech: SpeechService & { setSuspended?(on: boolean): void };
   bus: AppEventBus;
   store: AppStore;
   proxyUrl: string;
@@ -289,6 +290,7 @@ export interface VoiceOutcome {
 }
 
 export interface VoiceInput {
+  isAwaitingConfirmation(): boolean;
   /** Talk button pressed. Resolves once the recognizer is listening (or has failed to). */
   begin(): Promise<void>;
   /** Talk button released. Runs STT → parseIntent → reply. */
@@ -413,6 +415,9 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       opts.conversation?.pushAisle(q, 'prompt');
     };
     const startTask = (goal: string, context: TaskContext): void => {
+      // An explicit new mission replaces a route or an older mission through the legal
+      // abort edge. Previously TASK_REQUESTED was silently ignored outside IDLE.
+      if (opts.store.getState().mode !== 'IDLE') opts.store.getState().abort();
       const q = source === 'voice' ? goalConfirmQuestion(goal) : null;
       if (q) {
         askConfirm(q, { kind: 'task', goal, context });
@@ -451,7 +456,8 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       const m = opts.store.getState().mode;
       const inStore = m === 'INDOOR_NAV' || m === 'AT_ITEM' || m === 'ITEM_PICKUP' || m === 'CHECKOUT_NAV';
       // The awareness loop's confirmed or observed scene beats the mode's guess; the mode still wins inside a trip.
-      const context: TaskContext = inStore ? 'store' : m === 'OUTDOOR_NAV' ? 'street' : (opts.sceneContext?.() ?? 'home');
+      const context: TaskContext = explicitHomeGoal(output.goal) !== null || /\b(fridge|refrigerator|my kitchen|my living room)\b/i.test(output.goal)
+        ? 'home' : inStore ? 'store' : m === 'OUTDOOR_NAV' ? 'street' : (opts.sceneContext?.() ?? 'home');
       startTask(output.goal, context);
       return;
     } else if (output.intent === 'abort') {
@@ -462,10 +468,17 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
 
   const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource): Promise<VoiceOutcome> => {
     pushUser(transcript, source);
+    const previousGoal = opts.store.getState().taskGoal ?? (pendingConfirm?.kind === 'task' ? pendingConfirm.goal : null);
+    const previousItem = previousGoal ?? opts.store.getState().targetItem ?? last?.output.item;
+    const placeCorrection = /^(?:in|from|inside) (?:my|the) (?:fridge|refrigerator)[.!]?$/i.test(transcript.trim());
+    const homeGoal = placeCorrection && previousItem
+      ? `${previousItem.replace(/\s+(?:in|from|inside)\s+.*$/i, '')} in my fridge`
+      : explicitHomeGoal(transcript);
     // A confirm-back is waiting ("Eggs in my fridge. Did I get that right?"): consume yes/no
-    // here, before the planner or any other intercept. Anything else drops it and parses anew.
-    if (transcript.length > 0 && pendingConfirm) {
-      const t = transcript.trim();
+    // here, before the planner or any other intercept. Unclear answers retain the
+    // pending goal: never send a failed confirmation to the camera question handler.
+    if (pendingConfirm) {
+      const t = transcript.trim().replace(/[’‘]/g, "'").replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
       const c = pendingConfirm;
       if (CONFIRM_YES_RE.test(t)) {
         pendingConfirm = null;
@@ -485,7 +498,28 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         last = { output: { intent: 'unknown', item: null, reply: PHRASES.say_item_again }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
         return last;
       }
+      const correction = parseIntentFallback(transcript, opts.knownItems());
+      if (!homeGoal && !ABORT_RE.test(transcript) &&
+          !['guided_task', 'navigate_to', 'find_item'].includes(correction.intent)) {
+        const question = 'Please say yes or no. Your request is still saved.';
+        opts.speech.say({ text: question, priority: 'NAV', dedupeKey: 'confirm-retry', cooldownMs: 1000 });
+        opts.conversation?.pushAisle(question, 'prompt');
+        last = { output: { intent: 'unknown', item: null, reply: question }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+        return last;
+      }
       pendingConfirm = null;
+    }
+    if (homeGoal && !ABORT_RE.test(transcript)) {
+      if (opts.store.getState().mode === 'GUIDED_TASK' && previousGoal &&
+          (homeGoal === previousGoal || /^(?:my |the )?(?:fridge|refrigerator)$/i.test(homeGoal)) &&
+          opts.intercept?.('repeat')) {
+        last = { output: { intent: 'guided_task', item: null, goal: previousGoal, reply: '' }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+        return last;
+      }
+      const output: ParseIntentOutput = { intent: 'guided_task', item: null, goal: homeGoal, reply: sanitizeReply(`${titleCase(homeGoal)}. Got it.`, PHRASES.noted) };
+      act(output, source);
+      last = { output, transcript, sttPath, planner: false, plannerLatencyMs: null };
+      return last;
     }
     if (transcript.length > 0 && opts.intercept?.(transcript)) {
       unclearStreak = 0;
@@ -548,10 +582,11 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     } catch {
       // the session comes back on the next configureSession()
     }
+    opts.speech.setSuspended?.(false);
     // Belt and braces: once the recogniser has surely let go of the audio engine, apply
     // playback again so the speaker level never stays at the record category's (round 6c).
     setTimeout(() => {
-      opts.audio?.setRecordingMode(false).catch(() => undefined);
+      if (!session) opts.audio?.setRecordingMode(false).catch(() => undefined);
     }, 1500);
   };
 
@@ -564,6 +599,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // current utterance the instant the talk button opens the mic. Half the bad transcripts
       // were the recogniser hearing Aisle narrate.
       opts.speech.clearQueue();
+      opts.speech.setSuspended?.(true);
       opts.haptics?.setSuspended(true);
       try {
         await opts.audio?.setRecordingMode(true);
@@ -652,6 +688,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     },
 
     isListening: () => session !== null && !session.ended,
+    isAwaitingConfirmation: () => pendingConfirm !== null,
 
     async submitText(text) {
       return finishWith(text.trim(), 'keyboard', 'keyboard');
@@ -712,7 +749,7 @@ export function createExpoRecognizer(): Recognizer {
         iosCategory: {
           category: 'playAndRecord',
           categoryOptions: ['duckOthers', 'defaultToSpeaker', 'allowBluetooth'],
-          mode: 'measurement',
+          mode: 'default',
         },
         // Persist only for the Scribe fallback; otherwise nothing is written to disk.
         ...(o.persistAudio

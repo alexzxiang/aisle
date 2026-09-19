@@ -79,6 +79,7 @@ function harness(opts: { plan?: TaskPlanOutput; askImpl?: (userText: string) => 
   const handAnswer = async (): Promise<AskOutcome> => {
     const hint = handHints.length > 0 ? handHints.shift()! : 'touching';
     const r = visionResponse({ done: false, confidence: 0 });
+    r.target = { box: [0.2, 0.3, 0.2, 0.15], confidence: 0.9 };
     return { status: 'applied', seq: 1, response: { ...r, hand: { hint } }, streamed: false, latencyMs: 300 };
   };
   const asks = jest.fn((q: string, o: { userText?: string }) => {
@@ -186,7 +187,7 @@ describe('createGuidedTask', () => {
       PLAN.steps[0].instruction,
       PHRASES.task_step_done, PLAN.steps[1].instruction,
       PHRASES.task_step_done, PLAN.steps[2].instruction,
-      PHRASES.hold_out_hand, PHRASES.grab_it,   // the reach step is the hand loop (round 6c)
+      PHRASES.hold_out_hand, PHRASES.mission_hand_aligned,
       PHRASES.task_done,
     ]);
     expect(h.haptic).toEqual(['CONFIRM', 'CONFIRM', 'CONFIRM', 'CONFIRM']);   // two step closes, the touch, the completion
@@ -287,7 +288,7 @@ describe('createGuidedTask', () => {
     await flush(TASK_TICK_MS);
     expect(task.getDebugState().step).toBe(1);
     expect(h.said.slice(-2).map((r) => r.text)).toEqual([PHRASES.task_step_done, PLAN.steps[0].instruction]);
-    expect(h.asks.mock.calls[0][1].userText).toBe('Goal: eggs in my fridge. Place: in a kitchen by a refrigerator. Step 1 of 4: Turn slowly so I can see the room. Look for: the room layout.');
+    expect(h.asks.mock.calls[0][1].userText).toBe('Goal: eggs in my fridge. Step 1 of 4: Turn slowly so I can see the room. Look for: the room layout. Place: in a kitchen by a refrigerator.');
     task.dispose();
 
     // No done reading at all: the timeout closes it.
@@ -314,9 +315,9 @@ describe('createGuidedTask', () => {
     expect(h.said.map((r) => r.text)).toContain(PHRASES.hold_out_hand);
     // 2 s per hand reading: not_seen, not_seen (camera down), Higher., Left., Reach forward., Grab it.
     await flush(2000 * 6 + 100);
-    const hand = h.said.map((r) => r.text).filter((s) => [PHRASES.higher, PHRASES.left, PHRASES.reach_forward, PHRASES.grab_it, 'Tilt the camera down.'].includes(s));
-    expect(hand).toEqual(['Tilt the camera down.', PHRASES.higher, PHRASES.left, PHRASES.reach_forward, PHRASES.grab_it]);
-    expect(h.asks.mock.calls.filter((c) => c[0] === 'hand_guidance')[0]![1]).toMatchObject({ targetItem: 'eggs', image: 640, silent: true });
+    const hand = h.said.map((r) => r.text).filter((s) => [PHRASES.higher, PHRASES.left, PHRASES.reach_forward, PHRASES.mission_hand_aligned, 'Tilt the camera down.'].includes(s));
+    expect(hand).toEqual(['Tilt the camera down.', PHRASES.higher, PHRASES.left, PHRASES.reach_forward, PHRASES.mission_hand_aligned]);
+    expect(h.asks.mock.calls.filter((c) => c[0] === 'hand_guidance')[0]![1]).toMatchObject({ targetItem: 'eggs', image: 768, silent: true });
     expect(h.deps.store.getState().mode).toBe('DONE');
     expect(h.haptic.filter((p) => p === 'CONFIRM').length).toBeGreaterThanOrEqual(2);
     task.dispose();
@@ -345,7 +346,7 @@ describe('createGuidedTask', () => {
     expect(first).toMatch(/fridge/i);
     // Facing it now: forward with a step count.
     detections.list = [{ cls: 'fridge', box: [0.38, 0.3, 0.25, 0.4], score: 0.9, trackId: 1 }];
-    await flush(1000);
+    await flush(3000);
     const second = h.said[h.said.length - 1].text;
     expect(second).toMatch(/ahead|forward/i);
     expect(second).toMatch(/steps/);
@@ -357,7 +358,7 @@ describe('createGuidedTask', () => {
     // At the fridge (tall box, depth says close): the step closes and the next one is announced.
     detections.list = [{ cls: 'fridge', box: [0.2, 0.05, 0.6, 0.9], score: 0.9, trackId: 1, near: 0.9 }];
     await flush(1500);
-    expect(h.said.map((r) => r.text)).toContainEqual(expect.stringMatching(/right in front of you|within reach|You are at the fridge/));
+    expect(h.said.map((r) => r.text)).toContain('Fridge close ahead. Stop here.');
     expect(task.getDebugState().step).toBe(1);
     // The model's prose was muted while geometry spoke.
     expect(h.asks.mock.calls.filter((c) => c[0] === 'task_step').slice(-3).every((c) => c[1].silent === true)).toBe(true);
@@ -438,5 +439,62 @@ describe('createGuidedTask', () => {
   it('isAdvanceRequest matches the hands-free confirmations only', () => {
     for (const t of ['next', 'Next step.', 'done', 'I did it', 'okay, next', 'skip this step', 'got it', 'continue']) expect(isAdvanceRequest(t)).toBe(true);
     for (const t of ['what is next to me', 'is it done yet', 'eggs', 'the door is open', '']) expect(isAdvanceRequest(t)).toBe(false);
+  });
+
+  it('fridge mission starts without a planner, keeps geometry alive during stalled vision, and rejects an old step reply', async () => {
+    let finishAsk!: (v: AskOutcome) => void;
+    const h = harness({ askImpl: () => new Promise((resolve) => { finishAsk = resolve; }) });
+    let detections: Detection[] = [{ cls: 'fridge', box: [0.6, 0.2, 0.3, 0.4], score: 0.9, trackId: 1 }];
+    const guide = createGuide({ detections: () => detections, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
+    const task = createGuidedTask({ ...h.deps, guide });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs from my fridge', context: 'home', source: 'voice' });
+    expect(h.planner).not.toHaveBeenCalled();
+    expect(h.describe).not.toHaveBeenCalled();
+    expect(h.said[0].text).toMatch(/Fridge.*right/);
+    await flush(3000); // cloud request hangs
+    detections = [{ cls: 'fridge', box: [0.3, 0.2, 0.4, 0.4], score: 0.9, trackId: 1 }];
+    await flush(500);
+    expect(h.said.at(-1)?.text).toMatch(/Fridge ahead.*steps/);
+    detections = [{ cls: 'fridge', box: [0.2, 0.05, 0.6, 0.9], near: 0.9, score: 0.9, trackId: 1 }];
+    await flush(1000);
+    expect(task.getDebugState()).toMatchObject({ stage: 'open', goal: 'eggs from my fridge' });
+    const old = applied({ done: true, confidence: 0.99 });
+    old.response!.speech = 'Old walking instruction.';
+    finishAsk(old);
+    await flush();
+    expect(task.getDebugState()).toMatchObject({ stage: 'open', doneReadings: 0 });
+    expect(h.said.some((r) => r.text === 'Old walking instruction.')).toBe(false);
+    await flush(5000);
+    expect(task.getDebugState().stage).toBe('open'); // closeness does not open a door
+    expect(h.asks.mock.calls.at(-1)![1].userText).toContain('Stage: open');
+    task.dispose();
+  });
+
+  it('keeps eggs through opening, item localization, hand steering and explicit pickup confirmation', async () => {
+    const eggBox: [number, number, number, number] = [0.2, 0.3, 0.15, 0.1];
+    const h = harness({ askImpl: async (text) => {
+      const out = applied({ done: false, confidence: 0 });
+      if (text.includes('Stage: find_item')) out.response!.target = { box: eggBox, confidence: 0.9 };
+      return out;
+    } });
+    const guide = createGuide({ detections: () => [{ cls: 'fridge', box: [0.2, 0.05, 0.6, 0.9], near: 0.9, score: 0.9, trackId: 1 }], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
+    const hand = { start: jest.fn(async () => ({ done: 'touching' as const, steps: 1, handWords: 3 })), stop: jest.fn(), isRunning: () => false };
+    const task = createGuidedTask({ ...h.deps, guide, handGuide: hand, tickMs: 1000, seen: () => 'chair left, table right, '.repeat(30) });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush(1000);
+    expect(task.getDebugState().stage).toBe('open');
+    await flush(6000);
+    expect(task.getDebugState().stage).toBe('open');
+    expect(hand.start).toHaveBeenCalledWith('fridge handle', { goal: 'eggs in my fridge', target: null });
+    expect(task.intercept('the door is open')).toBe(true);
+    await flush(3000);
+    expect(hand.start).toHaveBeenCalledWith('eggs', expect.objectContaining({ goal: 'eggs in my fridge', target: expect.objectContaining({ box: eggBox }) }));
+    expect(task.getDebugState()).toMatchObject({ stage: 'confirm_pickup', active: true, goal: 'eggs in my fridge' });
+    expect(h.deps.store.getState().mode).toBe('GUIDED_TASK');
+    expect(h.asks.mock.calls.every((c) => c[1].userText?.length <= 500)).toBe(true);
+    expect(h.asks.mock.calls.some((c) => c[1].userText?.includes('Stage: find_item'))).toBe(true);
+    expect(task.intercept('yes')).toBe(true);
+    expect(h.deps.store.getState().mode).toBe('DONE');
+    task.dispose();
   });
 });

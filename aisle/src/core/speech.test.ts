@@ -92,6 +92,46 @@ describe('SpeechService', () => {
 
   // --- playback tiers ---------------------------------------------------------
 
+  it('prepared geometry plays locally by exact text; uncached task speech never waits for synthesis', () => {
+    make('GUIDED_TASK');
+    svc.say({ text: PHRASES.guide_fridge_forward_5, priority: 'NAV' });
+    expect(fb.last().what).toBe('guide_fridge_forward_5');
+    expect(fb.synthCalls()).toBe(0);
+    fb.finish();
+    jest.advanceTimersByTime(MIN_GAP_MS);
+    svc.say({ text: 'Your striped carton is on the middle shelf.', priority: 'NAV' });
+    expect(fb.last()).toMatchObject({ backend: 'expo-speech', what: 'Your striped carton is on the middle shelf.' });
+    expect(fb.synthCalls()).toBe(0);
+  });
+
+  it('a hung synthesizer cannot hold the queue, and late audio cannot speak twice', async () => {
+    let release!: (uri: string) => void;
+    fb.be.synthesize = () => new Promise((resolve) => { release = resolve; });
+    make();
+    svc.say({ text: 'Turn toward Forbes Avenue.', priority: 'NAV' });
+    await jest.advanceTimersByTimeAsync(500);
+    expect(fb.last().backend).toBe('expo-speech');
+    release('file:///late.mp3');
+    await flush();
+    expect(fb.played).toHaveLength(1);
+  });
+
+  it('hand cues have a one-second gap and mic suspension prevents speech until released', () => {
+    make('GUIDED_TASK');
+    svc.say({ text: PHRASES.left, priority: 'NAV', cacheKey: 'left' });
+    fb.finish();
+    svc.say({ text: PHRASES.higher, priority: 'NAV', cacheKey: 'higher' });
+    jest.advanceTimersByTime(1000);
+    expect(fb.last().what).toBe('higher');
+    svc.setSuspended(true);
+    svc.say({ text: PHRASES.right, priority: 'NAV' });
+    jest.advanceTimersByTime(5000);
+    expect(fb.played).toHaveLength(2);
+    svc.setSuspended(false);
+    svc.say({ text: PHRASES.right, priority: 'NAV' });
+    expect(fb.last().what).toBe('right');
+  });
+
   it('plays a cached phrase from the bundled player at the current rate', () => {
     make();
     store.getState().setSpeechRate(1.15);
@@ -259,6 +299,8 @@ describe('SpeechService', () => {
     make();
     svc.say({ text: PHRASES.turn_right_soon, priority: 'NAV', cacheKey: 'turn_right_soon' });
     jest.advanceTimersByTime(4000);
+    expect(svc.isSpeaking()).toBe(true); // don't chop a normal ElevenLabs sentence
+    jest.advanceTimersByTime(6000);
     expect(svc.isSpeaking()).toBe(false);
   });
 

@@ -1,5 +1,25 @@
 # Aisle — Implementation Status
 
+## Latest: September 19 living-room recovery
+
+See [RECOVERY-CHECKPOINT.md](RECOVERY-CHECKPOINT.md) for the full resume checklist.
+Integrated main `f2ed7ff`; retained Poon's merged mic/confirmation changes. Fixed
+indoor commands becoming outdoor routes, ignored replacement goals, cloud-blocked
+geometry ticks, old-step replies, and silent requests emitting unrelated prompts.
+Fridge retrieval now has explicit approach/open/find/reach/confirm stages and keeps
+the requested item throughout. Reloaded vision clients receive distinct IDs.
+
+Added 392 prepared clips (480 total), compressed/normalized audio, full-volume
+playback, microphone suspension, one-second hand cues, immediate local task speech,
+and a hard synthesis timeout elsewhere. Probe TTS returned HTTP 200 in 262 ms;
+provider slowness was not established. Sample clip now measures -16.3 LUFS.
+
+Gates: app lint + 1105 full-suite tests, two additional backend tests, server types
++ 189 tests, native engine types + 113 checks all pass. Signed app built/installed;
+launch blocked by locked phone. Physical recognition, audibility, hand depth and
+distance calibration remain unverified. The shorter C task-plan branch was reviewed
+but not merged: this flow retains explicit item localization and pickup confirmation.
+
 Written 2026-09-18 (evening before hacking opens) from the four track reports, the integration
 report, and a fresh scan and test run of this checkout; refreshed the same day after the reviewer
 round (commits `2d8dc4b` … `577fe25`, see §7). It is meant to be blunt. Read it before the

@@ -66,6 +66,7 @@ function isTestFile(path: string): boolean {
 }
 
 function walk(path: string, out: string[]): void {
+  if (resolve(path) === resolve(ROOT, 'server/data/cache')) return;
   let st;
   try {
     st = statSync(path);

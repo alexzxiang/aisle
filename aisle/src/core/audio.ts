@@ -124,7 +124,7 @@ export interface AudioChannelBackend {
 
 export const DEFAULT_AUDIO_MODE: AudioSessionMode = {
   playsInSilentMode: true,
-  interruptionMode: 'duckOthers',
+  interruptionMode: 'doNotMix',
   shouldPlayInBackground: false,
   allowsRecording: false,
 };
@@ -368,16 +368,21 @@ export function createExpoAudioChannelBackend(): AudioChannelBackend {
 
   const oneShot = (asset: number): OneShotPlayer => {
     const player = Audio.createAudioPlayer(asset, { keepAudioSessionActive: true, updateInterval: 250 });
+    let generation = 0;
     return {
       play(volume) {
+        const request = ++generation;
         try {
           player.volume = Math.min(1, Math.max(0, volume));
-          player.seekTo(0).then(() => player.play(), () => player.play());
+          void player.seekTo(0).then(() => {
+            if (request === generation) player.play();
+          }).catch(() => undefined);
         } catch {
           // a released player is not a crash
         }
       },
       stop() {
+        generation += 1;
         try {
           player.pause();
         } catch {
@@ -385,6 +390,7 @@ export function createExpoAudioChannelBackend(): AudioChannelBackend {
         }
       },
       dispose() {
+        generation += 1;
         try {
           player.remove();
         } catch {

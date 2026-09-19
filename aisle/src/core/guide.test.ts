@@ -11,10 +11,13 @@ function rig(opts: { detections?: Detection[]; where?: unknown; hfov?: number; n
 }
 
 describe('guide (pure)', () => {
+  it('relative depth alone cannot declare a small distant fridge within reach', () => {
+    expect(rig({ detections: [det('fridge', 0.5, 0.3, 0.95)] }).guide.instructionFor('fridge')?.kind).not.toBe('arrived');
+  });
   it('steps from box height: a fridge filling the frame is one step, a fifth of it about eight', () => {
     expect(stepsFromBox('fridge', [0.3, 0.1, 0.4, 0.8], undefined)).toBe(2);
     expect(stepsFromBox('fridge', [0.4, 0.4, 0.2, 0.2], undefined)).toBe(9);
-    expect(stepsFromBox('fridge', [0.4, 0.4, 0.2, 0.2], 0.8)).toBe(1);      // the depth grid says close: trust it
+    expect(stepsFromBox('fridge', [0.4, 0.4, 0.2, 0.2], 0.8)).toBeGreaterThan(1); // relative depth is not proof of arrival
     expect(stepsFromBox('cup', [0.45, 0.45, 0.1, 0.1], undefined)).toBe(1);
     expect(stepsFromBox(null, [0.45, 0.45, 0.1, 0.05], undefined)).toBeLessThanOrEqual(20);
     expect(CLASS_HEIGHT_M.fridge).toBe(1.7);
@@ -85,14 +88,14 @@ describe('createGuide', () => {
     expect(g.instructionFor('eggs', { box: [0.4, 0.4, 0.2, 0.15], at: -5000 })).toMatchObject({ kind: 'scan_unknown' });   // stale box
   });
 
-  it('something close in the way while the target is ahead → step around it toward the open side', () => {
+  it('something close in the way stops walking; relative depth alone cannot prove a side is traversable', () => {
     const now = () => 1000;
     const memory = { whereIs: jest.fn(() => 'unseen' as never), facing: () => 0 };
     const blockedLeftOpen = createGuide({ detections: () => [det('fridge', 0.5, 0.3)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.85, left: 0.2, right: 0.6 }) });
     expect(blockedLeftOpen.instructionFor('fridge')).toMatchObject({ kind: 'sidestep' });
-    expect(blockedLeftOpen.instructionFor('fridge')!.text).toMatch(/left/);
+    expect(blockedLeftOpen.instructionFor('fridge')!.text).toMatch(/Stop/);
     const blockedRightOpen = createGuide({ detections: () => [det('fridge', 0.5, 0.3)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.85, left: 0.7, right: 0.1 }) });
-    expect(blockedRightOpen.instructionFor('fridge')!.text).toMatch(/right/);
+    expect(blockedRightOpen.instructionFor('fridge')!.text).toMatch(/Stop/);
     const open = createGuide({ detections: () => [det('fridge', 0.5, 0.3)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.2, left: 0.2, right: 0.2 }) });
     expect(open.instructionFor('fridge')).toMatchObject({ kind: 'forward' });
     // Close to the target, the "blockage" is the target itself: no sidestep.

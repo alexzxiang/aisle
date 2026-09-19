@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { describeDetections, describePath, renderFacts, systemPromptFor } from './vision';
 
 describe('facts in words (round 6b)', () => {
+  it('preserves the mission stage and checkpoint after character two hundred', () => {
+    const userText = `Goal: eggs in my fridge. ${'Observed room. '.repeat(15)}Stage: open. Look for interior shelves.`;
+    const text = renderFacts({ seq: 1, question: 'task_step', mode: 'GUIDED_TASK', userText, facts: { detections: [], ocr: [] } });
+    expect(text).toContain('Stage: open. Look for interior shelves.');
+  });
   it('describeDetections: side from the box, distance from the depth grid when present, else box size', () => {
     expect(describeDetections([
       { cls: 'table', box: [0.4, 0.5, 0.3, 0.3], score: 0.8, trackId: 1, near: 0.8 },

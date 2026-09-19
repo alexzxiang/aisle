@@ -427,7 +427,7 @@ export function createSituate(deps: SituateDeps): Situate {
       lastPromptAt = t;
       sayKey('show_surroundings', promptIntervalMs);
     }
-    if (!inFlight && settled && (lastAskAt === null || t - lastAskAt >= askIntervalMs)) {
+    if (deps.store.getState().mode !== 'GUIDED_TASK' && !inFlight && settled && (lastAskAt === null || t - lastAskAt >= askIntervalMs)) {
       inFlight = true;
       asks += 1;
       lastAskAt = t;

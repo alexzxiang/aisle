@@ -23,8 +23,9 @@ import type { HandHint, HandPoseEvent, HapticService, PerceptionService, SpeechS
 import type { AppEventBus } from './bus';
 import type { ConversationLog } from './conversation';
 import { PHRASES, type PhraseKey } from './phrases';
+import { MISSION_PHRASES } from './preparedGuidance';
 import { classForWords } from './sceneMemory';
-import { handWord, type HandWord } from './guide';
+import { handWord, type HandWord, type TargetBox } from './guide';
 import type { SemanticVision } from '../perception/semanticVision';
 
 export const HAND_INTERVAL_MS = 2000;       // Claude cadence (target box / fallback hints)
@@ -70,7 +71,7 @@ export interface HandGuideResult {
 
 export interface HandGuide {
   /** Speaks "Hold out your hand." and runs the loop for `item` until touching / give up / stop. */
-  start(item: string): Promise<HandGuideResult>;
+  start(item: string, context?: { goal: string; target: TargetBox | null }): Promise<HandGuideResult>;
   stop(): void;
   isRunning(): boolean;
 }
@@ -90,6 +91,7 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
   const maxSteps = deps.maxSteps ?? HAND_MAX_STEPS;
   let running = false;
   let cancelled = false;
+  let generation = 0;
 
   const sayKey = (key: PhraseKey, cooldownMs: number): void => {
     deps.speech.say({ text: PHRASES[key], cacheKey: key, priority: 'NAV', dedupeKey: `hand-${key}`, cooldownMs });
@@ -101,11 +103,13 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
   };
 
   return {
-    async start(item) {
+    async start(item, context) {
       if (running) return { done: 'stopped', steps: 0, handWords: 0 };
       running = true;
       cancelled = false;
-      const cls = classForWords(item);
+      const gen = ++generation;
+      // An appliance box is never a handle box.
+      const cls = /\bhandle\b/i.test(item) ? null : classForWords(item);
       const startedAt = now();
       let steps = 0;
       let handWords = 0;
@@ -120,7 +124,7 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
       let hand: HandPoseEvent | null = null;
       let handAt = -Infinity;
       type Seen = { box: Detection['box']; at: number };
-      const boxes: { detector: Seen | null; model: Seen | null } = { detector: null, model: null };
+      const boxes: { detector: Seen | null; model: Seen | null } = { detector: null, model: context?.target ?? null };
       let result: HandGuideResult | null = null;
 
       const unsubs: Array<() => void> = [];
@@ -137,7 +141,7 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
       const speakWord = (w: Exclude<HandWord, null>, t: number): void => {
         if (w === 'grab') {
           deps.haptics.play('CONFIRM');
-          sayKey('grab_it', 0);
+          sayLive(MISSION_PHRASES.mission_hand_aligned, 'hand-aligned', 0);
           return;
         }
         sayKey(WORD_PHRASE[w], 0);
@@ -156,20 +160,20 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
           if (!asking && t - lastAskAt >= interval) {
             asking = true;
             lastAskAt = t;
-            void deps.vision.ask('hand_guidance', { targetItem: item, image: 640, force: true, silent: true })
+            void deps.vision.ask('hand_guidance', { targetItem: item, userText: `Goal: ${context?.goal ?? item}. Current stage: guide the hand to ${item}. ${/handle/i.test(item) ? 'Locate the actual door handle, not the appliance. The door may still be closed.' : 'Locate the requested food or its carton, not another item.'} Do not change the goal.`, image: 768, force: true, silent: true })
               .then((out) => {
-                if (cancelled || !(out.status === 'applied' && out.response)) return;
+                if (cancelled || generation !== gen || !running || !(out.status === 'applied' && out.response)) return;
                 const r = out.response;
                 steps += 1;
-                if (r.target.box && r.target.confidence >= 0.4) boxes.model = { box: r.target.box, at: now() };
+                if (r.target.box && r.target.confidence >= 0.7) boxes.model = { box: r.target.box, at: t };
                 const freshHand = hand !== null && now() - handAt <= HAND_FRESH_MS;
                 if (!freshHand) {
                   // No on-device hand: Claude's word steers, as in round 6c.
-                  const hint = r.hand.hint;
+                  const hint = r.target.box && r.target.confidence >= 0.7 && now() - t <= MODEL_TARGET_FRESH_MS ? r.hand.hint : 'not_seen';
                   deps.bus?.emit({ type: 'ITEM_HAND_GUIDANCE', hint, step: steps });
                   if (hint === 'touching') {
                     deps.haptics.play('CONFIRM');
-                    sayKey('grab_it', 0);
+                    sayLive(MISSION_PHRASES.mission_hand_aligned, 'hand-aligned', 0);
                     result = { done: 'touching', steps, handWords };
                   } else if (hint === 'not_seen') {
                     notSeen += 1;
@@ -208,11 +212,11 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
             }
           } else if (freshHand && !target && t - lastWordAt >= HAND_REPEAT_MS * 2) {
             lastWordAt = t;
-            sayLive(`I see your hand, not the ${item}. Tilt the camera down.`, 'hand-no-target', 4000);
+            sayLive(MISSION_PHRASES.mission_target_missing, 'hand-no-target', 4000);
           }
 
           if (result === null && t - lastTargetSeenAt >= HAND_GIVE_UP_MS) {
-            sayLive(`I could not find the ${item}. Try another spot.`, 'hand-gave-up', 10_000);
+            sayLive(MISSION_PHRASES.mission_retry, 'hand-gave-up', 10_000);
             result = { done: 'gave_up', steps, handWords };
           }
           if (result !== null) break;
@@ -226,6 +230,7 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
     },
     stop() {
       cancelled = true;
+      generation += 1;
     },
     isRunning: () => running,
   };

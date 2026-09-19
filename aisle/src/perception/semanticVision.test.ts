@@ -140,6 +140,20 @@ describe('pure pieces', () => {
 });
 
 describe('HTTP transport (mock fetch)', () => {
+  it('uses a stable session header per runtime and a new one after restart', async () => {
+    const clients: string[] = [];
+    const fetchFn: FetchLike = async (_url, init) => {
+      clients.push((init?.headers as Record<string, string>)['x-aisle-client']);
+      return { ok: true, status: 200, json: async () => okResponse(1) };
+    };
+    const req: VisionRequest = { seq: 1, question: 'free', mode: 'IDLE', facts: { detections: [], ocr: [] } };
+    const first = createHttpVisionTransport({ proxyUrl: 'http://proxy', fetchFn });
+    await first.ask(req); await first.ask({ ...req, seq: 2 });
+    await createHttpVisionTransport({ proxyUrl: 'http://proxy', fetchFn }).ask(req);
+    expect(clients[0]).toBeTruthy();
+    expect(clients[0]).toBe(clients[1]);
+    expect(clients[2]).not.toBe(clients[0]);
+  });
   it('POSTs the VisionRequest to /api/vision and returns the parsed body', async () => {
     const calls: Array<{ url: string; body: string }> = [];
     const fetchFn: FetchLike = async (url, init) => {
@@ -287,6 +301,16 @@ describe('createSemanticVision policy', () => {
     await h.sv.ask('free', { userText: 'again', force: true });
     expect(h.speech.said).toHaveLength(1); // buzzing: event yes, prompt no
     expect(h.events.filter((e) => e.type === 'CAMERA_REQUEST')).toHaveLength(2);
+  });
+
+  it('silent task evidence cannot inject competing speech or movement prompts', async () => {
+    const h = harness(scripted((req) => okResponse(req.seq, { speech: 'Bear left.', cameraRequest: 'up', userAction: 'turn_left' })));
+    h.store.setState({ mode: 'GUIDED_TASK' });
+    const out = await h.sv.ask('task_step', { userText: 'Goal: eggs in my fridge. Stage: approach.', silent: true, force: true });
+    expect(out.status).toBe('applied');
+    expect(h.speech.said).toEqual([]);
+    expect(h.events).toEqual([]);
+    h.sv.dispose();
   });
   it('free with no userText image omits the thumbnail; hand_guidance asks for 640', async () => {
     const transport = scripted((req) => okResponse(req.seq));

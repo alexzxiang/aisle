@@ -47,6 +47,7 @@ import {
   checkPhrase,
   isPhraseKey,
   truncateWords,
+  phraseKeyForText,
   type PhraseCategory,
 } from './phrases';
 
@@ -58,10 +59,10 @@ export const MIN_GAP_MS = 4000;
 export const DEFAULT_COOLDOWN_MS = 8000;
 export const PROMPT_MIN_INTERVAL_MS = 3000;
 /** Live synthesis budget before falling to expo-speech (01 §11: first audio < 400 ms; be generous on cellular). */
-export const LIVE_SYNTH_TIMEOUT_MS = 1500;
+export const LIVE_SYNTH_TIMEOUT_MS = 500;
 export const PREFETCH_TIMEOUT_MS = 8000;
 /** Watchdogs so a missed "finished" event can never wedge the queue. */
-export const UTTERANCE_WATCHDOG_MS = 4000;
+export const UTTERANCE_WATCHDOG_MS = 10_000;
 export const LONG_UTTERANCE_WATCHDOG_MS = 13_000;
 export const STREAM_WATCHDOG_MS = 15_000;
 export const RUNTIME_KEY_PREFIX = 'tts:';
@@ -210,6 +211,7 @@ export interface SpeechStats {
 }
 
 export interface AisleSpeechService extends SpeechService {
+  setSuspended(on: boolean): void;
   /**
    * A-side extension (flagged for 01 §3): synthesize variable text through
    * `/api/tts` now and cache it on the phone, so `say({ text })` with the same
@@ -295,6 +297,7 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
   const utteranceTimes: number[] = [];
   let rate = store.getState().speechRate;
   let disposed = false;
+  let suspended = false;
 
   const stats = {
     spoken: 0, policyDropped: 0, dedupeDropped: 0, gateDropped: 0, queueDropped: 0, textRepaired: 0,
@@ -349,7 +352,7 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
     stats.lastStartedAt = t;
     utteranceTimes.push(t);
     while (utteranceTimes.length > 0 && t - utteranceTimes[0] > 60_000) utteranceTimes.shift();
-    c.watchdog = setTimeout(() => finish(c), watchdogMs);
+    c.watchdog = setTimeout(() => { c.handle?.stop(); finish(c); }, watchdogMs);
     // The blurb records what is being heard; a stream has no text to show.
     if (opts.conversation && c.item.streamId === undefined && c.item.text.length > 0) {
       try {
@@ -392,9 +395,20 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
       finish(c);
       return;
     }
+    // A walking/hand instruction must not wait for a network voice. Prepared phrases
+    // above retain ElevenLabs; new task wording speaks locally immediately.
+    if (mode() === 'GUIDED_TASK') {
+      startWith(backend.speak(item.text, rate, onDone));
+      return;
+    }
     // Hold the slot while synthesizing so nothing else starts; the stop() handle cancels.
     c.handle = { backend: 'file', stop: () => { c.cancelled = true; } };
-    void backend.synthesize(item.text, liveTimeout).then(
+    let deadline: ReturnType<typeof setTimeout>;
+    const bounded = Promise.race([
+      backend.synthesize(item.text, liveTimeout),
+      new Promise<null>((resolve) => { deadline = setTimeout(() => resolve(null), liveTimeout); }),
+    ]);
+    void bounded.finally(() => clearTimeout(deadline)).then(
       (uri) => {
         if (c.cancelled || current !== c) return;
         if (uri) {
@@ -411,7 +425,7 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
   };
 
   const pump = (): void => {
-    if (disposed || current) return;
+    if (disposed || current || suspended) return;
     if (criticals.length > 0) {
       clearGapTimer();
       begin(criticals.shift() as QueueItem);
@@ -424,7 +438,10 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
       pending = null;
       return;
     }
-    const wait = lastNonCriticalStart + MIN_GAP_MS - now();
+    const handKey = pending.cacheKey;
+    const handCue = mode() === 'GUIDED_TASK' && handKey !== undefined &&
+      ['left', 'right', 'higher', 'lower', 'reach_forward', 'grab_it'].includes(handKey);
+    const wait = lastNonCriticalStart + (handCue ? 1000 : MIN_GAP_MS) - now();
     if (wait > 0) {
       if (gapTimer === null) {
         gapTimer = setTimeout(() => {
@@ -503,7 +520,11 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
   };
 
   const say = (req: SpeechRequest): void => {
-    if (disposed) return;
+    if (disposed || suspended) return;
+    if (!req.cacheKey) {
+      const key = phraseKeyForText(req.text);
+      if (key && !LONG_PHRASE_ALLOWLIST.has(key)) req = { ...req, cacheKey: key };
+    }
     // Keyed requests speak the table; the class, the long-phrase exemption and
     // the playback key all derive from the resolved key, never from caller text.
     const resolved = resolveKeyedText(req);
@@ -617,6 +638,11 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
   });
 
   return {
+    setSuspended(on) {
+      suspended = on;
+      if (on) clearQueue();
+      else { lastNonCriticalStart = -Infinity; pump(); }
+    },
     say,
     playStream,
     clearQueue,

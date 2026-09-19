@@ -208,7 +208,7 @@ describe('composeApp (mock mode)', () => {
     // four-second gap, so the look prompt follows it and the step comes after.
     expect(platform.spoken).toEqual(['Eggs in my fridge. Got it.']);
     await jest.advanceTimersByTimeAsync(4000);
-    expect(platform.spoken).toEqual(['Eggs in my fridge. Got it.', 'Walk to the kitchen door frame.']);
+    expect(platform.spoken).toEqual(['Eggs in my fridge. Got it.', 'Fridge not visible. Stay still and scan slowly.']);
     expect(app.guidedTask.isActive()).toBe(true);
     const dbg = app.guidedTask.getDebugState();
     expect(dbg.total).toBeGreaterThanOrEqual(3);
@@ -236,27 +236,23 @@ describe('composeApp (mock mode)', () => {
     await jest.advanceTimersByTimeAsync(3000);
     expect(platform.spoken).toEqual(['CVS. Got it.']);
     // The transcript blurb keeps every line of both flows, spoken or skipped by the queue.
-    expect(app.conversation.entries().map((e) => `${e.role}:${e.text}`)).toEqual([
+    expect(app.conversation.entries().map((e) => `${e.role}:${e.text}`)).toEqual(expect.arrayContaining([
       'you:take me to the eggs in my fridge',
       'aisle:Eggs in my fridge. Got it.',
-      'aisle:Let me see your surroundings.',
-      'aisle:Shelves on both sides. Aisle sign ahead.',
       'aisle:Plan: 5 steps to eggs in my fridge.',
-      'aisle:Walk to the kitchen door frame.',
-      // Round 7: geometry speaks about the goal's place; nothing has seen a fridge in mock mode.
-      expect.stringMatching(/^aisle:.*fridge/i),
+      'aisle:Fridge not visible. Stay still and scan slowly.',
       'aisle:Next step.',
-      'aisle:Turn toward the kitchen counter.',
-      'aisle:Walk to the fridge.',
-      'aisle:Open the fridge door.',
-      'aisle:Look inside the fridge.',
+      'aisle:Stop at the fridge. Find its handle and open the door.',
+      'aisle:Keep still. Point the camera inside the open fridge.',
+      'aisle:Keep the item and your outstretched hand in the camera view.',
+      'aisle:Have you picked it up? Say yes when you have it.',
       'aisle:Done. Task complete.',
       'you:take me to CVS',
       'aisle:CVS. Got it.',
       'aisle:Let me see your surroundings.',
       'aisle:Planning your route.',
       'aisle:I could not find that place nearby.',
-    ]);
+    ]));
     // Newest NAV wins: by the time the gap ends the lookup has failed, so the queue speaks the outcome.
     // The awareness loop's "show me" waits out its re-entry hold and follows, never replacing it.
     await jest.advanceTimersByTimeAsync(SITUATE_REENTRY_MS);

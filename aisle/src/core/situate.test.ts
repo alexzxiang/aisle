@@ -233,16 +233,14 @@ describe('createSituate', () => {
     s.dispose();
   });
 
-  it('in a guided task (or with a request pending) the loop looks but never speaks; the guess still reaches the screen', async () => {
+  it('reserves cloud vision for the guided task; a pending request also stays silent', async () => {
     const h = harness([applied({ setting: 'kitchen', label: 'in a kitchen', confidence: 0.8 })]);
     const s = createSituate(h.deps);
     h.deps.store.getState().setMode('GUIDED_TASK');
     s.start();
     await flush(SITUATE_SETTLE_MS + SITUATE_ASK_INTERVAL_MS);
-    expect(h.ask).toHaveBeenCalled();
+    expect(h.ask).not.toHaveBeenCalled();
     expect(h.said).toEqual([]);
-    expect(h.store.getState().scene).toMatchObject({ setting: 'kitchen', confirmed: false });
-    expect(s.getContext()).toBe('home');
     h.deps.store.getState().abort();
     h.deps.store.setState({ targetItem: 'eggs' });
     await flush(SITUATE_PROMPT_INTERVAL_MS);

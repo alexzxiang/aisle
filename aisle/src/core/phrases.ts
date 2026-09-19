@@ -18,6 +18,7 @@
  *   - label_turn / label_stop / label_okay   (02 Task 3: training-mode one-word labels)
  */
 import type { CacheKey } from './contracts';
+import { PREPARED_GUIDANCE, type PreparedKey } from './preparedGuidance';
 
 // ---------------------------------------------------------------------------
 // Language rules
@@ -117,6 +118,7 @@ export function checkPhrase(text: string, opts: CheckPhraseOptions = {}): Phrase
 
 /** A-side additions to 01 §3 (flagged; see file header). */
 export type ASideKey =
+  | PreparedKey
   | 'course_hint_left' | 'course_hint_right'
   | 'looking_for_signs'
   | 'signal_read_delayed'
@@ -133,7 +135,7 @@ export type ASideKey =
   | 'show_surroundings' | 'tell_me_where' | 'noted'
   | 'grab_it' | 'hold_out_hand' | 'move_hand_slowly';
 
-export type PhraseKey = CacheKey | ASideKey;
+export type PhraseKey = CacheKey | ASideKey | PreparedKey;
 
 /**
  * Category drives the SpeechService mode policy (01 §3 table). One category
@@ -170,6 +172,7 @@ const P = (key: PhraseKey, text: string, category: PhraseCategory, aSide?: boole
 
 /** The closed set, in 01 §3 order, then the A-side additions. */
 export const PHRASE_LIST: readonly Phrase[] = [
+  ...PREPARED_GUIDANCE.map(({ key, text }) => P(key, text, 'indoor', true)),
   P('disclaimer',
     'Aisle is a prototype, not a safety device. Keep using your cane or guide dog. ' +
     'Aisle reads walk signals and warns about vehicles it can see; it cannot see everything ' +
@@ -305,11 +308,13 @@ export function isPhraseKey(key: string): key is PhraseKey {
 }
 
 export function phraseText(key: PhraseKey): string {
-  return PHRASES[key];
+  const text = PHRASES[key];
+  if (text === undefined) throw new Error(`Unknown phrase key: ${key}`);
+  return text;
 }
 
 export function phraseCategory(key: string): PhraseCategory | null {
-  return isPhraseKey(key) ? PHRASE_CATEGORY[key] : null;
+  return isPhraseKey(key) ? PHRASE_CATEGORY[key] ?? null : null;
 }
 
 const KEY_BY_TEXT: ReadonlyMap<string, PhraseKey> = new Map(PHRASE_LIST.map((p) => [p.text, p.key]));
