@@ -49,6 +49,13 @@ export const TASK_REMIND_MS = 20_000;
  * guidance and never fires while a "Is that right?" check is waiting.
  */
 export const TASK_REASSURE_MS = 12_000;
+/**
+ * If a single step never confirms for this long — the shopper cannot find the aisle, the
+ * item is not on the shelf — the task ends gracefully with "Ask staff for help finding it."
+ * rather than reminding forever (04 Task 9's give-up precedent). The reach step is exempt:
+ * its hand loop (handGuide) owns its own give-up.
+ */
+export const TASK_GIVE_UP_MS = 120_000;
 /** Two consecutive `done` readings before a step closes on camera evidence alone (one blurry frame must not skip a step). */
 export const TASK_DONE_STREAK = 2;
 /** An unanswered step check expires after this; the loop goes back to watching. */
@@ -107,6 +114,7 @@ export interface GuidedTaskDeps {
   tickMs?: number;
   remindMs?: number;
   reassureMs?: number;
+  giveUpMs?: number;
   doneConfidence?: number;
   askConfidence?: number;
   doneStreak?: number;
@@ -155,6 +163,7 @@ interface RunState {
   timer: ReturnType<typeof setTimeout> | null;
   remindTimer: ReturnType<typeof setTimeout> | null;
   reassureTimer: ReturnType<typeof setTimeout> | null;
+  giveUpTimer: ReturnType<typeof setTimeout> | null;
   asking: boolean;
   /** An open "Is that right?" for this step, with when it was asked. */
   check: { step: number; at: number } | null;
@@ -173,6 +182,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const tickMs = deps.tickMs ?? TASK_TICK_MS;
   const remindMs = deps.remindMs ?? TASK_REMIND_MS;
   const reassureMs = deps.reassureMs ?? TASK_REASSURE_MS;
+  const giveUpMs = deps.giveUpMs ?? TASK_GIVE_UP_MS;
   const doneConfidence = deps.doneConfidence ?? TASK_DONE_CONFIDENCE;
   const askConfidence = deps.askConfidence ?? TASK_ASK_CONFIDENCE;
   const doneStreak = deps.doneStreak ?? TASK_DONE_STREAK;
@@ -205,9 +215,11 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (r.timer !== null) clearT(r.timer);
     if (r.remindTimer !== null) clearT(r.remindTimer);
     if (r.reassureTimer !== null) clearT(r.reassureTimer);
+    if (r.giveUpTimer !== null) clearT(r.giveUpTimer);
     r.timer = null;
     r.remindTimer = null;
     r.reassureTimer = null;
+    r.giveUpTimer = null;
   };
 
   const stop = (): void => {
@@ -229,6 +241,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     }
     scheduleRemind(r);
     scheduleReassure(r);
+    if (!reminder) scheduleGiveUp(r);   // a fresh step resets the patience; reminders do not
   };
 
   const scheduleRemind = (r: RunState): void => {
@@ -252,6 +265,27 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       speech.say({ text, priority: 'INFO', cacheKey: 'task_still_looking', dedupeKey: 'task-reassure', cooldownMs: reassureMs });
       deps.conversation?.pushAisle(text, 'prompt');
     }, reassureMs);
+  };
+
+  // A step that never confirms ends the task with "Ask staff for help finding it." rather than
+  // looping forever. Armed once per fresh step; deferred while the reach step's hand loop runs.
+  const scheduleGiveUp = (r: RunState): void => {
+    if (r.giveUpTimer !== null) clearT(r.giveUpTimer);
+    r.giveUpTimer = setT(() => {
+      r.giveUpTimer = null;
+      if (run !== r || mode() !== 'GUIDED_TASK') return;
+      if (r.handing) { scheduleGiveUp(r); return; }   // handGuide owns the reach step's give-up
+      giveUp(r);
+    }, giveUpMs);
+  };
+
+  const giveUp = (r: RunState): void => {
+    if (run !== r) return;
+    stop();
+    deps.haptics.play('CONFIRM');
+    speech.say({ text: phraseText('ask_staff'), priority: 'NAV', cacheKey: 'ask_staff', dedupeKey: 'task-give-up', cooldownMs: 0 });
+    deps.conversation?.pushAisle(phraseText('ask_staff'), 'prompt');
+    bus.emit({ type: 'TASK_COMPLETED', goal: r.goal });
   };
 
   const complete = (r: RunState): void => {
@@ -405,7 +439,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
-    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false };
+    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, giveUpTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false };
     run = r;
     deps.conversation?.pushAisle(`Plan: ${plan.steps.length === 1 ? 'one step' : `${plan.steps.length} steps`} to ${goal}.`, 'prompt');
     speakStep(r, false);
