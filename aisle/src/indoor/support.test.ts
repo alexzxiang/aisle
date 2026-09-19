@@ -1,6 +1,7 @@
 /** storeMap validation, pedometer prior and the obstacle INFO tier (04 Tasks 0, 5, 7). */
 import type { DepthSummary, SpeechRequest } from '../core/contracts';
-import { classifyObstacle, createObstacleReporter } from './obstacles';
+import { findForbiddenTerm } from '../core/phrases';
+import { classifyObstacle, createObstacleReporter, obstacleText, OBSTACLE_BOTH_BLOCKED, OBSTACLE_PREFETCH_TEXTS, OBSTACLE_SPACE_LEFT, OBSTACLE_SPACE_RIGHT } from './obstacles';
 import { estimateOrder, nextSignDue, overshot, plausibleWindow } from './pedometerPrior';
 import { orderOf, signVocabulary, validateStoreMap } from './storeMap';
 import { makeTestMap } from './testing';
@@ -116,5 +117,61 @@ describe('obstacles INFO tier (04 Task 7)', () => {
     obs.forEach((cb) => cb({ distanceClass: 'NEAR', direction: 'CENTER' }));
     expect(said).toHaveLength(3);
     expect(walls).toHaveLength(4);
+  });
+});
+
+describe('obstacle sidestep: which way to go, not just that something is there', () => {
+  const grid = (leftBottomRel: number, rightBottomRel: number): DepthSummary =>
+    ({ centerBottomRel: 0.9, closingRate: 0, timestamp: 0, leftBottomRel, rightBottomRel });
+
+  it('names the side with more room (rel is 0..1 with 1 nearest, so lower wins)', () => {
+    expect(obstacleText(grid(0.2, 0.9))).toBe(OBSTACLE_SPACE_LEFT);
+    expect(obstacleText(grid(0.9, 0.2))).toBe(OBSTACLE_SPACE_RIGHT);
+  });
+
+  it('sends the person to the cane when both sides are blocked', () => {
+    expect(obstacleText(grid(0.8, 0.75))).toBe(OBSTACLE_BOTH_BLOCKED);
+  });
+
+  it('stays silent about direction when the sides are too alike to call', () => {
+    // Within the margin the grid is guessing; naming a side would be invented guidance.
+    expect(obstacleText(grid(0.40, 0.45))).toBe('Obstacle ahead.');
+    expect(obstacleText(grid(0.55, 0.50))).toBe('Obstacle ahead.');
+  });
+
+  it('falls back to the plain line when the phone sent no side cells', () => {
+    expect(obstacleText({ centerBottomRel: 0.9, closingRate: 0, timestamp: 0 } as DepthSummary)).toBe('Obstacle ahead.');
+    expect(obstacleText(null)).toBe('Obstacle ahead.');
+  });
+
+  it('never claims a side is free, and never trips the phrase lint', () => {
+    for (const t of [OBSTACLE_SPACE_LEFT, OBSTACLE_SPACE_RIGHT, OBSTACLE_BOTH_BLOCKED]) {
+      expect(findForbiddenTerm(t)).toBeNull();
+      expect(t.trim().split(/\s+/).length).toBeLessThanOrEqual(12);
+      expect(t).not.toMatch(/\d/);
+      expect(OBSTACLE_PREFETCH_TEXTS).toContain(t);   // pre-synthesized, so the first one is not slow
+    }
+  });
+
+  it('speaks the sidestep without the cached clip, which only says "Obstacle ahead."', () => {
+    type L<T> = (e: T) => void;
+    const obs = new Set<L<{ distanceClass: 'NEAR' | 'MID' | 'FAR'; direction: 'LEFT' | 'CENTER' | 'RIGHT' }>>();
+    const dep = new Set<L<DepthSummary>>();
+    const said: SpeechRequest[] = [];
+    createObstacleReporter({
+      perception: {
+        onObstacleAhead: (cb) => { obs.add(cb); return () => {}; },
+        onHazard: () => () => {},
+        onDepth: (cb) => { dep.add(cb); return () => {}; },
+      },
+      speech: { say: (r) => { said.push(r); } },
+      now: () => 0,
+    });
+    dep.forEach((cb) => cb(grid(0.2, 0.9)));
+    obs.forEach((cb) => cb({ distanceClass: 'NEAR', direction: 'CENTER' }));
+    expect(said).toHaveLength(1);
+    expect(said[0]!.text).toBe(OBSTACLE_SPACE_LEFT);
+    expect(said[0]!.cacheKey).toBeUndefined();
+    expect(said[0]!.priority).toBe('INFO');
   });
 });
