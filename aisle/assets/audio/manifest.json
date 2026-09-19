@@ -328,7 +328,7 @@
       "file": "ask_staff.mp3",
       "textSha1": "f663422fa31af797826624ad09b43d2f00c3bdaa",
       "bytes": 12164,
-      "estimatedMs": 1521,
+      "estimatedMs": 1520,
       "generatedAt": "2026-09-18T16:26:05.163Z"
     },
     "course_hint_left": {
@@ -568,7 +568,7 @@
       "file": "describe_nothing.mp3",
       "textSha1": "5de8bd3edcfa2aa1423682e3738700a1a0fd5919",
       "bytes": 12164,
-      "estimatedMs": 1521,
+      "estimatedMs": 1520,
       "generatedAt": "2026-09-19T01:30:23.989Z"
     },
     "arrived_destination": {
@@ -592,7 +592,7 @@
       "file": "let_me_see.mp3",
       "textSha1": "e2514fca33d1f823264a5e78070d545811f49e97",
       "bytes": 12164,
-      "estimatedMs": 1521,
+      "estimatedMs": 1520,
       "generatedAt": "2026-09-19T02:15:28.395Z"
     },
     "no_place_found": {
