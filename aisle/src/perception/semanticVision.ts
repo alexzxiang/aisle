@@ -32,19 +32,21 @@
  *   ← { type: 'result', res: VisionResponse | { confidence: 0, seq } }
  *   ← { type: 'error', seq, code }                         (a `result` with confidence 0 follows for seq errors)
  */
-import type {
-  AppMode,
-  CameraDirection,
-  DepthSummary,
-  Detection,
-  PerceptionService,
-  SignalState,
-  SpeechPriority,
-  SpeechService,
-  UserAction,
-  VisionQuestion,
-  VisionRequest,
-  VisionResponse,
+import {
+  SCENE_SETTINGS,
+  type AppMode,
+  type CameraDirection,
+  type DepthSummary,
+  type Detection,
+  type PerceptionService,
+  type SceneSetting,
+  type SignalState,
+  type SpeechPriority,
+  type SpeechService,
+  type UserAction,
+  type VisionQuestion,
+  type VisionRequest,
+  type VisionResponse,
 } from '../core/contracts';
 import type { AppEventBus } from '../core/bus';
 import type { AppStore } from '../core/store';
@@ -74,6 +76,7 @@ export const MIN_INTERVAL_MS: Readonly<Record<VisionQuestion, number>> = Object.
   curb_crop: 0,
   free: 0,
   task_step: 2500,   // the guided loop re-asks about once per scene change, never faster than this
+  situate: 6000,     // the awareness loop: a slow, scene-gated "where am I" (situate.ts)
 });
 
 /** Thumbnail width per question: 640 when text must be read, 1024 for the curb crop, 512 otherwise. */
@@ -86,11 +89,12 @@ export const SNAPSHOT_WIDTH: Readonly<Record<VisionQuestion, 512 | 640 | 1024 | 
   curb_crop: 1024,
   free: null,
   task_step: 640,   // read labels, door signs, fridge contents
+  situate: 512,
 });
 
 const CROSSING_QUESTIONS: ReadonlySet<VisionQuestion> = new Set<VisionQuestion>(['scan_left', 'scan_right', 'curb_crop']);
 /** Questions the scene-change gate applies to; user- or loop-driven ones bypass it. */
-const SCENE_GATED: ReadonlySet<VisionQuestion> = new Set<VisionQuestion>(['aisle_disambiguate', 'storefront', 'scan_left', 'scan_right', 'curb_crop']);
+const SCENE_GATED: ReadonlySet<VisionQuestion> = new Set<VisionQuestion>(['aisle_disambiguate', 'storefront', 'scan_left', 'scan_right', 'curb_crop', 'situate']);
 
 export function freshnessWindowMs(question: VisionQuestion): number {
   return CROSSING_QUESTIONS.has(question) ? FRESHNESS_CROSSING_MS : FRESHNESS_INDOOR_MS;
@@ -119,6 +123,7 @@ export function emptyVisionResponse(seq: number): VisionResponse {
     signal: { state: 'UNKNOWN', confidence: 0 },
     hand: { hint: 'not_seen' },
     task: { done: false, confidence: 0 },
+    scene: { setting: 'unknown', label: '', confidence: 0 },
     confidence: 0,
     seq,
   };
@@ -152,6 +157,11 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
     signal: { state: str(signal.state, 'UNKNOWN') as SignalState, confidence: num(signal.confidence, 0) },
     hand: { hint: str(hand.hint, 'not_seen') as VisionResponse['hand']['hint'] },
     task: { done: sub(raw.task).done === true, confidence: num(sub(raw.task).confidence, 0) },
+    scene: {
+      setting: (SCENE_SETTINGS as readonly string[]).includes(str(sub(raw.scene).setting, 'unknown')) ? (str(sub(raw.scene).setting, 'unknown') as SceneSetting) : 'unknown',
+      label: str(sub(raw.scene).label, '').trim(),
+      confidence: num(sub(raw.scene).confidence, 0),
+    },
     confidence: num(raw.confidence, 0),
     seq: base.seq,
   };
@@ -649,7 +659,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       },
     };
     if (image) req.image = image;
-    if ((question === 'free' || question === 'task_step') && o.userText) req.userText = o.userText;
+    if ((question === 'free' || question === 'task_step' || question === 'situate') && o.userText) req.userText = o.userText;
     return req;
   };
 

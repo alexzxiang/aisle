@@ -42,6 +42,7 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   no_store_nearby: require('./no_store_nearby.mp3') as number,
   no_vehicles_left: require('./no_vehicles_left.mp3') as number,
   no_vehicles_right: require('./no_vehicles_right.mp3') as number,
+  noted: require('./noted.mp3') as number,
   now_right: require('./now_right.mp3') as number,
   obstacle_ahead: require('./obstacle_ahead.mp3') as number,
   offline_notice: require('./offline_notice.mp3') as number,
@@ -68,10 +69,12 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   route_unavailable: require('./route_unavailable.mp3') as number,
   say_item_again: require('./say_item_again.mp3') as number,
   say_item_one_word: require('./say_item_one_word.mp3') as number,
+  show_surroundings: require('./show_surroundings.mp3') as number,
   signal_read_delayed: require('./signal_read_delayed.mp3') as number,
   task_done: require('./task_done.mp3') as number,
   task_next: require('./task_next.mp3') as number,
   task_step_done: require('./task_step_done.mp3') as number,
+  tell_me_where: require('./tell_me_where.mp3') as number,
   tilt_camera_up: require('./tilt_camera_up.mp3') as number,
   touching: require('./touching.mp3') as number,
   turn_left_a_little: require('./turn_left_a_little.mp3') as number,
@@ -90,8 +93,8 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
 });
 
 export const AUDIO_MANIFEST_META = Object.freeze({
-  generatedAt: "2026-09-19T02:15:28.395Z",
+  generatedAt: "2026-09-19T02:51:58.793Z",
   voiceId: "77PfBlxcTFzlg9xS12zb",
   model: "eleven_flash_v2_5",
-  count: 78,
+  count: 81,
 });

@@ -39,6 +39,7 @@ import { bindPrefs, createMemoryPrefsStorage, type PrefsBinding, type PrefsStora
 import { createConversationLog, type ConversationLog } from './conversation';
 import { createSceneDescriber, type SceneDescriber } from './describer';
 import { createGuidedTask, type GuidedTask } from './guidedTask';
+import { createSituate, type Situate } from './situate';
 import { wirePrompts, type PromptsBinding } from './prompts';
 import { LatencyRing, liveMetrics, observePlanner, timedTransport, type LiveMetrics } from './metrics';
 import { createFixtureRouteClient, type FixtureTrack } from './fixtureRoute';
@@ -130,6 +131,8 @@ export interface AppComposition {
   trip: Trip;
   /** Round 4: "take me to the eggs in my fridge" — camera-guided steps with no route. */
   guidedTask: GuidedTask;
+  /** The awareness loop: "You seem to be in a kitchen. Is that right?" Runs from `start()`. */
+  situate: Situate;
   prefs: PrefsBinding;
   /** The transcript blurb's data (also registered as the `conversation` service). */
   conversation: ConversationLog;
@@ -297,6 +300,10 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   });
   const prompts = wirePrompts({ bus, store, conversation });
 
+  // --- Awareness loop: where the user seems to be, checked with them --------------------
+  const situate = createSituate({ store, speech, vision, conversation, now });
+  let guidedTaskRef: GuidedTask | null = null;
+
   // --- A: push-to-talk ---------------------------------------------------------
   const knownItems = (): string[] => {
     const map = resolver.getMap();
@@ -319,6 +326,9 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     now,
     conversation,
     describe: () => describer.describeNow(),
+    // Open questions answer first: the awareness loop's, then the guided task's step check.
+    intercept: (transcript) => situate.intercept(transcript) || (guidedTaskRef?.intercept(transcript) ?? false),
+    sceneContext: () => situate.getContext(),
   });
 
   // --- A: persisted prefs ----------------------------------------------------------
@@ -382,6 +392,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     conversation,
     now,
   });
+  guidedTaskRef = guidedTask;
 
   // --- cross-service glue that belongs to no track -----------------------------------
   // B writes the beacon target into its slice; A's beacon plays it.
@@ -427,6 +438,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     voice,
     trip,
     guidedTask,
+    situate,
     prefs,
     conversation,
     describer,
@@ -451,6 +463,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
       void resolver.ensureMap();
       await prefs.hydrated;
       describer.start();
+      situate.start();
       // The first-launch disclaimer has one owner: OnboardingScreen step 0
       // (cacheKey 'disclaimer', firstRunOnly), reached by IDLE → ONBOARDING on the
       // first ITEM_REQUESTED (01 §1). Speaking it here too recited it twice.
@@ -461,6 +474,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
       disposed = true;
       for (const u of unsubs.splice(0)) u();
       describer.stop();
+      situate.dispose();
       prompts.dispose();
       guidedTask.dispose();
       trip.dispose();

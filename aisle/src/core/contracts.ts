@@ -307,7 +307,23 @@ export interface PerceptionService {
 
 export type VisionQuestion =
   | 'storefront' | 'aisle_disambiguate' | 'scan_left' | 'scan_right'
-  | 'curb_crop' | 'hand_guidance' | 'free' | 'task_step';
+  | 'curb_crop' | 'hand_guidance' | 'free' | 'task_step' | 'situate';
+
+/** `situate`: where the camera seems to be. Coarse on purpose; `label` carries the specifics. */
+export type SceneSetting = 'street' | 'crossing' | 'entrance' | 'store' | 'home' | 'kitchen' | 'hallway' | 'room' | 'vehicle' | 'unknown';
+export const SCENE_SETTINGS: readonly SceneSetting[] = ['street', 'crossing', 'entrance', 'store', 'home', 'kitchen', 'hallway', 'room', 'vehicle', 'unknown'];
+
+/** The awareness loop's state (situate.ts): what the app believes about where the user is. */
+export interface SceneHypothesis {
+  setting: SceneSetting;
+  /** A place phrase: "in a kitchen", "on a sidewalk by a road"; the user's own words when `source` is 'user'. */
+  label: string;
+  confidence: number;
+  /** True once the user answered yes or told the app where they are. */
+  confirmed: boolean;
+  source: 'camera' | 'user';
+  at: number;
+}
 
 export interface VisionRequest {
   seq: number;
@@ -337,6 +353,7 @@ export interface VisionResponse {
   signal: { state: SignalState; confidence: number };      // curb_crop only; UNKNOWN unless confident
   hand: { hint: HandHint };                                 // hand_guidance only
   task: { done: boolean; confidence: number };              // task_step only: is the current step complete?
+  scene: { setting: SceneSetting; label: string; confidence: number }; // situate only: label ≤ 5 words ("in a kitchen", "on a sidewalk")
   confidence: number;                                        // 0..1 overall; < 0.5 → callers ignore
   seq: number;
 }

@@ -218,6 +218,14 @@ export interface VoiceInputOptions {
   conversation?: Pick<ConversationLog, 'pushUser' | 'pushAisle'>;
   /** The scene describer's on-demand path; resolves to the text it spoke, or null. */
   describe?: () => Promise<string | null>;
+  /**
+   * Answers to open questions, before the planner: the awareness loop's "yes" /
+   * "no" / "I'm in the kitchen", the guided task's "yes" to a step check. Returns
+   * true when the transcript was consumed (no planner call, no reply here).
+   */
+  intercept?: (transcript: string) => boolean;
+  /** The awareness loop's view of where the user is (home / store / street), or null. */
+  sceneContext?: () => TaskContext | null;
 }
 
 export type VoiceSource = 'voice' | 'keyboard';
@@ -230,8 +238,8 @@ export interface VoiceOutcome {
   /** Planner answered (false = local keyword fallback). */
   planner: boolean;
   plannerLatencyMs: number | null;
-  /** Answered locally, before the planner: a "describe" request (01 §9's intent union is frozen). */
-  localIntent?: 'describe';
+  /** Answered locally, before the planner: a "describe" request, or an answer an open question consumed (01 §9's intent union is frozen). */
+  localIntent?: 'describe' | 'intercepted';
 }
 
 export interface VoiceInput {
@@ -355,7 +363,9 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       return;
     } else if (output.intent === 'guided_task' && output.goal) {
       const m = opts.store.getState().mode;
-      const context: TaskContext = m === 'INDOOR_NAV' || m === 'AT_ITEM' || m === 'ITEM_PICKUP' || m === 'CHECKOUT_NAV' ? 'store' : m === 'OUTDOOR_NAV' ? 'street' : 'home';
+      const inStore = m === 'INDOOR_NAV' || m === 'AT_ITEM' || m === 'ITEM_PICKUP' || m === 'CHECKOUT_NAV';
+      // The awareness loop's confirmed or observed scene beats the mode's guess; the mode still wins inside a trip.
+      const context: TaskContext = inStore ? 'store' : m === 'OUTDOOR_NAV' ? 'street' : (opts.sceneContext?.() ?? 'home');
       reply();
       opts.bus.emit({ type: 'TASK_REQUESTED', goal: output.goal, context, source });
       return;
@@ -367,6 +377,12 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
 
   const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource): Promise<VoiceOutcome> => {
     pushUser(transcript, source);
+    if (transcript.length > 0 && opts.intercept?.(transcript)) {
+      unclearStreak = 0;
+      const output: ParseIntentOutput = { intent: 'unknown', item: null, reply: '' };
+      last = { output, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+      return last;
+    }
     if (transcript.length > 0 && opts.describe && isDescribeRequest(transcript)) {
       unclearStreak = 0;
       let text: string | null = null;

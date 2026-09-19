@@ -64,6 +64,7 @@ function positive(seq: number): VisionResponse {
     signal: { state: 'UNKNOWN', confidence: 0 },
     hand: { hint: 'not_seen' },
     task: { done: false, confidence: 0 },
+    scene: { setting: 'unknown', label: '', confidence: 0 },
     confidence: 0.85,
     seq,
   };

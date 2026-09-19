@@ -71,6 +71,11 @@ describe('profile (pure)', () => {
     expect(obstacleReflexFor('INDOOR_NAV', { distanceClass: 'NEAR' }, null)).toBe('NONE');
     expect(obstacleReflexFor('INDOOR_NAV', { distanceClass: 'MID' }, closing)).toBe('NONE');
     expect(obstacleReflexFor('IDLE', { distanceClass: 'NEAR' }, closing)).toBe('NONE');
+    // The indoor schedule runs in IDLE for the awareness loop; the reflex stays quiet there.
+    expect(obstacleReflexFor('INDOOR_NAV', { distanceClass: 'NEAR' }, closing, 'IDLE')).toBe('NONE');
+    expect(obstacleReflexFor('INDOOR_NAV', { distanceClass: 'NEAR' }, closing, 'DONE')).toBe('NONE');
+    expect(obstacleReflexFor('INDOOR_NAV', { distanceClass: 'NEAR' }, closing, 'GUIDED_TASK')).toBe('STOP_AND_SPEAK');
+    expect(profileForMode('IDLE')).toBe('INDOOR_NAV');
   });
 });
 
@@ -135,12 +140,11 @@ describe('bindPerceptionToApp', () => {
     return { native, perception, bus, events, store, played, said, order, binding };
   }
 
-  it('starts on the first non-IDLE mode and follows the mode → profile table without anyone passing mode', async () => {
+  it('starts at once (IDLE runs the indoor schedule for the awareness loop) and follows the mode → profile table without anyone passing mode', async () => {
     const r = rig();
-    expect(r.native.calls.filter((c) => c[0] === 'start')).toHaveLength(0);
-    r.store.setState({ mode: 'OUTDOOR_NAV' });
     await Promise.resolve();
-    expect(r.native.calls.filter((c) => c[0] === 'start')).toEqual([['start', ['OUTDOOR_NAV']]]);
+    expect(r.native.calls.filter((c) => c[0] === 'start')).toEqual([['start', ['INDOOR_NAV']]]);
+    r.store.setState({ mode: 'OUTDOOR_NAV' });
     r.store.setState({ mode: 'APPROACH_CROSSING' });
     r.store.setState({ mode: 'AT_CURB' });          // same profile: no extra call
     r.store.setState({ mode: 'CROSSING' });
@@ -152,7 +156,7 @@ describe('bindPerceptionToApp', () => {
     r.store.setState({ mode: 'CHECKOUT_NAV' });
     r.store.setState({ mode: 'DONE' });             // pauses (IDLE), does not stop
     const profiles = r.native.calls.filter((c) => c[0] === 'setProfile').map((c) => c[1][0]);
-    expect(profiles).toEqual(['APPROACH_CROSSING', 'CROSSING', 'OUTDOOR_NAV', 'INDOOR_NAV', 'ITEM_PICKUP', 'INDOOR_NAV', 'IDLE']);
+    expect(profiles).toEqual(['OUTDOOR_NAV', 'APPROACH_CROSSING', 'CROSSING', 'OUTDOOR_NAV', 'INDOOR_NAV', 'ITEM_PICKUP', 'INDOOR_NAV', 'IDLE']);
     expect(r.native.calls.some((c) => c[0] === 'stop')).toBe(false);
     r.binding.dispose();
     expect(r.native.calls.some((c) => c[0] === 'stop')).toBe(true);

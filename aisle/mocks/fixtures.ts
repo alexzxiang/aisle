@@ -40,6 +40,7 @@ export const visionFixtures: Record<VisionQuestion, VisionFixtureFile> = {
   aisle_disambiguate: visionAisle as VisionFixtureFile,
   scan_left: visionScanLeft as VisionFixtureFile,
   task_step: visionFree as VisionFixtureFile,
+  situate: visionFree as VisionFixtureFile,
   scan_right: visionScanRight as VisionFixtureFile,
   curb_crop: visionCurb as VisionFixtureFile,
   hand_guidance: visionHand as VisionFixtureFile,

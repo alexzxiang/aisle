@@ -13,7 +13,7 @@
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { useStore } from 'zustand';
-import type { AppEvent, AppMode, GeoFix, HeadingSample, Side, SpeechService } from './contracts';
+import type { AppEvent, AppMode, GeoFix, HeadingSample, Side, SpeechService, SceneHypothesis } from './contracts';
 import { createEventBus, type AppEventBus } from './bus';
 import { TRANSITION_CAP_MS } from './config';
 
@@ -68,6 +68,8 @@ export interface AppState {
   taskGoal: string | null;      // GUIDED_TASK: the goal in the user's words
   taskStep: number;             // GUIDED_TASK: 0-based current step
   taskStepCount: number;
+  /** The awareness loop's best guess at where the user is (situate.ts); `confirmed` once they said yes or told us. */
+  scene: SceneHypothesis | null;
   storeId: string | null;
   targetAisleId: string | null;
   targetSide: Side | null;
@@ -124,6 +126,7 @@ export const INITIAL_STATE: AppState = {
   taskGoal: null,
   taskStep: 0,
   taskStepCount: 0,
+  scene: null,
   storeId: null,
   targetAisleId: null,
   targetSide: null,

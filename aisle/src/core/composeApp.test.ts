@@ -9,6 +9,7 @@ import type { PerceptionNativeModule } from '../../modules/perception';
 import type { GeoFix, ModeProfile } from './contracts';
 import type { AudioChannelBackend } from './audio';
 import { createEventBus } from './bus';
+import { SITUATE_REENTRY_MS } from './situate';
 import { composeApp, plannerFetch, type AppPlatform } from './composeApp';
 import { createMemoryPrefsStorage, serializePrefs } from './prefs';
 import type { SensorSources } from './sensors';
@@ -182,7 +183,7 @@ describe('composeApp (mock mode)', () => {
     expect(app.trip.isActive()).toBe(false);
     expect(outdoor.getState().legs).toHaveLength(0);
     expect(app.haptics.isCourseRunning()).toBe(false);
-    expect(mocks.perception.debug().profile).toBe('IDLE');
+    expect(mocks.perception.debug().profile).toBe('INDOOR_NAV');   // IDLE keeps the camera up for the awareness loop
 
     app.dispose();
     expect(mocks.harness.isRunning()).toBe(false);
@@ -255,8 +256,9 @@ describe('composeApp (mock mode)', () => {
       'aisle:I could not find that place nearby.',
     ]);
     // Newest NAV wins: by the time the gap ends the lookup has failed, so the queue speaks the outcome.
-    await jest.advanceTimersByTimeAsync(4000);
-    expect(platform.spoken).toEqual(['CVS. Got it.', 'I could not find that place nearby.']);
+    // The awareness loop's "show me" waits out its re-entry hold and follows, never replacing it.
+    await jest.advanceTimersByTimeAsync(SITUATE_REENTRY_MS);
+    expect(platform.spoken).toEqual(['CVS. Got it.', 'I could not find that place nearby.', 'Turn slowly. Show me your surroundings.']);
     expect(store.getState().mode).toBe('IDLE');
     expect(store.getState().targetItem).toBeNull();
     expect(app.trip.isActive()).toBe(false);

@@ -59,6 +59,12 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'Otherwise put one concrete micro-instruction in speech (at most twelve words): a direction, a distance in steps, or what to reach for, e.g. "Door frame ahead, three steps.", "Fridge handle at waist height, right hand." Use cameraRequest when the camera must move to see the target and userAction when the person must move.',
     'Never state that it is fine to proceed into traffic or when to cross a street.',
   ].join(' '),
+  situate: [
+    COMMON,
+    'Question: where does the camera seem to be? Fill scene.setting with the coarse kind of place (street, crossing, entrance, store, home, kitchen, hallway, room, vehicle, unknown) and scene.label with a place phrase of at most five words that a blind person would recognise, e.g. "on a sidewalk by a road", "in a kitchen", "in a store aisle", "at a store entrance", "in a hallway". scene.confidence is your belief in the label.',
+    'Speech is an empty string: the app turns the label into its own question. If the frame shows too little to tell (a wall, the floor, darkness), set scene.setting unknown, an empty label, and cameraRequest to what would help (up, left, right).',
+    'userText may carry what the user said about where they are; if it disagrees with the image, trust the user for the setting and describe what differs in the label.',
+  ].join(' '),
   free: [
     COMMON,
     'Question: the user asked something in their own words (userText). Answer the question about what the camera sees in at most twelve words.',

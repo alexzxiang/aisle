@@ -6,13 +6,15 @@
  * walking-routes beta.
  */
 import React, { useCallback, useState } from 'react';
-import { Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { CameraPanel } from './CameraPanel';
+import { ScenePanel } from './ScenePanel';
 import { StateBand } from './StateBand';
 import { TalkButton } from './TalkButton';
 import { TranscriptPanel } from './TranscriptPanel';
 import { Button } from './Button';
 import { Backdrop, GlassPanel } from './Glass';
-import { heroText, visibleError } from './derive';
+import { heroText, stripSlots, visibleError } from './derive';
 import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
 import { DISCLAIMER_TEXT, PRIVACY_TEXT, WALKING_BETA_FALLBACK, itemAcknowledgement, normalizeTypedItem } from './copy';
 import type { ConversationLogPort, VoicePort } from './ports';
@@ -40,6 +42,9 @@ export interface HomeScreenProps {
   reduceMotion?: boolean;
 }
 
+/** The Home camera is a viewfinder, not the page: about a quarter of the window at most. */
+export const HOME_CAMERA_MAX_HEIGHT_SHARE = 0.28;
+
 export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const { onOpenDebug, onOpenSettings, voice, conversation, betaNotice = WALKING_BETA_FALLBACK, now: nowOverride } = props;
   const reduceMotion = useResolvedReduceMotion(props.reduceMotion);
@@ -48,6 +53,8 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const abort = useStoreSlice((s) => s.abort);
   const targetItem = useStoreSlice((s) => s.targetItem);
   const destinationOnly = useStoreSlice((s) => s.destinationOnly);
+  const scene = useStoreSlice((s) => s.scene);
+  const { height: windowHeight } = useWindowDimensions();
   const bus = useBus();
   const haptics = useOptionalService('haptics');
   const speech = useOptionalService('speech');
@@ -77,6 +84,7 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const hero = heroText(mode, facts, now, { item: targetItem, side: null, destinationOnly });
   const error = visibleError(facts, now);
   const accent = accentFor(mode);
+  const slots = stripSlots(facts, now);
 
   return (
     <View style={styles.screen}>
@@ -88,6 +96,10 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
+        {/* The camera is up from launch (the awareness loop): show it, and what the app makes of it. */}
+        <CameraPanel slots={slots} accent={accent} maxHeight={Math.round(windowHeight * HOME_CAMERA_MAX_HEIGHT_SHARE)} reduceMotion={reduceMotion} style={styles.camera} />
+        <ScenePanel scene={scene} reduceMotion={reduceMotion} />
+
         <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.fieldRow}>
           <TextInput
             value={draft}
@@ -198,6 +210,10 @@ const styles = StyleSheet.create({
   },
   transcript: {
     marginHorizontal: 0,
+  },
+  camera: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   notes: {
     paddingTop: space.l,

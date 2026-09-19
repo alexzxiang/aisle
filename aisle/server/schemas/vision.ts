@@ -17,6 +17,7 @@ const USER_ACTIONS = ['none', 'turn_left', 'turn_right', 'walk_forward', 'stop',
 const VEHICLES_SEEN = ['none', 'distant', 'approaching', 'unclear'] as const;
 const SIGNAL_STATES = ['WALK', 'DONT_WALK', 'COUNTDOWN', 'UNKNOWN'] as const;
 const HAND_HINTS = ['left', 'right', 'higher', 'lower', 'touching', 'not_seen'] as const;
+const SCENE_SETTINGS = ['street', 'crossing', 'entrance', 'store', 'home', 'kitchen', 'hallway', 'room', 'vehicle', 'unknown'] as const;
 
 const obj = (properties: Record<string, unknown>): Record<string, unknown> => ({
   type: 'object',
@@ -40,6 +41,11 @@ export const VISION_RESPONSE_SCHEMA: Readonly<Record<string, unknown>> = Object.
     signal: obj({ state: { type: 'string', enum: [...SIGNAL_STATES] }, confidence: { type: 'number' } }),
     hand: obj({ hint: { type: 'string', enum: [...HAND_HINTS] } }),
     task: obj({ done: { type: 'boolean', description: 'task_step only: the current step is complete' }, confidence: { type: 'number' } }),
+    scene: obj({
+      setting: { type: 'string', enum: [...SCENE_SETTINGS], description: 'situate only: the coarse kind of place' },
+      label: { type: 'string', description: 'situate only: at most five words, a place phrase such as "in a kitchen" or "on a sidewalk"; empty when unknown' },
+      confidence: { type: 'number' },
+    }),
     confidence: { type: 'number' },
     seq: { type: 'integer' },
   }),
@@ -61,6 +67,7 @@ export function emptyVisionResponse(seq: number): VisionResponse {
     signal: { state: 'UNKNOWN', confidence: 0 },
     hand: { hint: 'not_seen' },
     task: { done: false, confidence: 0 },
+    scene: { setting: 'unknown', label: '', confidence: 0 },
     confidence: 0,
     seq,
   };
@@ -83,6 +90,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
   const sc = (r.scan ?? {}) as Record<string, unknown>;
   const sg = (r.signal ?? {}) as Record<string, unknown>;
   const h = (r.hand ?? {}) as Record<string, unknown>;
+  const sn = (r.scene ?? {}) as Record<string, unknown>;
   return {
     speech: typeof r.speech === 'string' ? r.speech : '',
     cameraRequest: isIn(CAMERA_DIRECTIONS, r.cameraRequest) ? r.cameraRequest : 'none',
@@ -93,6 +101,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
     signal: { state: isIn(SIGNAL_STATES, sg.state) ? sg.state : 'UNKNOWN', confidence: num(sg.confidence) },
     hand: { hint: isIn(HAND_HINTS, h.hint) ? h.hint : 'not_seen' },
     task: { done: (r.task as { done?: unknown } | undefined)?.done === true, confidence: num((r.task as { confidence?: unknown } | undefined)?.confidence) },
+    scene: { setting: isIn(SCENE_SETTINGS, sn.setting) ? sn.setting : 'unknown', label: typeof sn.label === 'string' ? sn.label.trim().slice(0, 60) : '', confidence: num(sn.confidence) },
     confidence: num(r.confidence),
     seq,
   };

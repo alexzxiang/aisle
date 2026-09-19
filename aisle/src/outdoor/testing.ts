@@ -199,6 +199,7 @@ export function createFakeVision(): FakeVision {
         signal: { state: 'UNKNOWN', confidence: 0 },
         hand: { hint: 'not_seen' },
         task: { done: false, confidence: 0 },
+        scene: { setting: 'unknown', label: '', confidence: 0 },
         confidence: 0.9,
         seq: req.seq,
         ...partial,

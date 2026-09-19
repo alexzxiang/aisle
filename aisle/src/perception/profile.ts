@@ -17,10 +17,15 @@ import type {
 /**
  * 01 §7: AT_CURB uses the APPROACH_CROSSING profile; TRANSITION uses OUTDOOR_NAV;
  * AT_ITEM / CHECKOUT_NAV use INDOOR_NAV. ONBOARDING and DONE need no camera, so
- * they pause the session like IDLE (09 §3 "session paused").
+ * they pause the session (09 §3 "session paused").
+ *
+ * IDLE runs the indoor schedule since the awareness loop (situate.ts): the app
+ * looks at the room from the moment it opens, so it can say where it thinks the
+ * user is and ask. The obstacle reflex is off in IDLE (`obstacleReflexFor`): a
+ * phone held at rest must not shout "Obstacle ahead" at a table.
  */
 export const PROFILE_FOR_MODE: Readonly<Record<AppMode, ModeProfile>> = Object.freeze({
-  IDLE: 'IDLE',
+  IDLE: 'INDOOR_NAV',
   ONBOARDING: 'IDLE',
   OUTDOOR_NAV: 'OUTDOOR_NAV',
   APPROACH_CROSSING: 'APPROACH_CROSSING',
@@ -72,12 +77,17 @@ export type ObstacleReflex = 'STOP_ONLY' | 'STOP_AND_SPEAK' | 'NONE';
  * `closingRate` comes from the last `onDepth` summary because the obstacle event
  * itself carries no rate; with no depth summary yet nothing is "closing".
  */
+/** Modes where a NEAR obstacle means nothing: the user is not walking under guidance. */
+const OBSTACLE_QUIET_MODES: ReadonlySet<AppMode> = new Set<AppMode>(['IDLE', 'ONBOARDING', 'DONE']);
+
 export function obstacleReflexFor(
   profile: ModeProfile,
   e: { distanceClass: DistanceClass },
   lastDepth: Pick<DepthSummary, 'closingRate'> | null,
+  mode?: AppMode,
 ): ObstacleReflex {
   if (profile === 'IDLE') return 'NONE';
+  if (mode !== undefined && OBSTACLE_QUIET_MODES.has(mode)) return 'NONE';
   if (e.distanceClass !== 'NEAR') return 'NONE';
   if (!lastDepth || !(lastDepth.closingRate > 0)) return 'NONE';
   return isIndoorProfile(profile) ? 'STOP_AND_SPEAK' : 'STOP_ONLY';

@@ -30,21 +30,36 @@ import type { AppEventBus } from './bus';
 import type { AppStore } from './store';
 import type { ConversationLog } from './conversation';
 import type { VoiceOutcome } from './voice';
-import { phraseText } from './phrases';
+import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit, phraseText } from './phrases';
 import type { SemanticVision } from '../perception/semanticVision';
 import type { PlannerClient } from '../outdoor/planner';
 import { templateTaskPlan } from '../outdoor/plannerJobs';
 
 export const TASK_TICK_MS = 3000;
-export const TASK_DONE_CONFIDENCE = 0.6;
+/** A `done` reading at or above this counts toward closing the step on camera evidence alone. */
+export const TASK_DONE_CONFIDENCE = 0.8;
+/** A `done` reading in [ASK, DONE) is put to the user instead: "It looks like <thing>. Is that right?" */
+export const TASK_ASK_CONFIDENCE = 0.5;
 export const TASK_REMIND_MS = 20_000;
 /** Two consecutive `done` readings before a step closes on camera evidence alone (one blurry frame must not skip a step). */
 export const TASK_DONE_STREAK = 2;
+/** An unanswered step check expires after this; the loop goes back to watching. */
+export const TASK_CHECK_TTL_MS = 15_000;
 
 const NEXT_RE = /^(?:ok(?:ay)?[,. ]*)?(?:next(?: step)?|done|did it|i did it|got it|skip(?: (?:this|that|it))?(?: step)?|finished|complete[d]?|continue|go on)[.!]?$/i;
+const YES_RE = /^(?:yes|yeah|yep|yup|correct|right|that's right|thats right|that is right|exactly|sure|uh huh|affirmative)[.!]?$/i;
+const NO_RE = /^(?:no|nope|nah|wrong|incorrect|not really|not yet|that's wrong|thats wrong|negative)[.!]?$/i;
 
 export function isAdvanceRequest(transcript: string): boolean {
   return NEXT_RE.test(transcript.trim());
+}
+
+/** "It looks like the fridge door open. Is that right?" — null when the words cannot be spoken safely. */
+export function stepCheckQuestion(lookFor: string): string | null {
+  const l = lookFor.trim().replace(/[.!?]+$/, '').toLowerCase();
+  if (l.length === 0 || hasDigit(l) || findForbiddenTerm(l) !== null) return null;
+  const q = `It looks like ${l}. Is that right?`;
+  return countWords(q) <= MAX_UTTERANCE_WORDS ? q : null;
 }
 
 export interface GuidedTaskDeps {
@@ -62,7 +77,9 @@ export interface GuidedTaskDeps {
   tickMs?: number;
   remindMs?: number;
   doneConfidence?: number;
+  askConfidence?: number;
   doneStreak?: number;
+  checkTtlMs?: number;
   setTimeoutFn?: typeof setTimeout;
   clearTimeoutFn?: typeof clearTimeout;
 }
@@ -75,6 +92,9 @@ export interface GuidedTaskDebugState {
   total: number;
   asks: number;
   doneReadings: number;
+  /** A "Is that right?" step check is waiting for yes / no. */
+  checkOpen: boolean;
+  checks: number;
   plannerFallback: boolean | null;
   lastAskAt: number | null;
 }
@@ -82,6 +102,8 @@ export interface GuidedTaskDebugState {
 export interface GuidedTask {
   /** App routes every parsed voice outcome here (like `trip.onVoiceOutcome`). */
   onVoiceOutcome(o: Pick<VoiceOutcome, 'output' | 'transcript'>): Promise<void>;
+  /** Voice, before the planner: "yes" / "no" to an open step check. True when consumed. */
+  intercept(transcript: string): boolean;
   /** Move to the next step by hand (a button, a voice "next"). No-op when idle. */
   advance(): void;
   /** Speak the current step again. */
@@ -101,6 +123,10 @@ interface RunState {
   timer: ReturnType<typeof setTimeout> | null;
   remindTimer: ReturnType<typeof setTimeout> | null;
   asking: boolean;
+  /** An open "Is that right?" for this step, with when it was asked. */
+  check: { step: number; at: number } | null;
+  /** Steps already put to the user once (a "no" means: watch, do not ask again). */
+  checked: Set<number>;
 }
 
 export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
@@ -108,7 +134,9 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const tickMs = deps.tickMs ?? TASK_TICK_MS;
   const remindMs = deps.remindMs ?? TASK_REMIND_MS;
   const doneConfidence = deps.doneConfidence ?? TASK_DONE_CONFIDENCE;
+  const askConfidence = deps.askConfidence ?? TASK_ASK_CONFIDENCE;
   const doneStreak = deps.doneStreak ?? TASK_DONE_STREAK;
+  const checkTtlMs = deps.checkTtlMs ?? TASK_CHECK_TTL_MS;
   const setT: typeof setTimeout = deps.setTimeoutFn ?? setTimeout;
   const clearT: typeof clearTimeout = deps.clearTimeoutFn ?? clearTimeout;
   const { bus, store, speech } = deps;
@@ -117,6 +145,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   let generation = 0;
   let disposed = false;
   let asks = 0;
+  let checks = 0;
   let plannerFallback: boolean | null = null;
   let lastAskAt: number | null = null;
   const unsubs: Array<() => void> = [];
@@ -175,6 +204,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const advanceRun = (r: RunState, byUser: boolean): void => {
     if (run !== r || mode() !== 'GUIDED_TASK') return;
     r.doneReadings = 0;
+    r.check = null;
     if (r.step >= r.steps.length - 1) {
       complete(r);
       return;
@@ -190,10 +220,23 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     return `Goal: ${r.goal}. Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${s.lookFor}.`;
   };
 
-  const readDone = (res: VisionResponse | null): boolean => {
-    if (!res) return false;
-    const t = res.task;
-    return t.done === true && t.confidence >= doneConfidence;
+  /** 'done' closes on the streak; 'ask' puts it to the user; 'no' resets. */
+  const readDone = (res: VisionResponse | null): 'done' | 'ask' | 'no' => {
+    if (!res || res.task.done !== true) return 'no';
+    if (res.task.confidence >= doneConfidence) return 'done';
+    return res.task.confidence >= askConfidence ? 'ask' : 'no';
+  };
+
+  const openCheck = (r: RunState): void => {
+    const s = r.steps[r.step];
+    if (!s || r.check || r.checked.has(r.step)) return;
+    const q = stepCheckQuestion(s.lookFor);
+    if (!q) return;
+    checks += 1;
+    r.checked.add(r.step);
+    r.check = { step: r.step, at: now() };
+    speech.say({ text: q, priority: 'NAV', dedupeKey: 'task-check', cooldownMs: 5000 });
+    deps.conversation?.pushAisle(q, 'prompt');
   };
 
   const tick = async (r: RunState): Promise<void> => {
@@ -207,12 +250,19 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       asks += 1;
       lastAskAt = now();
       try {
-        const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV' });
-        if (run === r && out.status === 'applied' && readDone(out.response)) {
-          r.doneReadings += 1;
-          if (r.doneReadings >= doneStreak) advanceRun(r, false);
-        } else if (run === r && out.status === 'applied') {
-          r.doneReadings = 0;
+        if (r.check && now() - r.check.at > checkTtlMs) r.check = null; // no answer: back to watching
+        const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: r.check !== null });
+        if (run === r && out.status === 'applied') {
+          const verdict = readDone(out.response);
+          if (verdict === 'done') {
+            r.doneReadings += 1;
+            if (r.doneReadings >= doneStreak) advanceRun(r, false);
+          } else if (verdict === 'ask') {
+            r.doneReadings = 0;
+            openCheck(r);
+          } else {
+            r.doneReadings = 0;
+          }
         }
       } catch {
         // The loop is best-effort; the reminder keeps the instruction alive.
@@ -262,7 +312,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
-    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, asking: false };
+    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, asking: false, check: null, checked: new Set() };
     run = r;
     deps.conversation?.pushAisle(`Plan: ${plan.steps.length === 1 ? 'one step' : `${plan.steps.length} steps`} to ${goal}.`, 'prompt');
     speakStep(r, false);
@@ -290,6 +340,22 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       }
       if ((intent === 'unknown' || intent === 'help') && isAdvanceRequest(o.transcript)) advanceRun(run, true);
     },
+    intercept(transcript) {
+      const r = run;
+      if (!r || !r.check || mode() !== 'GUIDED_TASK') return false;
+      const t = transcript.trim();
+      if (YES_RE.test(t)) {
+        advanceRun(r, false);
+        return true;
+      }
+      if (NO_RE.test(t)) {
+        r.check = null;
+        r.doneReadings = 0;
+        speakStep(r, true);
+        return true;
+      }
+      return false;
+    },
     advance() {
       if (run) advanceRun(run, true);
     },
@@ -306,6 +372,8 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         total: run?.steps.length ?? 0,
         asks,
         doneReadings: run?.doneReadings ?? 0,
+        checkOpen: run?.check !== null && run?.check !== undefined,
+        checks,
         plannerFallback,
         lastAskAt,
       };

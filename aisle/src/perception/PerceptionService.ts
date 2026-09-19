@@ -246,7 +246,7 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
     lastDepth = d;
   }));
   unsubs.push(perception.onObstacleAhead((e: { distanceClass: DistanceClass; direction: Direction }) => {
-    const reflex = obstacleReflexFor(profile, e, lastDepth);
+    const reflex = obstacleReflexFor(profile, e, lastDepth, store.getState().mode);
     if (reflex !== 'NONE') haptics.play('STOP');
     if (reflex === 'STOP_AND_SPEAK') {
       speech.say({

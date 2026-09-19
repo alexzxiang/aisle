@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { StateBand } from './StateBand';
 import { CameraPanel } from './CameraPanel';
+import { ScenePanel } from './ScenePanel';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TalkButton } from './TalkButton';
 import { Button } from './Button';
@@ -57,6 +58,7 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   const side = useStoreSlice((s) => s.targetSide);
   const destinationOnly = useStoreSlice((s) => s.destinationOnly);
   const taskGoal = useStoreSlice((s) => s.taskGoal);
+  const scene = useStoreSlice((s) => s.scene);
   const abort = useStoreSlice((s) => s.abort);
   const facts = useUiFacts();
   const now = useNow(1000, nowOverride);
@@ -118,6 +120,7 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
         style={styles.band}
       />
       <CameraPanel slots={slots} accent={accent} maxHeight={Math.round(windowHeight * CAMERA_MAX_HEIGHT_SHARE)} reduceMotion={reduceMotion} style={styles.camera} />
+      {mode === 'GUIDED_TASK' || mode === 'DONE' ? <ScenePanel scene={scene} reduceMotion={reduceMotion} style={styles.scene} /> : null}
       <TranscriptPanel
         entries={entries}
         max={NAV_TRANSCRIPT_MAX}
@@ -162,6 +165,10 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   camera: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  scene: {
     flexGrow: 0,
     flexShrink: 0,
   },

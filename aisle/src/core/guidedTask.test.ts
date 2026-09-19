@@ -27,6 +27,7 @@ function visionResponse(task: VisionResponse['task'], speech = ''): VisionRespon
     signal: { state: 'UNKNOWN', confidence: 0 },
     hand: { hint: 'not_seen' },
     task,
+    scene: { setting: 'unknown', label: '', confidence: 0 },
     confidence: 0.9,
     seq: 1,
   };
@@ -108,7 +109,7 @@ describe('createGuidedTask', () => {
     const readings: Array<VisionResponse['task']> = [
       { done: false, confidence: 0.3 },
       { done: true, confidence: 0.9 },
-      { done: true, confidence: 0.5 },   // below the bar: streak resets
+      { done: true, confidence: 0.4 },   // below every bar: streak resets
       { done: true, confidence: 0.8 },
       { done: true, confidence: 0.8 },
     ];
@@ -204,6 +205,42 @@ describe('createGuidedTask', () => {
     h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs', context: 'home', source: 'voice' });
     await flush();
     expect(h.said).toHaveLength(before);
+    task.dispose();
+  });
+
+  it('a moderate done reading asks "It looks like <thing>. Is that right?" once per step; yes advances, no keeps watching', async () => {
+    const readings: Array<VisionResponse['task']> = [
+      { done: true, confidence: 0.6 },   // ask
+      { done: true, confidence: 0.6 },   // already asked this step: no second question
+    ];
+    const h = harness({ askImpl: async () => applied(readings.shift() ?? { done: true, confidence: 0.6 }) });
+    const task = createGuidedTask(h.deps);
+    h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush();
+    await flush(TASK_TICK_MS);
+    expect(h.said[h.said.length - 1].text).toBe('It looks like the room layout. Is that right?');
+    expect(task.getDebugState()).toMatchObject({ checkOpen: true, checks: 1, step: 0 });
+    // While the check is open the loop keeps asking silently and does not re-ask the user.
+    await flush(TASK_TICK_MS);
+    expect(task.getDebugState().checks).toBe(1);
+    expect(h.asks.mock.calls[1][1]).toMatchObject({ silent: true });
+    // "No": the step is repeated and the camera keeps watching; the same step is not checked again.
+    expect(task.intercept('no')).toBe(true);
+    expect(h.said[h.said.length - 1].text).toBe(PLAN.steps[0].instruction);
+    expect(task.getDebugState().checkOpen).toBe(false);
+    await flush(TASK_TICK_MS);
+    expect(task.getDebugState()).toMatchObject({ checks: 1, step: 0 });
+    // Step two: the check opens and "yes" closes the step.
+    task.advance();
+    expect(task.getDebugState().step).toBe(1);
+    await flush(TASK_TICK_MS);
+    expect(task.getDebugState()).toMatchObject({ checkOpen: true, checks: 2 });
+    expect(task.intercept('eggs')).toBe(false);
+    expect(task.intercept('Yes.')).toBe(true);
+    expect(task.getDebugState().step).toBe(2);
+    expect(h.said.slice(-2).map((r) => r.text)).toEqual([PHRASES.task_step_done, PLAN.steps[2].instruction]);
+    // Nothing open: intercept passes.
+    expect(task.intercept('yes')).toBe(false);
     task.dispose();
   });
 
