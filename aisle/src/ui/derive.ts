@@ -9,6 +9,7 @@
 import type {
   AppEvent,
   AppMode,
+  Detection,
   Direction,
   DistanceClass,
   Side,
@@ -377,10 +378,55 @@ export function bandSignal(facts: UiFacts): SignalState {
 // ---------------------------------------------------------------------------
 
 export interface StripSlot {
-  key: 'signal' | 'vehicles' | 'aisle';
+  key: 'signal' | 'vehicles' | 'aisle' | 'camera' | 'sees' | 'say';
   label: string;
   /** Reads as a sentence with the label: "Signal: walk, seen 1 s ago". */
   value: string;
+}
+
+/** Modes where the strip talks about the room and the camera, not crossings and aisles. */
+export const AWARENESS_STRIP_MODES: ReadonlySet<AppMode> = new Set<AppMode>(['IDLE', 'ONBOARDING', 'GUIDED_TASK', 'DONE']);
+
+const COUNT_WORD = ['no', 'one', 'two', 'three'] as const;
+const SEEN_NAMES: Readonly<Partial<Record<Detection['cls'], string>>> = Object.freeze({
+  ped_walk: 'walk signal',
+  ped_hand: 'hand signal',
+  ped_countdown: 'countdown',
+});
+
+/** "a person, two carts" from the detector's current tracks; "nothing yet" when empty. */
+export function detectionSummary(detections: readonly Pick<Detection, 'cls'>[]): string {
+  if (detections.length === 0) return 'nothing yet';
+  const counts = new Map<string, number>();
+  for (const d of detections) counts.set(d.cls, (counts.get(d.cls) ?? 0) + 1);
+  const parts = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([cls, n]) => {
+      const name = SEEN_NAMES[cls as Detection['cls']] ?? cls;
+      if (n === 1) return /^[aeiou]/i.test(name) ? `an ${name}` : `a ${name}`;
+      const plural = name.endsWith('s') ? name : `${name}s`;
+      return `${n < COUNT_WORD.length ? COUNT_WORD[n] : 'several'} ${plural}`;
+    });
+  return parts.join(', ');
+}
+
+export interface AwarenessStripInput {
+  /** The awareness loop's current guess (store `scene`). */
+  scene: { label: string; confirmed: boolean } | null;
+  /** The native preview is in this build and rendering. */
+  cameraLive: boolean;
+  detections: readonly Pick<Detection, 'cls'>[];
+}
+
+/** The three slots under the camera when nothing is being navigated: camera, what it sees, what to say. */
+export function awarenessSlots(input: AwarenessStripInput): StripSlot[] {
+  const say = input.scene && input.scene.label && !input.scene.confirmed ? 'yes or no' : 'where you are, or what you need';
+  return [
+    { key: 'camera', label: 'Camera', value: input.cameraLive ? 'live' : 'needs a rebuild' },
+    { key: 'sees', label: 'Sees', value: detectionSummary(input.detections) },
+    { key: 'say', label: 'Say', value: say },
+  ];
 }
 
 export function ageText(ts: number, now: number): string {

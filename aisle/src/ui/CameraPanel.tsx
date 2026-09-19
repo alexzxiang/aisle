@@ -35,12 +35,23 @@ interface CameraPreviewLikeProps {
 type CameraPreviewComponent = React.ComponentType<CameraPreviewLikeProps>;
 
 let cameraPreview: CameraPreviewComponent | null = null;
+let previewLinked: (() => boolean) | null = null;
 try {
   // Agent C's module; optional so the UI compiles and tests before it lands.
-  const mod = require('../perception/CameraPreview') as { CameraPreview?: CameraPreviewComponent };
+  const mod = require('../perception/CameraPreview') as { CameraPreview?: CameraPreviewComponent; isCameraPreviewAvailable?: () => boolean };
   cameraPreview = typeof mod.CameraPreview === 'function' ? mod.CameraPreview : null;
+  previewLinked = typeof mod.isCameraPreviewAvailable === 'function' ? mod.isCameraPreviewAvailable : null;
 } catch {
   cameraPreview = null;
+}
+
+/** The native ARKit preview is in this binary (false on a build made before it, in Expo Go, in Jest). */
+export function isCameraLive(): boolean {
+  try {
+    return cameraPreview !== null && (previewLinked?.() ?? false);
+  } catch {
+    return false;
+  }
 }
 
 /** Whether Agent C's preview component is in this build. */

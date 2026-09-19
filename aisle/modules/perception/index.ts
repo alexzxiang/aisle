@@ -170,10 +170,27 @@ let cachedView: ComponentType<PerceptionPreviewNativeProps> | null | undefined;
  * engine's ARSession: black before `start()`, frozen on the last frame while
  * the IDLE profile keeps the session paused (see the Swift header).
  */
+/**
+ * Is the view manager in this binary? `requireNativeViewManager` never throws: it
+ * hands back an adapter that red-boxes "Unimplemented component" at render time
+ * when the build predates the view. Expo's registry answers up front.
+ */
+export function isPerceptionPreviewViewLinked(): boolean {
+  const expo = (globalThis as { expo?: { getViewConfig?: (m: string, v?: string) => unknown } }).expo;
+  if (!expo || typeof expo.getViewConfig !== 'function') return getPerceptionNative() !== null; // no registry (tests): follow the module
+  try {
+    return expo.getViewConfig(NATIVE_MODULE_NAME, NATIVE_PREVIEW_VIEW_NAME) != null;
+  } catch {
+    return false;
+  }
+}
+
 export function getPerceptionPreviewView(): ComponentType<PerceptionPreviewNativeProps> | null {
   if (cachedView === undefined) {
     try {
-      cachedView = requireNativeViewManager<PerceptionPreviewNativeProps>(NATIVE_MODULE_NAME, NATIVE_PREVIEW_VIEW_NAME);
+      cachedView = isPerceptionPreviewViewLinked()
+        ? requireNativeViewManager<PerceptionPreviewNativeProps>(NATIVE_MODULE_NAME, NATIVE_PREVIEW_VIEW_NAME)
+        : null;
     } catch {
       cachedView = null;
     }

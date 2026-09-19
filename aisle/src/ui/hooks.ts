@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated } from 'react-native';
 import { useStore } from 'zustand';
-import type { AppMode } from '../core/contracts';
+import type { AppMode, Detection } from '../core/contracts';
 import type { AppEventBus } from '../core/bus';
 import type { AppStore, AppStoreState } from '../core/store';
 import { services, type ServiceMap, type ServiceName } from '../core/services';
@@ -34,6 +34,31 @@ export function useBus(): AppEventBus {
 /** Present-or-not services (speech may be missing in a stub shell). */
 export function useOptionalService<K extends ServiceName>(name: K): ServiceMap[K] | undefined {
   return services.tryGet(name);
+}
+
+/** The detector's current tracks (≤ 5 Hz), or [] without a perception service. Throttled to `minIntervalMs`. */
+export function useDetections(minIntervalMs = 500): Detection[] {
+  const perception = services.tryGet('perception');
+  const [dets, setDets] = useState<Detection[]>([]);
+  useEffect(() => {
+    if (!perception) return undefined;
+    let last = 0;
+    let stale: ReturnType<typeof setTimeout> | null = null;
+    const unsub = perception.onDetections((d) => {
+      const t = Date.now();
+      if (stale !== null) clearTimeout(stale);
+      // A quiet detector (nothing in frame) sends nothing: clear after a beat.
+      stale = setTimeout(() => setDets([]), 2000);
+      if (t - last < minIntervalMs) return;
+      last = t;
+      setDets(d);
+    });
+    return () => {
+      unsub();
+      if (stale !== null) clearTimeout(stale);
+    };
+  }, [perception, minIntervalMs]);
+  return dets;
 }
 
 interface FactsAction {

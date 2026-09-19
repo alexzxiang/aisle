@@ -24,9 +24,9 @@ interface BlurLike {
 /** The JS package is always installed; the native `ExpoBlur` module only exists in a build made after it was added. */
 export function hasNativeBlur(): boolean {
   try {
-    const core = require('expo-modules-core') as { requireOptionalNativeModule?: (name: string) => unknown };
-    if (typeof core.requireOptionalNativeModule !== 'function') return true; // Jest / no registry: trust the package
-    return core.requireOptionalNativeModule('ExpoBlur') !== null;
+    const expo = (globalThis as { expo?: { getViewConfig?: (m: string, v?: string) => unknown } }).expo;
+    if (!expo || typeof expo.getViewConfig !== 'function') return true; // Jest / no registry: trust the package
+    return expo.getViewConfig('ExpoBlur', 'ExpoBlurView') != null;
   } catch {
     return false;
   }

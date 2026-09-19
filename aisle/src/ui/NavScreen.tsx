@@ -14,14 +14,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { StateBand } from './StateBand';
-import { CameraPanel } from './CameraPanel';
+import { CameraPanel, isCameraLive } from './CameraPanel';
 import { ScenePanel } from './ScenePanel';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TalkButton } from './TalkButton';
 import { Button } from './Button';
 import { Backdrop } from './Glass';
-import { bandSignal, heroText, stripSlots } from './derive';
-import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
+import { AWARENESS_STRIP_MODES, awarenessSlots, bandSignal, heroText, stripSlots } from './derive';
+import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts, useDetections } from './hooks';
 import { assertUtterance } from './copy';
 import type { ConversationLogPort, DescribeNow, VoicePort } from './ports';
 import { accentFor, colors, sizes, space } from './theme';
@@ -71,7 +71,9 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   const signal = bandSignal(facts);
   const accent = accentFor(mode, signal);
   const hero = heroText(mode, facts, now, { item, side, destinationOnly, taskGoal });
-  const slots = stripSlots(facts, now);
+  const detections = useDetections();
+  // Walking and in the store the strip reports signal / vehicles / aisle; otherwise the room and the camera.
+  const slots = AWARENESS_STRIP_MODES.has(mode) ? awarenessSlots({ scene, cameraLive: isCameraLive(), detections }) : stripSlots(facts, now);
 
   // ---- Repeat: say the hero again, through the queue like everything else ----
   const repeat = useCallback(() => {

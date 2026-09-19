@@ -19,6 +19,9 @@ import {
   visibleError,
   type Instruction,
   type UiFacts,
+  awarenessSlots,
+  detectionSummary,
+  AWARENESS_STRIP_MODES,
 } from './derive';
 
 const T0 = 1_700_000_000_000;
@@ -305,5 +308,30 @@ describe('strip slots', () => {
     expect(ageText(T0 + 500, T0)).toBe('seen 0 s ago');
     expect(ageText(T0, T0 + 100_000)).toBe('seen a while ago');
     expect(ageText(T0, T0 + 1499)).toBe('seen 1 s ago');
+  });
+});
+
+describe('awareness strip (IDLE / guided task)', () => {
+  it('summarises the detector\'s tracks in words', () => {
+    expect(detectionSummary([])).toBe('nothing yet');
+    expect(detectionSummary([{ cls: 'person' }])).toBe('a person');
+    expect(detectionSummary([{ cls: 'person' }, { cls: 'person' }, { cls: 'cart' }])).toBe('two persons, a cart');
+    expect(detectionSummary([{ cls: 'car' }, { cls: 'car' }, { cls: 'car' }, { cls: 'car' }])).toBe('several cars');
+    expect(detectionSummary([{ cls: 'ped_walk' }])).toBe('a walk signal');
+  });
+
+  it('awarenessSlots: camera, what it sees, what to say', () => {
+    expect(awarenessSlots({ scene: null, cameraLive: false, detections: [] })).toEqual([
+      { key: 'camera', label: 'Camera', value: 'needs a rebuild' },
+      { key: 'sees', label: 'Sees', value: 'nothing yet' },
+      { key: 'say', label: 'Say', value: 'where you are, or what you need' },
+    ]);
+    expect(awarenessSlots({ scene: { label: 'in a kitchen', confirmed: false }, cameraLive: true, detections: [{ cls: 'person' }] })).toEqual([
+      { key: 'camera', label: 'Camera', value: 'live' },
+      { key: 'sees', label: 'Sees', value: 'a person' },
+      { key: 'say', label: 'Say', value: 'yes or no' },
+    ]);
+    expect(awarenessSlots({ scene: { label: 'in a kitchen', confirmed: true }, cameraLive: true, detections: [] })[2].value).toBe('where you are, or what you need');
+    expect(Array.from(AWARENESS_STRIP_MODES)).toEqual(['IDLE', 'ONBOARDING', 'GUIDED_TASK', 'DONE']);
   });
 });

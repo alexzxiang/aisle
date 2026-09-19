@@ -7,15 +7,15 @@
  */
 import React, { useCallback, useState } from 'react';
 import { Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { CameraPanel } from './CameraPanel';
+import { CameraPanel, isCameraLive } from './CameraPanel';
 import { ScenePanel } from './ScenePanel';
 import { StateBand } from './StateBand';
 import { TalkButton } from './TalkButton';
 import { TranscriptPanel } from './TranscriptPanel';
 import { Button } from './Button';
 import { Backdrop, GlassPanel } from './Glass';
-import { heroText, stripSlots, visibleError } from './derive';
-import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
+import { awarenessSlots, heroText, visibleError } from './derive';
+import { useBus, useConversationEntries, useDetections, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
 import { DISCLAIMER_TEXT, PRIVACY_TEXT, WALKING_BETA_FALLBACK, itemAcknowledgement, normalizeTypedItem } from './copy';
 import type { ConversationLogPort, VoicePort } from './ports';
 import { accentFor, colors, fontScaleCap, sizes, space, type } from './theme';
@@ -84,7 +84,8 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const hero = heroText(mode, facts, now, { item: targetItem, side: null, destinationOnly });
   const error = visibleError(facts, now);
   const accent = accentFor(mode);
-  const slots = stripSlots(facts, now);
+  const detections = useDetections();
+  const slots = awarenessSlots({ scene, cameraLive: isCameraLive(), detections });
 
   return (
     <View style={styles.screen}>
