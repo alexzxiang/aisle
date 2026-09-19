@@ -245,7 +245,8 @@ export interface StoreMap {
 // ---------------------------------------------------------------------------
 
 export type ModeProfile =
-  | 'IDLE' | 'OUTDOOR_NAV' | 'APPROACH_CROSSING' | 'CROSSING' | 'INDOOR_NAV' | 'ITEM_PICKUP';
+  | 'IDLE' | 'OUTDOOR_NAV' | 'APPROACH_CROSSING' | 'CROSSING' | 'INDOOR_NAV' | 'ITEM_PICKUP'
+  | 'AWARE';   // round 6c: the home screen — camera up for awareness at all-day rates
   // AT_CURB uses the APPROACH_CROSSING profile; TRANSITION uses OUTDOOR_NAV.
 
 /** Safety classes (vehicles, people, carts, signal heads) plus the scenery classes the room needs (round 6). */

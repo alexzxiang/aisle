@@ -19,13 +19,14 @@ import type {
  * AT_ITEM / CHECKOUT_NAV use INDOOR_NAV. ONBOARDING and DONE need no camera, so
  * they pause the session (09 §3 "session paused").
  *
- * IDLE runs the indoor schedule since the awareness loop (situate.ts): the app
- * looks at the room from the moment it opens, so it can say where it thinks the
- * user is and ask. The obstacle reflex is off in IDLE (`obstacleReflexFor`): a
- * phone held at rest must not shout "Obstacle ahead" at a table.
+ * IDLE runs the AWARE schedule (round 6c: detector 8 fps, depth 4, OCR 1, scene 2)
+ * since the awareness loop (situate.ts): the app looks at the room from the
+ * moment it opens, so it can say where it thinks the user is and ask, at rates
+ * a phone can hold all day. The obstacle reflex is off in IDLE
+ * (`obstacleReflexFor`): a phone held at rest must not shout "Obstacle ahead".
  */
 export const PROFILE_FOR_MODE: Readonly<Record<AppMode, ModeProfile>> = Object.freeze({
-  IDLE: 'INDOOR_NAV',
+  IDLE: 'AWARE',
   ONBOARDING: 'IDLE',
   OUTDOOR_NAV: 'OUTDOOR_NAV',
   APPROACH_CROSSING: 'APPROACH_CROSSING',
@@ -45,7 +46,7 @@ export function profileForMode(mode: AppMode): ModeProfile {
 }
 
 /** Profiles in which 01 §3 permits an obstacle phrase (04 Task 1 / Task 7). */
-export const INDOOR_PROFILES: ReadonlySet<ModeProfile> = new Set<ModeProfile>(['INDOOR_NAV', 'ITEM_PICKUP']);
+export const INDOOR_PROFILES: ReadonlySet<ModeProfile> = new Set<ModeProfile>(['INDOOR_NAV', 'ITEM_PICKUP', 'AWARE']);
 /** Profiles in which the vehicle pipeline runs (09 §5.2). */
 export const VEHICLE_PROFILES: ReadonlySet<ModeProfile> = new Set<ModeProfile>(['OUTDOOR_NAV', 'APPROACH_CROSSING', 'CROSSING']);
 

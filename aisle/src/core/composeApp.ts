@@ -306,7 +306,11 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   // --- Awareness loop: where the user seems to be, checked with them --------------------
   const situate = createSituate({ store, speech, vision, perception, conversation, now, narrate: () => store.getState().describeSurroundings });
   // --- Scene memory: bearings of what the detector saw in the last minute ----------------
-  const sceneMemory = createSceneMemory({ perception, speech, conversation, headingDeg: () => sensors.getFusedHeadingDeg(), now });
+  const sceneMemory = createSceneMemory({
+    perception, speech, conversation, headingDeg: () => sensors.getFusedHeadingDeg(), now,
+    // Bearings need the lens: ~100° across a portrait ultra-wide still, ~56° on the wide lens.
+    hfovDeg: () => ((perception.debugLog?.() ?? []).some((l) => l.includes('ultrawide')) ? 100 : 56),
+  });
   let guidedTaskRef: GuidedTask | null = null;
 
   // --- A: push-to-talk ---------------------------------------------------------

@@ -178,7 +178,8 @@ export interface SceneMemoryDeps {
   conversation?: Pick<ConversationLog, 'pushAisle'>;
   /** Fallback facing when no ARKit pose has arrived yet (the compass). */
   headingDeg?: () => number | null;
-  hfovDeg?: number;
+  /** Horizontal field of view of the still frame; a function so the lens can be read after the engine starts. */
+  hfovDeg?: number | (() => number);
   ttlMs?: number;
   now?: () => number;
 }
@@ -198,7 +199,7 @@ export interface SceneMemory {
 export function createSceneMemory(deps: SceneMemoryDeps): SceneMemory {
   const now = deps.now ?? Date.now;
   const ttl = deps.ttlMs ?? MEMORY_TTL_MS;
-  const hfov = deps.hfovDeg ?? DEFAULT_HFOV_DEG;
+  const hfov = (): number => (typeof deps.hfovDeg === 'function' ? deps.hfovDeg() : deps.hfovDeg ?? DEFAULT_HFOV_DEG);
   let yaw: number | null = null;
   let yawAt = 0;
   const items: MemoryEntry[] = [];
@@ -231,7 +232,7 @@ export function createSceneMemory(deps: SceneMemoryDeps): SceneMemory {
     const t = now();
     for (const d of dets) {
       if (d.cls === 'ped_walk' || d.cls === 'ped_hand' || d.cls === 'ped_countdown') continue;
-      const bearing = bearingFor(f, d.box, hfov);
+      const bearing = bearingFor(f, d.box, hfov());
       const area = d.box[2] * d.box[3];
       const same = items.find((e) => e.cls === d.cls && Math.abs(wrap180(e.bearingDeg - bearing)) <= MEMORY_MERGE_DEG);
       if (same) {

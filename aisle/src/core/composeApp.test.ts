@@ -183,7 +183,7 @@ describe('composeApp (mock mode)', () => {
     expect(app.trip.isActive()).toBe(false);
     expect(outdoor.getState().legs).toHaveLength(0);
     expect(app.haptics.isCourseRunning()).toBe(false);
-    expect(mocks.perception.debug().profile).toBe('INDOOR_NAV');   // IDLE keeps the camera up for the awareness loop
+    expect(mocks.perception.debug().profile).toBe('AWARE');   // IDLE keeps the camera up for the awareness loop, at all-day rates
 
     app.dispose();
     expect(mocks.harness.isRunning()).toBe(false);

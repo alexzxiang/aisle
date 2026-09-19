@@ -59,6 +59,7 @@ export const DEFAULT_PROFILE_PACKS: Readonly<Record<ModeProfile, string | null>>
   CROSSING: 'vehicle-approach',
   INDOOR_NAV: 'indoor-aisle-walk',
   ITEM_PICKUP: 'indoor-aisle-walk',
+  AWARE: 'indoor-aisle-walk',
 });
 
 /** `{ keep: true }` leaves whatever is armed running across the edge (the curb pack keeps playing while crossing). */
@@ -89,7 +90,7 @@ export const DEFAULT_MODE_PACKS: Readonly<Record<AppMode, ModePackRule>> = Objec
 
 /** 01 §7: AppMode → ModeProfile (AT_CURB shares the approach profile; TRANSITION uses OUTDOOR_NAV). */
 export const MODE_PROFILE: Readonly<Record<AppMode, ModeProfile>> = Object.freeze({
-  IDLE: 'IDLE',
+  IDLE: 'AWARE',
   ONBOARDING: 'IDLE',
   OUTDOOR_NAV: 'OUTDOOR_NAV',
   APPROACH_CROSSING: 'APPROACH_CROSSING',

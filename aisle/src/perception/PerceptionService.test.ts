@@ -75,7 +75,8 @@ describe('profile (pure)', () => {
     expect(obstacleReflexFor('INDOOR_NAV', { distanceClass: 'NEAR' }, closing, 'IDLE')).toBe('NONE');
     expect(obstacleReflexFor('INDOOR_NAV', { distanceClass: 'NEAR' }, closing, 'DONE')).toBe('NONE');
     expect(obstacleReflexFor('INDOOR_NAV', { distanceClass: 'NEAR' }, closing, 'GUIDED_TASK')).toBe('STOP_AND_SPEAK');
-    expect(profileForMode('IDLE')).toBe('INDOOR_NAV');
+    expect(profileForMode('IDLE')).toBe('AWARE');
+    expect(obstacleReflexFor('AWARE', { distanceClass: 'NEAR' }, closing, 'GUIDED_TASK')).toBe('STOP_AND_SPEAK');
   });
 });
 
@@ -140,10 +141,10 @@ describe('bindPerceptionToApp', () => {
     return { native, perception, bus, events, store, played, said, order, binding };
   }
 
-  it('starts at once (IDLE runs the indoor schedule for the awareness loop) and follows the mode → profile table without anyone passing mode', async () => {
+  it('starts at once (IDLE runs the AWARE schedule for the awareness loop) and follows the mode → profile table without anyone passing mode', async () => {
     const r = rig();
     await Promise.resolve();
-    expect(r.native.calls.filter((c) => c[0] === 'start')).toEqual([['start', ['INDOOR_NAV']]]);
+    expect(r.native.calls.filter((c) => c[0] === 'start')).toEqual([['start', ['AWARE']]]);
     r.store.setState({ mode: 'OUTDOOR_NAV' });
     r.store.setState({ mode: 'APPROACH_CROSSING' });
     r.store.setState({ mode: 'AT_CURB' });          // same profile: no extra call

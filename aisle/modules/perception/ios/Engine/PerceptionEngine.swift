@@ -328,7 +328,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
     guard let model = registry.model(for: .detector) else { return }
     throttles[.detector]?.markBusy()
     let frameTime = context.geometry.timestamp
-    let indoor = profile == .indoorNav || profile == .itemPickup
+    let indoor = profile == .indoorNav || profile == .itemPickup || profile == .aware
     detectorQueue.async { [self] in
       let raw = VisionRunner.detect(
         model: model, pixelBuffer: context.pixelBuffer, orientation: context.orientation,
@@ -393,7 +393,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
     guard let model = registry.model(for: .depth) else { return }
     throttles[.depth]?.markBusy()
     let frameTime = context.geometry.timestamp
-    let indoor = profile == .indoorNav || profile == .itemPickup
+    let indoor = profile == .indoorNav || profile == .itemPickup || profile == .aware
     depthQueue.async { [self] in
       let grid = VisionRunner.depthGrid(
         model: model, pixelBuffer: context.pixelBuffer, orientation: context.orientation, timestamp: frameTime)

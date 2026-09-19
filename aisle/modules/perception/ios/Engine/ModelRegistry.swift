@@ -131,6 +131,9 @@ public enum ProfileSchedules {
     case .itemPickup:
       return ProfileSchedule(detectorFps: 5, signalFps: 0, depthFps: 5, ocrFps: 0,
                              segmentationFps: 0, sceneFps: 1)
+    case .aware:
+      return ProfileSchedule(detectorFps: 8, signalFps: 0, depthFps: 4, ocrFps: 1,
+                             segmentationFps: 0, sceneFps: 2)
     }
   }
 
@@ -142,7 +145,7 @@ public enum ProfileSchedules {
     case .approachCrossing, .crossing: return .signal
     case .outdoorNav: return .detector
     case .indoorNav, .itemPickup: return .depth
-    case .idle: return .detector
+    case .idle, .aware: return .detector
     }
   }
 

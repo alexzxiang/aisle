@@ -197,6 +197,9 @@ public enum ModeProfile: String, Codable, CaseIterable, Sendable {
   case crossing = "CROSSING"
   case indoorNav = "INDOOR_NAV"
   case itemPickup = "ITEM_PICKUP"
+  /// Round 6c: the home screen. The camera is up for awareness (scenery detector, depth for
+  /// "close", the scene classifier) at rates a phone can hold all day; no OCR, no signal model.
+  case aware = "AWARE"
 }
 
 // MARK: - Geometry
