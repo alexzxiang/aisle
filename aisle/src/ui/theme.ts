@@ -50,6 +50,17 @@ export const glass = {
   bandTintAlpha: 0.18,
   /** Accent tint on the page's top edge (`Backdrop`), fading to nothing. */
   backdropTintAlpha: 0.12,
+  /**
+   * Fill for a panel that floats over the camera rather than over the page.
+   * Every other panel sits on `colors.bg`, so 0.58 composites to a known light
+   * surface; the perception strip sits on live video, which can be anything
+   * down to black. At 0.58 over a dark frame the slot labels measured 2.5:1 —
+   * below AA — and `theme.test.ts` could not see it, because it composites
+   * against the page. A denser fill makes the strip's surface independent of
+   * what the lens happens to be pointed at; `contrastOverCamera` in the test
+   * pins it against the worst case.
+   */
+  overCameraFillAlpha: 0.88,
 } as const;
 
 /** One accent per mode (01 §5 for the crossing states). Never the only carrier of meaning. */
@@ -232,6 +243,15 @@ export function glassSurface(under: string = colors.bg): string {
 /** The state band's effective colour: accent tint over the glass over the page. */
 export function bandSurface(accent: string, under: string = colors.bg): string {
   return blend(accent, glassSurface(under), glass.bandTintAlpha);
+}
+
+/**
+ * The perception strip's effective colour over camera content. `under` is what
+ * the lens is showing — black is the worst case and the one the test pins.
+ */
+export function cameraStripSurface(under: string = '#000000', accent?: string): string {
+  const fill = blend(colors.white, under, glass.overCameraFillAlpha);
+  return accent === undefined ? fill : blend(accent, fill, 0.1);
 }
 
 /** The page's top edge under the backdrop tint (the darkest the page itself gets). */

@@ -125,7 +125,6 @@ public final class SnapshotEncoder {
   /// Synchronous core, testable with a synthetic pixel buffer.
   public func encode(source: SnapshotSource, maxWidth: Int) -> Result<SnapshotPayload, Error> {
     var image = CIImage(cvPixelBuffer: source.pixelBuffer).oriented(source.orientation)
-    let extent = image.extent
 
     if maxWidth == SnapshotEncoder.curbCropWidth {
       image = SnapshotEncoder.curbCrop(image, horizonRow: source.horizonRow)
@@ -149,7 +148,6 @@ public final class SnapshotEncoder {
     let thisSeq = seq
     lock.unlock()
 
-    _ = extent
     return .success(SnapshotPayload(
       base64: data.base64EncodedString(),
       width: Int(outExtent.width), height: Int(outExtent.height),
@@ -159,16 +157,36 @@ public final class SnapshotEncoder {
   /// Scale so the LONG edge equals `maxWidth` (a portrait frame is
   /// `maxWidth` tall). 512 → 384×512 portrait / 512×384 landscape: the token
   /// budgets in 04 Task 8 assume the long edge.
+  ///
+  /// Downscaling goes through Lanczos, not a bare affine transform. The camera
+  /// frame is 1920 px or wider and every still is reduced 2.5–4×; an affine
+  /// scale resamples bilinearly, which below 1/2 drops more source pixels than
+  /// it reads and aliases exactly the high-frequency detail the question is
+  /// about — aisle digits, a signal head across a junction, the print on a
+  /// carton. Lanczos prefilters instead, so those survive the reduction. It
+  /// costs a few GPU milliseconds on a queue that is already off the frame loop.
+  /// If the filter is unavailable the affine path still produces a correct, if
+  /// softer, image.
   static func scaleToLongEdge(_ image: CIImage, maxWidth: Int) -> CIImage {
     let extent = image.extent
     let longEdge = max(extent.width, extent.height)
     guard longEdge > 0 else { return image }
     let scale = CGFloat(maxWidth) / longEdge
     guard scale < 1 else { return image }
-    return image
-      .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-      .transformed(by: CGAffineTransform(translationX: -image.extent.minX * scale,
-                                         y: -image.extent.minY * scale))
+    let scaled = lanczosScaled(image, scale: scale)
+      ?? image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    // Normalise the origin to (0,0) whichever path produced the image.
+    return scaled.transformed(by: CGAffineTransform(translationX: -scaled.extent.minX,
+                                                    y: -scaled.extent.minY))
+  }
+
+  /// `CILanczosScaleTransform`, or nil when the filter cannot be built.
+  static func lanczosScaled(_ image: CIImage, scale: CGFloat) -> CIImage? {
+    guard let filter = CIFilter(name: "CILanczosScaleTransform") else { return nil }
+    filter.setValue(image, forKey: kCIInputImageKey)
+    filter.setValue(NSNumber(value: Double(scale)), forKey: kCIInputScaleKey)
+    filter.setValue(NSNumber(value: 1.0), forKey: kCIInputAspectRatioKey)
+    return filter.outputImage
   }
 
   /// Keep a horizontal strip around the horizon row, full width, so a distant

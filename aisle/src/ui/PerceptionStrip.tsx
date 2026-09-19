@@ -10,7 +10,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { GlassPanel } from './Glass';
-import { colors, fontScaleCap, sizes, space, tabular, type } from './theme';
+import { colors, fontScaleCap, glass, sizes, space, tabular, type } from './theme';
 import type { StripSlot } from './derive';
 
 export interface PerceptionStripProps {
@@ -28,6 +28,7 @@ export function PerceptionStrip({ slots, accent, style, reduceMotion }: Percepti
       tintAlpha={0.1}
       radius={sizes.radiusControl}
       flat
+      fillAlpha={glass.overCameraFillAlpha}
       animateIn={false}
       reduceMotion={reduceMotion}
       style={style}
