@@ -9,6 +9,7 @@ import { createServer } from 'node:http';
 import { createApp } from './app';
 import { loadConfig, missingKeys } from './config';
 import { createDefaultDeps } from './deps';
+import { warmOverpassArea } from './routes/crossings';
 import { info, warn } from './lib/log';
 import { attachVisionSocket } from './ws/visionSocket';
 
@@ -30,6 +31,9 @@ async function main(): Promise<void> {
     // Never block listen on the warm-up; a red pair is reported, not fatal.
     void deps.warmup.warmAll();
     deps.warmup.start();
+    // Crossings for the demo area, once, with the full Overpass timeout (round 6c): every
+    // route inside it is then served from memory instead of racing a flaky mirror.
+    void warmOverpassArea().then((r) => info('overpass demo area warm', r)).catch(() => undefined);
   } else {
     info('warm-up skipped (WARMUP_ON_START=0)');
   }

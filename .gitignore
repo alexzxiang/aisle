@@ -23,3 +23,4 @@ aisle/models/*.mlpackage
 aisle/models/*.mlmodelc
 aisle/training/export/
 aisle/server/routes/cache/
+aisle/server/data/cache/

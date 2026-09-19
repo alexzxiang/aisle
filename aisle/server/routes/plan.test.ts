@@ -7,7 +7,7 @@ import type { StreamHandle } from '../lib/deadline';
 import { createRequestLog } from '../lib/log';
 import type { NimChatParams, NimChatResult } from '../lib/nim';
 import { testConfig } from '../test/fakes';
-import { createPlanRouter, runPlannerJob, warmInputFor, warmPlannerSchemas, type NimStarter } from './plan';
+import { createPlanRouter, runPlannerJob, warmInputFor, warmPlannerSchemas, type NimStarter, maxTokensFor } from './plan';
 
 /** A fake NIM handle: first token after `firstTokenMs`, full text after `totalMs`, or a rejection. */
 function fakeNim(opts: { text?: string; firstTokenMs?: number; totalMs?: number; reject?: string; thinkingLeaked?: boolean }): NimStarter & { params: NimChatParams[]; aborted: number } {
@@ -52,7 +52,7 @@ describe('runPlannerJob', () => {
     expect(r.output.legs[0]?.now).toBe('Turn right now.');
     expect(nim.params[0]?.schema).toBe(JOB_SPECS.routeCompile.schema);
     expect(nim.params[0]?.system).toBe(JOB_SPECS.routeCompile.prompt);
-    expect(nim.params[0]?.maxTokens).toBe(400);
+    expect(nim.params[0]?.maxTokens).toBe(maxTokensFor('routeCompile'));
     expect(nim.params[0]?.temperature).toBe(0);
     expect(log.recent({ route: 'plan' })).toHaveLength(1);
     expect(log.recent()[0]).toMatchObject({ key: 'routeCompile', fallback: false, provider: 'nim' });

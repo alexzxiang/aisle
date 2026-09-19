@@ -36,8 +36,10 @@ export const JOB_DEADLINES_MS: Readonly<Record<PlannerJob, { firstToken: number;
   // NIM is non-streaming (see server/lib/nim.ts): the whole answer arrives at once, so the
   // first-token and total deadlines are equal. routeCompile / crossingAnnounce run at route
   // fetch (not user-facing latency); the three interactive jobs cap at 4.5 s then template.
-  routeCompile: { firstToken: 8000, total: 8000 },
-  crossingAnnounce: { firstToken: 8000, total: 8000 },
+  // Round 6c: 6 s — Haiku races as understudy (server/lib/claudePlan.ts) and answers a miss within
+  // its 1.5 s grace, so a route no longer waits 8 s on a slow Nemotron night.
+  routeCompile: { firstToken: 6000, total: 6000 },
+  crossingAnnounce: { firstToken: 6000, total: 6000 },
   parseIntent: { firstToken: 4500, total: 4500 },
   disambiguate: { firstToken: 4500, total: 4500 },
   answer: { firstToken: 4500, total: 4500 },

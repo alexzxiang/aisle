@@ -37,6 +37,11 @@ export type NimStarter = (params: NimChatParams) => StreamHandle<NimChatResult>;
 
 /** How long after Nemotron's deadline the understudy may still answer before the template wins. */
 export const CLAUDE_GRACE_MS = 1500;
+/** Route-time jobs write long scripts; the walk has not started, so the understudy gets longer. */
+export const CLAUDE_GRACE_BY_JOB: Readonly<Partial<Record<PlannerJob, number>>> = { routeCompile: 5000, crossingAnnounce: 3000, taskPlan: 3000 };
+export function claudeGraceFor(job: PlannerJob): number {
+  return CLAUDE_GRACE_BY_JOB[job] ?? CLAUDE_GRACE_MS;
+}
 
 export interface PlanDeps {
   config?: ProxyConfig;
@@ -61,6 +66,11 @@ export interface PlanRunResult<T> extends PlannerResult<T> {
 }
 
 export const MAX_COMPLETION_TOKENS = 400;
+/** routeCompile answers with a script for every leg and crossing (a Shadyside walk: 9 legs, 31 crossings) — 400 tokens truncated it into the template every time. */
+export const MAX_COMPLETION_TOKENS_BY_JOB: Readonly<Partial<Record<PlannerJob, number>>> = { routeCompile: 1600, crossingAnnounce: 600, taskPlan: 700 };
+export function maxTokensFor(job: PlannerJob): number {
+  return MAX_COMPLETION_TOKENS_BY_JOB[job] ?? MAX_COMPLETION_TOKENS;
+}
 
 function defaultNim(config: ProxyConfig): NimStarter {
   return (params) => nimChat(params, { config });
@@ -82,17 +92,18 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
   // The understudy starts now; it is only read if Nemotron misses (see lib/claudePlan.ts).
   const claudeStarter = deps.claude === undefined ? (config.anthropicApiKey ? sdkClaudePlan(config.anthropicApiKey) : null) : deps.claude;
   const understudy = claudeStarter
-    ? claudeStarter({ system: spec.prompt, user: JSON.stringify(input), schema: spec.schema, maxTokens: MAX_COMPLETION_TOKENS })
+    ? claudeStarter({ system: spec.prompt, user: JSON.stringify(input), schema: spec.schema, maxTokens: maxTokensFor(job) })
     : null;
   if (understudy) understudy.result.catch(() => undefined); // an aborted / failed understudy is not an unhandled rejection
 
+  let understudyVerdict: 'unused' | 'won' | 'late' | 'invalid' | 'off' = understudy ? 'unused' : 'off';
   let outcome = await withFirstTokenDeadline<NimChatResult, JobOutput<J>>(
     () => nim({
       system: spec.prompt,
       user: JSON.stringify(input),
       schema: spec.schema,
       schemaName: job,
-      maxTokens: MAX_COMPLETION_TOKENS,
+      maxTokens: maxTokensFor(job),
       temperature: 0,
     }),
     {
@@ -121,13 +132,14 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
       const t1 = now();
       const graced = await Promise.race<{ text: string; model: string } | null>([
         understudy.result.catch(() => null),
-        new Promise<null>((resolve) => { (deps.setTimeoutFn ?? setTimeout)(() => resolve(null), CLAUDE_GRACE_MS); }),
+        new Promise<null>((resolve) => { (deps.setTimeoutFn ?? setTimeout)(() => resolve(null), claudeGraceFor(job)); }),
       ]);
       if (graced) {
         const parsed = extractJsonObject(graced.text);
         if (parsed !== null) {
           const v = validateFor(job, parsed, input);
           validationFallback = v.usedFallback;
+          understudyVerdict = 'won';
           outcome = {
             value: v.output,
             fallback: false,
@@ -137,8 +149,11 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
             model: graced.model,
             reason: outcome.reason,
           };
+        } else {
+          understudyVerdict = 'invalid';
         }
       } else {
+        understudyVerdict = 'late';
         understudy.abort();
       }
     }
@@ -166,7 +181,7 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
     fallback: result.fallback,
     verdict: 'pass',
     error: result.error,
-    extra: { reason: result.reason, thinkingLeaked },
+    extra: { reason: result.reason, thinkingLeaked, understudy: understudyVerdict },
   });
   return result;
 }

@@ -78,6 +78,9 @@ export const QuerySchema = z.object({
 
 export type RouteQuery = z.infer<typeof QuerySchema>;
 
+/** Overpass budget inside a route request: every mirror at once, first answer wins, ≤ 5 s in all. */
+export const ROUTE_OVERPASS_BUDGET_MS = 5000;
+
 export function cacheKeyFor(q: Pick<RouteQuery, 'originLat' | 'originLng' | 'destLat' | 'destLng'>): string {
   const r = (v: number): string => v.toFixed(4);
   return `${r(q.originLat)}_${r(q.originLng)}__${r(q.destLat)}_${r(q.destLng)}`;
@@ -227,8 +230,12 @@ export async function buildRoute(q: RouteQuery, deps: RouteDeps = {}): Promise<R
 
   const allPoints = parsed.legs.flatMap((l) => l.polyline);
   const bbox = bboxOf(allPoints.length > 0 ? allPoints : [origin, dest], ROUTE_BBOX_PAD_M);
+  // Overpass gets a short budget on the route path (round 6c): the phone times a route out at
+  // 15 s and says "Offline", and two mirrors at 25 s each took 17–39 s in the field. A route
+  // with fewer announced crossings beats no route; the standalone crossings fetch keeps its
+  // full timeout and the bbox cache means the next call is instant.
   const [overpass, wprdc] = await Promise.all([
-    fetchOverpass(bbox, { fetchFn: deps.fetchFn, now, ...(deps.overpass ?? {}) }),
+    fetchOverpass(bbox, { fetchFn: deps.fetchFn, now, timeoutMs: ROUTE_OVERPASS_BUDGET_MS, parallel: true, ...(deps.overpass ?? {}) }),
     (deps.wprdc ?? loadWprdc)(),
   ]);
   const elements: OverpassElement[] = overpass.elements;
@@ -241,21 +248,24 @@ export async function buildRoute(q: RouteQuery, deps: RouteDeps = {}): Promise<R
   let announceFallback = false;
   let announceLatency = 0;
   const announceText = new Map<string, string>();
-  if (join.ambiguous.length > 0) {
-    const results = await Promise.all(join.ambiguous.map(async (a: AmbiguousCluster) => {
-      const input: CrossingAnnounceInput = { candidates: a.candidates, street: a.street };
-      const r = await runPlannerJob('crossingAnnounce', input, planDeps);
-      return { a, r };
-    }));
-    for (const { a, r } of results) {
-      announceFallback = announceFallback || r.fallback;
-      announceLatency = Math.max(announceLatency, r.latencyMs);
-      crossings = crossings.map((c) => (c.crossingId === a.crossingId ? applyAnnounce(c, r.output) : c));
-      announceText.set(a.crossingId, r.output.text);
-    }
+  // The two route-time planner jobs are independent: the compile script names crossings by id
+  // and the announcement text is patched in afterwards. Run them together (round 6c: they
+  // used to run one after the other, up to twelve seconds on a slow Nemotron night).
+  const announcing = join.ambiguous.length > 0
+    ? Promise.all(join.ambiguous.map(async (a: AmbiguousCluster) => {
+        const input: CrossingAnnounceInput = { candidates: a.candidates, street: a.street };
+        const r = await runPlannerJob('crossingAnnounce', input, planDeps);
+        return { a, r };
+      }))
+    : Promise.resolve([] as Array<{ a: AmbiguousCluster; r: Awaited<ReturnType<typeof runPlannerJob<'crossingAnnounce'>>> }>);
+  const compiling = runPlannerJob('routeCompile', routeCompileInputFor(legs, crossings), planDeps);
+  const [results, compile] = await Promise.all([announcing, compiling]);
+  for (const { a, r } of results) {
+    announceFallback = announceFallback || r.fallback;
+    announceLatency = Math.max(announceLatency, r.latencyMs);
+    crossings = crossings.map((c) => (c.crossingId === a.crossingId ? applyAnnounce(c, r.output) : c));
+    announceText.set(a.crossingId, r.output.text);
   }
-
-  const compile = await runPlannerJob('routeCompile', routeCompileInputFor(legs, crossings), planDeps);
   const script: RouteCompileOutput = {
     legs: compile.output.legs,
     crossingAnnouncements: compile.output.crossingAnnouncements.map((x) => ({ crossingId: x.crossingId, text: announceText.get(x.crossingId) ?? x.text })),

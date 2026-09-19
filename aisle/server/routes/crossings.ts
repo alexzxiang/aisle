@@ -17,6 +17,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = path.resolve(HERE, '..', 'data');
 export const WPRDC_FILE = path.join(DATA_DIR, 'wprdc-signals.json');
 export const OVERPASS_FIXTURE_FILE = path.join(DATA_DIR, 'fixtures', 'overpass-oakland-forbes-bouquet.json');
+/** The warmed demo area, written by `warmOverpassArea` (git-ignored: it is a cache, not a fixture). */
+export const OVERPASS_WARM_FILE = path.join(DATA_DIR, 'cache', 'overpass-demo-area.json');
 
 export const OVERPASS_MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 export const OVERPASS_USER_AGENT = 'Aisle/0.1 (SteelHacks)';
@@ -39,6 +41,8 @@ export interface OverpassFetchDeps {
   timeoutMs?: number;
   /** Recorded fixture used when every mirror fails and the bbox lies inside it. */
   fixture?: () => Promise<OverpassResponse | null>;
+  /** Ask every mirror at once and take the first answer (the route path, where seconds are a spoken "Offline"). */
+  parallel?: boolean;
 }
 
 /** Cache key: bbox rounded to 1e-3° (~100 m), enough to reuse across nearby origins. */
@@ -47,10 +51,51 @@ export function bboxKey(b: BBox): string {
   return `${r(b.s)},${r(b.w)},${r(b.n)},${r(b.e)}`;
 }
 
-const cache = new Map<string, { at: number; elements: OverpassElement[] }>();
+const cache = new Map<string, { at: number; bbox: BBox; elements: OverpassElement[] }>();
 
 export function clearOverpassCache(): void {
   cache.clear();
+}
+
+/** A fresh cached area that contains the asked bbox (round 6c: a warmed demo area serves every route inside it). */
+function coveringEntry(bbox: BBox, now: number): { elements: OverpassElement[] } | null {
+  for (const entry of cache.values()) {
+    if (now - entry.at <= OVERPASS_CACHE_MS && bboxInside(bbox, entry.bbox)) return entry;
+  }
+  return null;
+}
+
+/** The demo area (Oakland – Shadyside – Squirrel Hill): warmed once at start with the full timeout. */
+export const DEMO_AREA_BBOX: BBox = { s: 40.425, w: -79.975, n: 40.470, e: -79.905 };
+
+/**
+ * Fetch a large area once, with the full timeout, so route calls inside it are served from
+ * memory instead of racing a flaky Overpass under a 5 s budget. Persisted next to the fixture
+ * so a restart is instant. Never throws.
+ */
+export async function warmOverpassArea(bbox: BBox = DEMO_AREA_BBOX, deps: OverpassFetchDeps & { file?: string } = {}): Promise<{ source: OverpassSource; elements: number }> {
+  const now = deps.now ?? Date.now;
+  const file = deps.file ?? OVERPASS_WARM_FILE;
+  // Disk first: a warm from the last run is fresh enough for crossings (they do not move).
+  try {
+    const raw = JSON.parse(await fs.readFile(file, 'utf8')) as { bbox: BBox; elements: OverpassElement[] };
+    if (raw && Array.isArray(raw.elements) && raw.elements.length > 0 && bboxInside(bbox, raw.bbox)) {
+      cache.set(bboxKey(raw.bbox), { at: now(), bbox: raw.bbox, elements: raw.elements });
+      return { source: 'cache', elements: raw.elements.length };
+    }
+  } catch {
+    // no warm file yet
+  }
+  const r = await fetchOverpass(bbox, { ...deps, timeoutMs: deps.timeoutMs ?? OVERPASS_TIMEOUT_MS, parallel: true });
+  if (r.source === 'live') {
+    try {
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, JSON.stringify({ bbox, elements: r.elements }));
+    } catch {
+      // disk is a convenience
+    }
+  }
+  return { source: r.source, elements: r.elements.length };
 }
 
 async function postOverpass(url: string, query: string, fetchFn: typeof fetch, timeoutMs: number): Promise<OverpassResponse> {
@@ -117,17 +162,35 @@ export async function fetchOverpass(bbox: BBox, deps: OverpassFetchDeps = {}): P
   const key = bboxKey(bbox);
   const hit = cache.get(key);
   if (hit && now() - hit.at <= OVERPASS_CACHE_MS) return { elements: hit.elements, source: 'cache', mirror: null };
+  const covering = coveringEntry(bbox, now());
+  if (covering) return { elements: covering.elements, source: 'cache', mirror: null };
 
   const query = overpassQuery(bbox);
   const errors: string[] = [];
-  for (const mirror of mirrors) {
+  if (deps.parallel && mirrors.length > 1) {
+    // First mirror to answer wins; the rest are ignored. Errors are collected for the log.
+    const attempts = mirrors.map((mirror) =>
+      postOverpass(mirror, query, fetchFn, timeoutMs)
+        .then((res) => ({ mirror, elements: (res.elements ?? []) as OverpassElement[] }))
+        .catch((e: unknown) => { errors.push(`${mirror}: ${(e as Error)?.message ?? String(e)}`); throw e; }),
+    );
     try {
-      const res = await postOverpass(mirror, query, fetchFn, timeoutMs);
-      const elements = (res.elements ?? []) as OverpassElement[];
-      cache.set(key, { at: now(), elements });
-      return { elements, source: 'live', mirror };
-    } catch (e) {
-      errors.push(`${mirror}: ${(e as Error)?.message ?? String(e)}`);
+      const first = await Promise.any(attempts);
+      cache.set(key, { at: now(), bbox, elements: first.elements });
+      return { elements: first.elements, source: 'live', mirror: first.mirror };
+    } catch {
+      // every mirror failed within the budget: fall through to the fixture
+    }
+  } else {
+    for (const mirror of mirrors) {
+      try {
+        const res = await postOverpass(mirror, query, fetchFn, timeoutMs);
+        const elements = (res.elements ?? []) as OverpassElement[];
+        cache.set(key, { at: now(), bbox, elements });
+        return { elements, source: 'live', mirror };
+      } catch (e) {
+        errors.push(`${mirror}: ${(e as Error)?.message ?? String(e)}`);
+      }
     }
   }
   const fixture = await (deps.fixture ?? loadOverpassFixture)();

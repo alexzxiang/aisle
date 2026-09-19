@@ -36,7 +36,8 @@ export class RouteClientError extends Error {
   }
 }
 
-export const ROUTE_TIMEOUT_MS = 15_000;
+/** Google ≈ 2 s, the proxy's crossings budget ≤ 8 s, the planner ≤ 8 s: 20 s covers a slow day without a false "Offline". */
+export const ROUTE_TIMEOUT_MS = 20_000;
 
 export function routeUrl(baseUrl: string, req: RouteRequest): string {
   const q = new URLSearchParams({

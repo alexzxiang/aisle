@@ -27,6 +27,7 @@ import type { AisleCrossingController } from '../crossing/CrossingController';
 import { buildRouteLine, crossingLengthM, projectOntoRoute, toCrossing, type RouteLine } from '../crossing/crossingData';
 import { type LatLng } from './geo';
 import { CROSSING_AHEAD_M, crossingAheadRequests, offlineNoticeRequest, prefetchPhrases, prefetchPortOf, replanRequest, variablePhrases } from './guidance';
+import { DIRECT_ROUTE_ATTRIBUTION, directRoute } from './directRoute';
 import { initialLegProgress, stepLegProgress, type LegProgressState } from './legs';
 import type { PlannerClient } from './planner';
 import { templateAnswer } from './plannerJobs';
@@ -282,6 +283,17 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
     replanning = true;
     replans += 1;
     outdoor.getState().bumpReplans();
+    // A degraded straight-line route has nothing to fetch: "off route" only means the line
+    // moved. Rebuild it from here — no proxy call, so no false "Offline" while Google Routes
+    // is disabled (round 6c: this was the "Offline. Signal reading …" heard at home).
+    if (route.attribution === DIRECT_ROUTE_ATTRIBUTION) {
+      try {
+        await installRoute(directRoute({ lat: fix.lat, lng: fix.lng }, request.entrance, request.destName, now()), request, 'REPLANNED');
+      } finally {
+        replanning = false;
+      }
+      return;
+    }
     try {
       const reply = await Promise.race([
         deps.planner ? deps.planner.run('answer', { question: 'replan', context: { mode: deps.getMode() } }).then((r) => r.output.reply) : Promise.resolve(templateAnswer({ question: 'replan', context: {} }).reply),
