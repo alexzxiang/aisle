@@ -9,6 +9,10 @@ android/build/
 server/.env
 **/.env
 .env*
+# `.env*` also swallowed .env.example, which is why the file the setup instructions
+# tell you to copy never existed. It holds key names and comments, never a value.
+!.env.example
+!**/.env.example
 aisle/ios/Pods/
 .impeccable/
 .playwright-mcp/
