@@ -1,0 +1,44 @@
+# The gates every PR must pass — the same commands everyone runs locally
+# (TEAM-PLAN.md "Rules"). No phone, no keys: the app suite runs on the mocks,
+# the proxy suite on faked upstreams.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  app:
+    name: app (typecheck, lints, jest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aisle
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: aisle/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx jest --ci
+  server:
+    name: proxy (tsc, vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aisle/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: aisle/server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
