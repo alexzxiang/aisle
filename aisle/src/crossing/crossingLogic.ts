@@ -123,6 +123,8 @@ export const FAR_CURB_GPS_RADIUS_M = 8;
 export const FAR_CURB_GPS_ACCURACY_M = 15;
 export const STRIDE_M = 0.7;
 export const SCAN_HEADING_TOLERANCE_DEG = 30;
+/** The no-pose step rule is suppressed while the user faces further than this off the crossing bearing. */
+export const START_HEADING_OFF_MAX_DEG = 45;
 
 export interface StillnessTrack {
   /** When the user was last seen moving (speed ≥ 0.3 m/s or a step). */
@@ -180,10 +182,29 @@ export function poseDisplacementAlongM(from: Pick<Pose, 'x' | 'z'>, to: Pick<Pos
   return east * Math.sin(θ) + north * Math.cos(θ);
 }
 
-/** The user decided to step off: ≥ 4 steps since the curb, or > 1.5 m along the bearing. */
-export function crossingStarted(input: { stepsSinceCurb: number; displacementM: number | null }): boolean {
-  if (input.stepsSinceCurb >= START_STEPS) return true;
-  return input.displacementM !== null && input.displacementM > START_DISPLACEMENT_M;
+export interface CrossingStartInput {
+  /** Steps since the curb — or since the last suppression window closed (the caller re-bases). */
+  stepsSinceCurb: number;
+  /** ARKit displacement along the crossing bearing; null unless pose tracking is NORMAL. */
+  displacementM: number | null;
+  /** A left/right scan window is open: turning in place registers pedometer shuffles. */
+  scanInProgress?: boolean;
+  /** |heading − crossing bearing| in degrees; null / undefined when no heading is available. */
+  headingOffDeg?: number | null;
+}
+
+/**
+ * The user decided to step off. With pose tracking NORMAL the only evidence is
+ * > 1.5 m of displacement *along the bearing* — direction-aware, so a turn in
+ * place or a step back from the curb never counts. Without a pose, ≥ 4 steps is
+ * the fallback, and it is suppressed while a scan window is open and while the
+ * user faces more than 45° off the crossing bearing (walking away, scanning).
+ */
+export function crossingStarted(input: CrossingStartInput): boolean {
+  if (input.displacementM !== null) return input.displacementM > START_DISPLACEMENT_M;
+  if (input.scanInProgress) return false;
+  if (input.headingOffDeg !== null && input.headingOffDeg !== undefined && Math.abs(input.headingOffDeg) > START_HEADING_OFF_MAX_DEG) return false;
+  return input.stepsSinceCurb >= START_STEPS;
 }
 
 export interface FarCurbInput {

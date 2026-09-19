@@ -127,10 +127,24 @@ describe('curb, start and far-curb detectors', () => {
     expect(walkedPast(near, near, far)).toBe(false);
   });
 
-  it('crossing started: 4 steps or 1.5 m of pose displacement', () => {
+  it('crossing started: 1.5 m of pose displacement along the bearing; 4 steps only as the no-pose fallback', () => {
     expect(crossingStarted({ stepsSinceCurb: 3, displacementM: 1.0 })).toBe(false);
     expect(crossingStarted({ stepsSinceCurb: 4, displacementM: null })).toBe(true);
     expect(crossingStarted({ stepsSinceCurb: 0, displacementM: 1.6 })).toBe(true);
+    // Pose tracking NORMAL: shuffles and a turn in place (steps, no displacement) never start it.
+    expect(crossingStarted({ stepsSinceCurb: 6, displacementM: 0.2 })).toBe(false);
+    // Stepping back from the curb is negative displacement: not a start.
+    expect(crossingStarted({ stepsSinceCurb: 6, displacementM: -2 })).toBe(false);
+  });
+
+  it('the no-pose step rule is suppressed during a scan window and while facing > 45° off the bearing', () => {
+    expect(crossingStarted({ stepsSinceCurb: 6, displacementM: null, scanInProgress: true })).toBe(false);
+    expect(crossingStarted({ stepsSinceCurb: 6, displacementM: null, headingOffDeg: 60 })).toBe(false);
+    expect(crossingStarted({ stepsSinceCurb: 6, displacementM: null, headingOffDeg: -90 })).toBe(false);
+    expect(crossingStarted({ stepsSinceCurb: 6, displacementM: null, headingOffDeg: 30 })).toBe(true);
+    expect(crossingStarted({ stepsSinceCurb: 6, displacementM: null, headingOffDeg: null })).toBe(true);
+    // With a pose the displacement decides regardless of the scan / heading flags.
+    expect(crossingStarted({ stepsSinceCurb: 0, displacementM: 1.6, scanInProgress: true, headingOffDeg: 90 })).toBe(true);
   });
 
   it('far curb: displacement, two good fixes, or steps as the last resort', () => {

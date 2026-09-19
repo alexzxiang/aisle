@@ -4,7 +4,7 @@ import { findForbiddenTerm } from '../core/phrases';
 import { destinationPoint } from '../outdoor/geo';
 import { createOutdoorStore } from '../outdoor/store';
 import { createFakeHaptics, createFakePerception, createFakeSensors, createFakeSpeech, createFakeVision, fix } from '../outdoor/testing';
-import { createCrossingController, type AisleCrossingController } from './CrossingController';
+import { createCrossingController, SCAN_REPORT_LINE_GAP_MS, type AisleCrossingController } from './CrossingController';
 
 const NEAR = { lat: 40.4419581, lng: -79.9564358 };
 const BEARING = 300;
@@ -207,11 +207,11 @@ describe('SCANNING: the unsignalized flow', () => {
     await jest.advanceTimersByTimeAsync(300);
     right();
     await jest.advanceTimersByTimeAsync(2500);
-    // Listening pause.
-    await jest.advanceTimersByTimeAsync(2100);
+    // Listening pause, then the paced report (line gap × 2).
+    await jest.advanceTimersByTimeAsync(2100 + 2 * SCAN_REPORT_LINE_GAP_MS + 100);
   }
 
-  it('left window, right window, 2 s pause, then the clean report as back-to-back CRITICAL clips', async () => {
+  it('left window, right window, 2 s pause, then the clean report as paced CRITICAL clips', async () => {
     const h = harness();
     await runScan(h);
     const keys = h.speech.keys();
@@ -251,6 +251,89 @@ describe('SCANNING: the unsignalized flow', () => {
     expect(h.perception.calls.filter((c) => c.method === 'snapshotJPEG')).toHaveLength(0);
   });
 
+  it('a hung native snapshot cannot stall the scan: both windows close with unclear inside the freshness budget', async () => {
+    const h = harness();
+    h.perception.snapshotJPEG = () => new Promise(() => {});   // never resolves
+    h.controller.arm(crossing({ signalized: false }));
+    h.sensors.setHeading(BEARING, 3);
+    h.controller.curbReached();
+    h.sensors.setHeading(BEARING - 90, 3);
+    await jest.advanceTimersByTimeAsync(300);
+    // Left window: 1 s still + 3 s freshness race at most.
+    await jest.advanceTimersByTimeAsync(4200);
+    expect(h.speech.keys()).toEqual(['no_signal_point_left', 'now_right']);
+    h.sensors.setHeading(BEARING + 90, 3);
+    await jest.advanceTimersByTimeAsync(300 + 4200 + 2100 + 2 * SCAN_REPORT_LINE_GAP_MS + 100);
+    expect(h.speech.keys().slice(2)).toEqual(['cant_see_well_left', 'cant_see_well_right']);
+    expect(h.vision.requests).toHaveLength(0);
+    const claude = h.bus.history().filter((r) => r.event.type === 'SCAN_RESULT' && (r.event as { source: string }).source === 'claude').map((r) => (r.event as { vehiclesSeen: string }).vehiclesSeen);
+    expect(claude).toEqual(['unclear', 'unclear']);
+    expect(h.controller.getDebugState().scanVerdicts).toEqual({ left: 'unclear', right: 'unclear' });
+  });
+
+  it('pedometer shuffles during the scan never start the crossing; steps after the report do', async () => {
+    const h = harness({ vision: false });
+    h.controller.arm(crossing({ signalized: false }));
+    h.sensors.setHeading(BEARING, 3);
+    h.controller.curbReached();
+    expect(h.controller.getState()).toBe('SCANNING');
+    // Turning to point left registers as steps (a pedometer sample is stamped at or before its callback).
+    h.sensors.setHeading(BEARING - 90, 3);
+    h.sensors.addSteps(6, Date.now());
+    await jest.advanceTimersByTimeAsync(300 + 2500);
+    expect(h.controller.getState()).toBe('SCANNING');
+    h.sensors.setHeading(BEARING + 90, 3);
+    h.sensors.addSteps(3, Date.now());
+    await jest.advanceTimersByTimeAsync(300 + 2500 + 2100 + 2 * SCAN_REPORT_LINE_GAP_MS + 100);
+    expect(h.controller.getState()).toBe('SCANNING');
+    expect(h.speech.keys().slice(2)).toEqual(['no_vehicles_left', 'no_vehicles_right', 'listen_then_cross']);
+    // Facing the crossing again: the scan's shuffles were re-based, so three fresh steps are not enough...
+    h.sensors.setHeading(BEARING, 3);
+    h.sensors.addSteps(3, Date.now() + 1);
+    expect(h.controller.getState()).toBe('SCANNING');
+    // ...and the fourth starts the crossing.
+    h.sensors.addSteps(1, Date.now() + 2);
+    expect(h.controller.getState()).toBe('CROSSING');
+    expect(h.events).toContain('CROSSING_STARTED');
+  });
+
+  it('stepping off while the report is still playing flushes it (clearQueue CRITICAL); long after, nothing is flushed', async () => {
+    const h = harness({ vision: false });
+    await runScan(h);
+    expect(h.speech.keys().slice(-1)).toEqual(['listen_then_cross']);
+    h.sensors.setHeading(BEARING, 3);
+    h.sensors.addSteps(4, Date.now() + 1);
+    expect(h.controller.getState()).toBe('CROSSING');
+    expect(h.speech.cleared).toEqual(['CRITICAL']);
+
+    // Same flow, but the user steps off 10 s after the report ended: a vehicle alert must not be collateral.
+    const h2 = harness({ vision: false });
+    await runScan(h2);
+    await jest.advanceTimersByTimeAsync(10_000);
+    h2.sensors.setHeading(BEARING, 3);
+    h2.sensors.addSteps(4, Date.now() + 1);
+    expect(h2.controller.getState()).toBe('CROSSING');
+    expect(h2.speech.cleared).toEqual([]);
+  });
+
+  it('a user already in the roadway never hears the rest of the report: lines are re-checked per line', async () => {
+    const h = harness({ vision: false });
+    h.controller.arm(crossing({ signalized: false }));
+    h.sensors.setHeading(BEARING, 3);
+    h.controller.curbReached();
+    h.sensors.setHeading(BEARING - 90, 3);
+    await jest.advanceTimersByTimeAsync(300 + 2500);
+    h.sensors.setHeading(BEARING + 90, 3);
+    await jest.advanceTimersByTimeAsync(300 + 2500 + 2100);
+    // First line queued; the user steps into the roadway before the second.
+    expect(h.speech.keys().slice(2)).toEqual(['no_vehicles_left']);
+    h.controller.crossingStarted();
+    await jest.advanceTimersByTimeAsync(2 * SCAN_REPORT_LINE_GAP_MS + 100);
+    expect(h.speech.keys().slice(2)).toEqual(['no_vehicles_left']);
+    expect(h.speech.keys()).not.toContain('listen_then_cross');
+    expect(h.speech.cleared).toEqual(['CRITICAL']);
+  });
+
   it('requestRescan runs the scan again', async () => {
     const h = harness({ vision: false });
     await runScan(h);
@@ -274,6 +357,49 @@ describe('CROSSING and the far curb', () => {
     expect(h.outdoor.getState().beaconTarget).toEqual(FAR);
     expect(h.perception.calls).toContainEqual({ method: 'setCourseReference', args: [{ bearingDeg: BEARING }] });
     expect(h.haptics.courseTargets.slice(-1)).toEqual(['NONE']);
+  });
+
+  it('with pose tracking NORMAL, steps alone never start the crossing; only displacement along the bearing does', async () => {
+    const h = await toReading(harness());
+    const at = (east: number, north: number) => ({ yawDeg: BEARING, x: east, y: 0, z: -north, trackingState: 'NORMAL' as const, timestamp: Date.now() });
+    h.sensors.emitPose(at(0, 0));
+    expect(h.controller.getState()).toBe('READING');
+    h.sensors.addSteps(8, Date.now() + 1);
+    expect(h.controller.getState()).toBe('READING');
+    // 2 m sideways (perpendicular to the bearing): a shuffle along the curb, not a start.
+    const perp = ((BEARING + 90) * Math.PI) / 180;
+    h.sensors.emitPose(at(2 * Math.sin(perp), 2 * Math.cos(perp)));
+    expect(h.controller.getState()).toBe('READING');
+    // 2 m along the bearing: the crossing starts.
+    const along = (BEARING * Math.PI) / 180;
+    h.sensors.emitPose(at(2 * Math.sin(along), 2 * Math.cos(along)));
+    expect(h.controller.getState()).toBe('CROSSING');
+  });
+
+  it('the first NORMAL pose after the curb becomes the origin when none was available at curbReached', async () => {
+    const h = await toReading(harness());
+    const along = (m: number) => ({ yawDeg: BEARING, x: 5 + m * Math.sin((BEARING * Math.PI) / 180), y: 0, z: 3 - m * Math.cos((BEARING * Math.PI) / 180), trackingState: 'NORMAL' as const, timestamp: Date.now() });
+    h.sensors.emitPose(along(0));   // origin (arbitrary world offset)
+    expect(h.controller.getState()).toBe('READING');
+    h.sensors.emitPose(along(1));
+    expect(h.controller.getState()).toBe('READING');
+    h.sensors.emitPose(along(2));
+    expect(h.controller.getState()).toBe('CROSSING');
+  });
+
+  it('facing > 45° off the bearing (turning away from the curb) suppresses the step rule and re-bases the count', async () => {
+    const h = await toReading(harness());
+    h.sensors.setHeading(BEARING + 180, 3);
+    h.sensors.addSteps(6, Date.now());
+    expect(h.controller.getState()).toBe('READING');
+    jest.advanceTimersByTime(500);
+    // Back to the bearing: the six suppressed steps do not carry over.
+    h.sensors.setHeading(BEARING + 20, 3);
+    h.sensors.addSteps(3, Date.now());
+    expect(h.controller.getState()).toBe('READING');
+    jest.advanceTimersByTime(500);
+    h.sensors.addSteps(1, Date.now());
+    expect(h.controller.getState()).toBe('CROSSING');
   });
 
   it('ARKit displacement past the crossing length reaches the far curb: CONFIRM, far_curb, FAR_CURB_REACHED', async () => {

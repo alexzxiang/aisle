@@ -59,6 +59,7 @@ import {
   walkedPast,
   worstVerdict,
   SCAN_HEADING_TOLERANCE_DEG,
+  START_HEADING_OFF_MAX_DEG,
   type ControllerState,
   type SignalTrack,
   type StillnessTrack,
@@ -95,6 +96,10 @@ export const CURB_CROP_INTERVAL_MS = 1000;
 export const CURB_CROP_MAX_IN_FLIGHT = 3;
 export const CURB_CROP_MIN_CONFIDENCE = 0.5;
 export const SIGNAL_COOLDOWN_MS = 8000;
+/** Gap between the lines of the scan report: each line is re-checked against the state before it is queued. */
+export const SCAN_REPORT_LINE_GAP_MS = 1500;
+/** After the last report line is queued, stepping off within this window flushes the report (nothing of it plays in the roadway). */
+export const SCAN_REPORT_FLUSH_WINDOW_MS = 3000;
 
 const SIGNAL_KEY_TEXT: Record<'walk_signal_on' | 'walk_already_on_wait' | 'dont_walk' | 'countdown' | 'cant_see_signal', string> = {
   walk_signal_on: PHRASES.walk_signal_on,
@@ -146,7 +151,11 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
   let scanVerdicts: { left: VehiclesSeen | null; right: VehiclesSeen | null } = { left: null, right: null };
   let scanInProgress = false;
   let scanGeneration = 0;
+  /** Until when a queued scan report may still be playing (0 = none). */
+  let reportUntil = 0;
   let curbAt: number | null = null;
+  /** Start of the step count for the no-pose start rule; re-based while the rule is suppressed. */
+  let stepsFrom: number | null = null;
   let alignedAt: number | null = null;
   let stillness: StillnessTrack = initialStillness(0);
   let posesAtCurb: Pose | null = null;
@@ -336,6 +345,12 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
 
   const stepsSinceCurb = (): number => (curbAt === null ? 0 : sensors.getStepsSince(curbAt));
 
+  /** Steps that count toward the no-pose start rule: since the curb, or since the last suppressed step. */
+  const stepsForStart = (): number => {
+    if (curbAt === null) return 0;
+    return sensors.getStepsSince(Math.max(curbAt, stepsFrom ?? curbAt));
+  };
+
   const displacementM = (): number | null => {
     if (!crossing || !posesAtCurb || !lastPose || lastPose.trackingState === 'NOT_AVAILABLE') return null;
     return poseDisplacementAlongM(posesAtCurb, lastPose, crossing.bearingDeg);
@@ -344,7 +359,14 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
   const checkMotion = (): void => {
     if (!crossing) return;
     if (state === 'READING' || state === 'SCANNING') {
-      if (crossingStartedRule({ stepsSinceCurb: stepsSinceCurb(), displacementM: displacementM() })) crossingStarted();
+      const h = headingDeg();
+      const headingOffDeg = h === null ? null : Math.abs(angularError(h, crossing.bearingDeg));
+      // Pedometer shuffles during the left/right scan, or while turned away from the
+      // crossing, never count: re-base the step count so they cannot fire later either.
+      if (scanInProgress || (headingOffDeg !== null && headingOffDeg > START_HEADING_OFF_MAX_DEG)) stepsFrom = now();
+      // Steps are the no-pose fallback only: with tracking NORMAL, displacement along the bearing decides.
+      const displacement = lastPose?.trackingState === 'NORMAL' ? displacementM() : null;
+      if (crossingStartedRule({ stepsSinceCurb: stepsForStart(), displacementM: displacement, scanInProgress, headingOffDeg })) crossingStarted();
       return;
     }
     if (state === 'CROSSING') {
@@ -365,6 +387,8 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
     scanVerdicts = { left: null, right: null };
     goodFixesNearFar = 0;
     curbAt = null;
+    stepsFrom = null;
+    reportUntil = 0;
     alignedAt = null;
     posesAtCurb = null;
     stillness = initialStillness(now());
@@ -385,6 +409,11 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
     }));
     armedUnsubs.push(sensors.subscribePose((p) => {
       lastPose = p;
+      // No pose was available when the curb was reached: the first NORMAL pose at the curb is the origin.
+      if (posesAtCurb === null && curbAt !== null && p.trackingState === 'NORMAL' && (state === 'ALIGNING' || state === 'READING' || state === 'SCANNING')) {
+        posesAtCurb = p;
+        return;
+      }
       if (state === 'CROSSING' || state === 'READING' || state === 'SCANNING') checkMotion();
     }));
     armedUnsubs.push(perception.onDetections((d) => {
@@ -422,7 +451,8 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
   const curbReached: CrossingController['curbReached'] = () => {
     if (!crossing || state !== 'ARMED') return;
     curbAt = now();
-    posesAtCurb = lastPose;
+    stepsFrom = curbAt;
+    posesAtCurb = lastPose?.trackingState === 'NORMAL' ? lastPose : null;
     bus.emit({ type: 'CURB_REACHED', crossingId: crossing.crossingId });
     setState('ALIGNING');
     // Alignment to the crossing bearing, no line; silence means aligned; A's
@@ -484,15 +514,19 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
         const sentAt = now();
         claudePromise = (async () => {
           try {
-            const snap = await perception.snapshotJPEG(512);
+            // The whole snapshot + ask chain races the freshness budget: a slow or hung
+            // native snapshot closes the window with `unclear`, never stalls the scan.
             const res = await Promise.race([
-              vision.ask({
-                seq: mySeq,
-                question,
-                mode: modeNow(),
-                image: { base64: snap.base64, width: snap.width, height: snap.height },
-                facts: { detections: lastDetections, ocr: [], headingDeg: headingDeg() ?? undefined },
-              }),
+              (async () => {
+                const snap = await perception.snapshotJPEG(512);
+                return vision.ask({
+                  seq: mySeq,
+                  question,
+                  mode: modeNow(),
+                  image: { base64: snap.base64, width: snap.width, height: snap.height },
+                  facts: { detections: lastDetections, ocr: [], headingDeg: headingDeg() ?? undefined },
+                });
+              })(),
               sleep(VISION_FRESHNESS_CROSSING_MS).then(() => null),
             ]);
             if (res === null || now() - sentAt > VISION_FRESHNESS_CROSSING_MS || res.confidence < 0.5 || res.scan.confidence < 0.5) {
@@ -548,8 +582,16 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
       // Listening pause: nothing plays.
       await sleep(LISTEN_PAUSE_MS);
       if (generation !== scanGeneration || state !== 'SCANNING') return;
+      // The report stays CRITICAL (NAV is newest-wins: three back-to-back NAV lines would
+      // drop the middle one) but is paced, and every line is re-checked against the
+      // state before it is queued; crossingStarted() flushes whatever is still queued.
       const keys = scanReportKeys(left, right);
-      keys.forEach((k, i) => sayKey(k, { priority: 'CRITICAL', interrupt: false, cooldownMs: 1000, dedupeKey: `scan-report-${scanRuns}-${i}` }));
+      for (let i = 0; i < keys.length; i += 1) {
+        if (i > 0) await sleep(SCAN_REPORT_LINE_GAP_MS);
+        if (generation !== scanGeneration || state !== 'SCANNING') return;
+        sayKey(keys[i], { priority: 'CRITICAL', interrupt: false, cooldownMs: 1000, dedupeKey: `scan-report-${scanRuns}-${i}` });
+        reportUntil = now() + SCAN_REPORT_FLUSH_WINDOW_MS;
+      }
     } finally {
       if (generation === scanGeneration) scanInProgress = false;
     }
@@ -561,6 +603,12 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
     if (!crossing || (state !== 'READING' && state !== 'SCANNING')) return;
     scanGeneration += 1;
     scanInProgress = false;
+    // Nothing of the scan report ("Listen, then cross.") plays in the roadway: flush what is
+    // still queued. Only while a report is in flight, so a vehicle alert is never collateral.
+    if (now() < reportUntil) {
+      speech.clearQueue('CRITICAL');
+      reportUntil = 0;
+    }
     stopCurbCrop();
     if (unknownTimer) clearTimeout(unknownTimer);
     unknownTimer = null;

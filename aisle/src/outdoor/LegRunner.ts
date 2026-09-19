@@ -195,6 +195,30 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
     }
   };
 
+  /**
+   * 01 §1: ROUTE_READY takes APPROACH_CROSSING → OUTDOOR_NAV ("crossing dropped"). When the
+   * re-planned route still carries the armed crossing, re-emit CROSSING_AHEAD so the store
+   * returns to APPROACH_CROSSING and CURB_REACHED / CROSSING_STARTED stay legal edges. Not
+   * spoken again: the announcement is dedupe-keyed per crossing.
+   */
+  const reannounceArmedCrossing = (fix: GeoFix): void => {
+    if (!route || !line || armedCrossingId === null) return;
+    if (controller.getState() !== 'ARMED' || !WALKING_MODES.has(deps.getMode())) return;
+    const c = route.crossings.find((x) => x.crossingId === armedCrossingId);
+    if (!c) return;
+    const routeAlongM = projectOntoRoute({ lat: fix.lat, lng: fix.lng }, line)?.sAlongM ?? 0;
+    const toNearCurbM = c.sAlongM - crossingLengthM(c) / 2 - routeAlongM;
+    bus.emit({
+      type: 'CROSSING_AHEAD',
+      crossingId: c.crossingId,
+      street: c.street,
+      signalized: c.signalized,
+      pushButtonLikely: c.pushButtonLikely,
+      bearingDeg: c.bearingDeg,
+      distanceM: Math.max(0, toNearCurbM),
+    });
+  };
+
   const onCrossingReleased = (crossingId: string): void => {
     if (armedCrossingId === crossingId) {
       passedCrossings.add(crossingId);
@@ -273,6 +297,7 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
         armedCrossingId = null;
       }
       await installRoute(fresh, request, 'REPLANNED');
+      if (armedStillThere) reannounceArmedCrossing(fix);
     } catch (e) {
       // Keep the old route (cached audio keeps playing); the next off-route run tries again.
       // A network / timeout failure is the one connectivity signal B owns: say `offline_notice` once.

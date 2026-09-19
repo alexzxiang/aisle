@@ -11,6 +11,7 @@ import type {
   PerceptionService,
   Pose,
   SensorService,
+  SpeechPriority,
   SpeechRequest,
   SpeechService,
   VisionRequest,
@@ -56,7 +57,8 @@ export function createFakeSensors(): FakeSensors {
     getHeading: () => heading,
     getFusedHeadingDeg: () => heading?.trueHeadingDeg ?? null,
     getLastFix: () => lastFix,
-    getStepsSince: (ts) => stepLog.filter((t) => t >= ts).length,
+    // Same semantics as core/sensors StepLog.since: a step sampled at exactly `ts` is the base, not counted.
+    getStepsSince: (ts) => stepLog.filter((t) => t > ts).length,
     async calibrateBodyOffset() {
       return { offsetDeg: 0, ok: true };
     },
@@ -122,19 +124,25 @@ export function createFakePerception(): FakePerception {
 
 export interface FakeSpeech extends SpeechService {
   said: SpeechRequest[];
+  /** Every clearQueue(priority) call, in order. */
+  cleared: Array<SpeechPriority | undefined>;
   texts(): string[];
   keys(): string[];
 }
 
 export function createFakeSpeech(): FakeSpeech {
   const said: SpeechRequest[] = [];
+  const cleared: Array<SpeechPriority | undefined> = [];
   return {
     said,
+    cleared,
     say(req) {
       said.push(req);
     },
     playStream() {},
-    clearQueue() {},
+    clearQueue(priority) {
+      cleared.push(priority);
+    },
     isSpeaking: () => false,
     setRate() {},
     texts: () => said.map((s) => s.text),

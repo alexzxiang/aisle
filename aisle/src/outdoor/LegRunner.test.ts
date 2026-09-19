@@ -47,6 +47,8 @@ function harness(opts: { fetchRoute?: RouteClient['fetchRoute'] } = {}) {
   bus.on('CROSSING_STARTED', () => { mode = 'CROSSING'; });
   bus.on('FAR_CURB_REACHED', () => { mode = 'OUTDOOR_NAV'; });
   bus.on('CROSSING_ABORTED', () => { mode = 'OUTDOOR_NAV'; });
+  // 01 §1: a re-plan's ROUTE_READY takes APPROACH_CROSSING → OUTDOOR_NAV ("crossing dropped").
+  bus.on('ROUTE_READY', () => { if (mode === 'APPROACH_CROSSING') mode = 'OUTDOOR_NAV'; });
   let modeLocked = false; // when true, emulate a store that REJECTS STORE_ENTERED (01 §1)
   bus.on('STORE_ENTERED', () => { if (!modeLocked) mode = 'TRANSITION'; });
   const getMode = () => mode;
@@ -244,6 +246,38 @@ describe('LegRunner', () => {
     expect(h.getMode()).toBe('OUTDOOR_NAV');
     expect(h.runner.getDebugState().armedCrossingId).toBeNull();
     expect(h.runner.getRoute()!.crossings).toHaveLength(0);
+  });
+
+  it('a re-plan whose new route keeps the armed crossing re-emits CROSSING_AHEAD so the store returns to APPROACH_CROSSING', async () => {
+    const h = harness();
+    await h.runner.loadRoute(buildRoute(), { storeId: 's', entrance, destName: 'd', origin: START });
+    const route = h.runner.getRoute()!;
+    const end0 = { lat: route.legs[0].endLat, lng: route.legs[0].endLng };
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    expect(h.controller.getState()).toBe('ARMED');
+    expect(h.getMode()).toBe('APPROACH_CROSSING');
+    const onLeg = destinationPoint(end0, 330, 10);
+    const off = destinationPoint(onLeg, 60, 40);
+    for (let i = 0; i < 3; i += 1) h.sensors.emitFix(fix(off.lat, off.lng, { speedMps: 0.2 }));
+    await jest.advanceTimersByTimeAsync(200);
+    expect(h.events.filter((e) => e === 'ROUTE_READY')).toHaveLength(2);
+    expect(h.events).not.toContain('CROSSING_ABORTED');
+    const aheads = h.bus.history().filter((r) => r.event.type === 'CROSSING_AHEAD').map((r) => r.event as { crossingId: string; distanceM: number });
+    expect(aheads).toHaveLength(2);
+    expect(aheads[1].crossingId).toBe('x1');
+    expect(aheads[1].distanceM).toBeGreaterThanOrEqual(0);
+    expect(h.getMode()).toBe('APPROACH_CROSSING');
+    expect(h.controller.getState()).toBe('ARMED');
+    expect(h.runner.getDebugState().armedCrossingId).toBe('x1');
+    // The announcement is not spoken a second time.
+    expect(h.speech.said.filter((r) => /Crossing ahead/.test(r.text))).toHaveLength(1);
+    // The crossing still completes normally from here.
+    const curb = route.crossings[0].nearCurb;
+    h.sensors.emitFix(fix(curb.lat, curb.lng, { speedMps: 0.1 }));
+    jest.advanceTimersByTime(2100);
+    h.sensors.emitFix(fix(curb.lat, curb.lng, { speedMps: 0.1 }));
+    expect(h.getMode()).toBe('AT_CURB');
   });
 
   it('a re-plan that cannot reach the proxy keeps the old route and says offline_notice once', async () => {
