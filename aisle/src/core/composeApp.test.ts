@@ -267,6 +267,32 @@ describe('composeApp (mock mode)', () => {
     unbind();
   });
 
+  it('the store demo path: an item request in a store scene is served by the model (a guided task), not the map trip', async () => {
+    const { bus, store, unbind } = setupStore();
+    const mocks = createMockServices({ bus, store: bridgeAppStore(store), latencyScale: 0 });
+    const platform = fakePlatform();
+    platform.prefsStorage = createMemoryPrefsStorage(serializePrefs({ firstRun: false, trainingMode: false, speechRate: 1, bodyOffsetDeg: 0 }));
+    const outdoor = createOutdoorStore();
+    const app = composeApp({ config: CONFIG, bus, store, platform, mocks, fixtureTrack: track, loadStoreMap: () => demoStore, outdoor });
+    await app.start();
+
+    // The awareness loop has already placed the shopper in a store (Stream A's scene classifier / a "yes").
+    store.setState({ scene: { setting: 'store', label: 'in a store aisle', confidence: 0.9, confirmed: true, source: 'user', at: T0 } });
+
+    // No surveyed map: the item is found by looking (a guided task with store context), not ITEM_REQUESTED → trip.
+    await app.voice.submitText('I need eggs');
+    await jest.advanceTimersByTimeAsync(3000);
+    expect(store.getState().mode).toBe('GUIDED_TASK');
+    expect(store.getState().taskGoal).toBe('eggs');
+    expect(app.guidedTask.getDebugState().context).toBe('store');
+    expect(bus.history().some((r) => r.event.type === 'TASK_REQUESTED')).toBe(true);
+    expect(bus.history().some((r) => r.event.type === 'ITEM_REQUESTED')).toBe(false);
+    expect(app.trip.isActive()).toBe(false);
+
+    app.dispose();
+    unbind();
+  });
+
   it('first launch: start() speaks nothing (OnboardingScreen step 0 owns the disclaimer); the manual-signal facade drives the ticker', async () => {
     const { bus, store, unbind } = setupStore();
     const mocks = createMockServices({ bus, store: bridgeAppStore(store), latencyScale: 0 });
