@@ -6,7 +6,7 @@
 // (modules/perception/ios), so `s.resources = ../../../models/…` was silently dropped.
 // This plugin runs on every `expo prebuild`, so it survives --clean and EAS builds
 // (.easignore uploads the git-ignored .mlpackage directories).
-const { withXcodeProject, IOSConfig } = require('expo/config-plugins');
+const { withXcodeProject, withDangerousMod, IOSConfig } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -21,8 +21,25 @@ function listModelFiles(projectRoot) {
     .map((f) => path.join(dir, f));
 }
 
-const withCoreMLModels = (config) =>
-  withXcodeProject(config, (cfg) => {
+function copyModelsIntoIos(projectRoot, platformProjectRoot) {
+  const dest = path.join(platformProjectRoot, MODELS_DIR);
+  fs.rmSync(dest, { recursive: true, force: true });
+  fs.mkdirSync(dest, { recursive: true });
+  for (const abs of listModelFiles(projectRoot)) {
+    fs.cpSync(abs, path.join(dest, path.basename(abs)), { recursive: true });
+  }
+}
+
+const withCoreMLModels = (config) => {
+  // Xcode resolves group-relative paths under ios/, so the models are copied there first.
+  config = withDangerousMod(config, [
+    'ios',
+    async (cfg) => {
+      copyModelsIntoIos(cfg.modRequest.projectRoot, cfg.modRequest.platformProjectRoot);
+      return cfg;
+    },
+  ]);
+  return withXcodeProject(config, (cfg) => {
     const project = cfg.modResults;
     const files = listModelFiles(cfg.modRequest.projectRoot);
     if (files.length === 0) return cfg;
@@ -37,8 +54,8 @@ const withCoreMLModels = (config) =>
       group = project.pbxGroupByName(groupName);
     }
     for (const abs of files) {
-      // Path relative to the ios/ project directory.
-      const rel = path.relative(cfg.modRequest.platformProjectRoot, abs);
+      // Reference the copy under ios/models/, relative to the project directory.
+      const rel = path.join(MODELS_DIR, path.basename(abs));
       const already = Object.values(project.pbxFileReferenceSection()).some(
         (r) => r && typeof r === 'object' && String(r.path || '').replace(/"/g, '') === rel,
       );
@@ -54,5 +71,6 @@ const withCoreMLModels = (config) =>
     }
     return cfg;
   });
+};
 
 module.exports = withCoreMLModels;
