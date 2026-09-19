@@ -88,8 +88,9 @@ describe('bestTranscript / sanitizeReply / coerceParseIntentOutput / keytermsFro
   });
 
   it('keytermsFrom dedupes case-insensitively and caps at 100 (billing cliff)', () => {
-    // The fixed vocabulary leads; the store's items follow, deduped case-insensitively.
-    expect(keytermsFrom(['Eggs', 'eggs', ' milk ', '', 'Milk']).slice(-2)).toEqual(['Eggs', 'milk']);
+    // The fixed vocabulary leads; the store's own items follow, deduped case-insensitively.
+    // (Use items not in the fixed vocabulary so the append/dedup is visible.)
+    expect(keytermsFrom(['Tofu', 'tofu', ' hummus ', '', 'Hummus']).slice(-2)).toEqual(['Tofu', 'hummus']);
     expect(keytermsFrom(['Eggs']).slice(0, VOICE_VOCABULARY.length)).toEqual([...VOICE_VOCABULARY]);
     expect(keytermsFrom(['yes', 'CVS'])).toHaveLength(VOICE_VOCABULARY.length);   // already in the vocabulary
     const many = Array.from({ length: 150 }, (_, i) => `item${i}`);
@@ -179,7 +180,8 @@ describe('createVoiceInput', () => {
     expect(suspended).toEqual([true]);
     expect(v.isListening()).toBe(true);
     // Apple's server recogniser by default (more accurate); the store's items ride along with the fixed vocabulary.
-    expect(r.listenOpts()).toMatchObject({ lang: 'en-US', onDevice: false, contextualStrings: [...VOICE_VOCABULARY, ...KNOWN] });
+    // The fixed vocabulary leads, then the store's items — deduped (some KNOWN items are now staples in the vocabulary).
+    expect(r.listenOpts()).toMatchObject({ lang: 'en-US', onDevice: false, contextualStrings: keytermsFrom(KNOWN) });
 
     r.partial('I need');
     r.final('I need eggs');
@@ -245,7 +247,7 @@ describe('createVoiceInput', () => {
     r.audio('file:///rec.wav');
     r.end();
     const out = await v.end();
-    expect(uploads).toEqual([`file:///rec.wav|${VOICE_VOCABULARY.length + KNOWN.length}`]);
+    expect(uploads).toEqual([`file:///rec.wav|${keytermsFrom(KNOWN).length}`]);
     expect(out).toMatchObject({ transcript: 'I need butter', sttPath: 'scribe' });
     expect(events).toEqual(['butter@voice']);
   });

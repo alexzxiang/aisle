@@ -180,6 +180,12 @@ export const VOICE_VOCABULARY: readonly string[] = [
   'take me to', 'bring me to', 'walk me to', 'find', 'where is', 'how far', 'repeat', 'stop', 'cancel', 'help',
   'yes', 'no', 'correct', 'next', 'done', 'skip', 'describe', 'what do you see', 'look around',
   'fridge', 'refrigerator', 'kitchen', 'living room', 'bedroom', 'bathroom', 'hallway', 'door', 'door frame', 'couch', 'my keys', 'my phone',
+  // Common grocery staples: with no surveyed store map the store's own items are absent, so
+  // these bias the recogniser toward what a shopper asks for at the aisle (the demo path).
+  'milk', 'eggs', 'bread', 'butter', 'cheese', 'yogurt', 'pasta', 'pasta sauce', 'rice', 'cereal',
+  'coffee', 'bananas', 'apples', 'tomatoes', 'onions', 'potatoes', 'chicken', 'orange juice',
+  'peanut butter', 'cooking oil', 'canned soup', 'frozen pizza', 'ice cream', 'paper towels',
+  'toilet paper', 'chips', 'cookies', 'water',
   'CVS', 'Walgreens', 'Rite Aid', 'Giant Eagle', "Trader Joe's", 'Target', 'Whole Foods', 'pharmacy', 'grocery store',
   'Forbes Avenue', 'Fifth Avenue', 'Craig Street', 'Murray Avenue', 'Penn Avenue', 'Centre Avenue', 'Oakland', 'Squirrel Hill', 'Shadyside',
   'I am in the kitchen', "I'm on the sidewalk", 'in front of my fridge',
