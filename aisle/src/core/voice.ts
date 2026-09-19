@@ -27,7 +27,7 @@ import { classifyGoalPhrase } from '../outdoor/plannerJobs';
 import type { AppEventBus } from './bus';
 import type { ConversationLog } from './conversation';
 import type { AppStore } from './store';
-import { PHRASES, checkPhrase, phraseKeyForText } from './phrases';
+import { MAX_UTTERANCE_WORDS, PHRASES, checkPhrase, countWords, findForbiddenTerm, hasDigit, phraseKeyForText } from './phrases';
 
 // ---------------------------------------------------------------------------
 // Pure: intent fallback and transcript choice
@@ -148,6 +148,17 @@ const ON_TRIP: ReadonlySet<AppMode> = new Set<AppMode>([
   'OUTDOOR_NAV', 'APPROACH_CROSSING', 'AT_CURB', 'CROSSING', 'TRANSITION',
   'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV',
 ]);
+
+const CONFIRM_YES_RE = /^(?:ok(?:ay)?[,. ]*)?(?:yes|yeah|yep|yup|correct|right|that's right|thats right|that is right|exactly|sure|uh huh|mhm|affirmative|yes please)[.!]?$/i;
+const CONFIRM_NO_RE = /^(?:no|nope|nah|wrong|incorrect|not really|that's wrong|thats wrong|not that|negative)[.!]?$/i;
+
+/** "Pasta. Did I get that right?" — null when the goal cannot be spoken safely (digits, forbidden word, too long). */
+export function goalConfirmQuestion(goal: string): string | null {
+  const g = goal.trim().replace(/[.!?]+$/, '');
+  if (g.length === 0 || hasDigit(g) || findForbiddenTerm(g) !== null) return null;
+  const q = `${g[0].toUpperCase()}${g.slice(1)}. Did I get that right?`;
+  return countWords(q) <= MAX_UTTERANCE_WORDS ? q : null;
+}
 
 export function coerceParseIntentOutput(raw: unknown, fallback: ParseIntentOutput): ParseIntentOutput {
   if (!raw || typeof raw !== 'object') return fallback;
@@ -303,6 +314,8 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   let session: Session | null = null;
   let last: VoiceOutcome | null = null;
   let unclearStreak = 0;
+  /** A guided-task goal spoken back for a yes/no when the parse was uncertain (noisy STT / no model). */
+  let pendingGoal: { goal: string; context: TaskContext } | null = null;
 
   const pushUser = (transcript: string, source: VoiceSource): void => {
     if (transcript.length > 0) opts.conversation?.pushUser(transcript, source);
@@ -373,11 +386,27 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     return output;
   };
 
-  const act = (output: ParseIntentOutput, source: VoiceSource): void => {
+  const act = (output: ParseIntentOutput, source: VoiceSource, uncertain = false): void => {
     const reply = (): void => {
       const cacheKey = phraseKeyForText(output.reply);
       opts.speech.say({ text: output.reply, priority: 'NAV', dedupeKey: `voice-reply`, cooldownMs: 1000, ...(cacheKey ? { cacheKey } : {}) });
       opts.conversation?.pushAisle(output.reply, 'speech');
+    };
+    // Start a guided task — or, when the parse is uncertain (noisy STT, no model), speak the
+    // goal back for a yes/no first, so a misheard item in a loud store does not launch a wrong
+    // step-by-step search. "Yes" (consumed in finishWith) then starts it; "no" asks again.
+    const startTask = (goal: string, context: TaskContext): void => {
+      if (uncertain) {
+        const q = goalConfirmQuestion(goal);
+        if (q) {
+          pendingGoal = { goal, context };
+          opts.speech.say({ text: q, priority: 'NAV', dedupeKey: 'goal-confirm', cooldownMs: 5000 });
+          opts.conversation?.pushAisle(q, 'prompt');
+          return;
+        }
+      }
+      reply();
+      opts.bus.emit({ type: 'TASK_REQUESTED', goal, context, source });
     };
     if (output.intent === 'find_item' && output.item) {
       // No surveyed store map: when the awareness loop already places the user in a store
@@ -387,8 +416,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // so the outdoor "walk me to a store" path is untouched.
       const scene = ON_TRIP.has(opts.store.getState().mode) ? null : opts.sceneContext?.() ?? null;
       if (scene === 'store' || scene === 'home') {
-        reply();
-        opts.bus.emit({ type: 'TASK_REQUESTED', goal: output.item, context: scene, source });
+        startTask(output.item, scene);
         return;
       }
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
@@ -403,8 +431,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       const inStore = m === 'INDOOR_NAV' || m === 'AT_ITEM' || m === 'ITEM_PICKUP' || m === 'CHECKOUT_NAV';
       // The awareness loop's confirmed or observed scene beats the mode's guess; the mode still wins inside a trip.
       const context: TaskContext = inStore ? 'store' : m === 'OUTDOOR_NAV' ? 'street' : (opts.sceneContext?.() ?? 'home');
-      reply();
-      opts.bus.emit({ type: 'TASK_REQUESTED', goal: output.goal, context, source });
+      startTask(output.goal, context);
       return;
     } else if (output.intent === 'abort') {
       opts.store.getState().abort();
@@ -414,6 +441,27 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
 
   const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource): Promise<VoiceOutcome> => {
     pushUser(transcript, source);
+    // A goal confirmation is waiting ("Pasta. Did I get that right?"): consume yes/no here,
+    // before the planner or any other intercept. Anything else drops it and parses normally.
+    if (transcript.length > 0 && pendingGoal) {
+      const t = transcript.trim();
+      if (CONFIRM_YES_RE.test(t)) {
+        const { goal, context } = pendingGoal;
+        pendingGoal = null;
+        unclearStreak = 0;
+        opts.bus.emit({ type: 'TASK_REQUESTED', goal, context, source });
+        last = { output: { intent: 'guided_task', item: null, destination: null, goal, reply: '' }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+        return last;
+      }
+      if (CONFIRM_NO_RE.test(t)) {
+        pendingGoal = null;
+        opts.speech.say({ text: PHRASES.say_item_again, priority: 'NAV', cacheKey: 'say_item_again', dedupeKey: 'voice-reply', cooldownMs: 1000 });
+        opts.conversation?.pushAisle(PHRASES.say_item_again, 'speech');
+        last = { output: { intent: 'unknown', item: null, reply: PHRASES.say_item_again }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+        return last;
+      }
+      pendingGoal = null;
+    }
     if (transcript.length > 0 && opts.intercept?.(transcript)) {
       unclearStreak = 0;
       const output: ParseIntentOutput = { intent: 'unknown', item: null, reply: '' };
@@ -438,7 +486,10 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       ? await plan(transcript)
       : { output: parseIntentFallback('', []), planner: false, latencyMs: null };
     const output = withUnclearPrompt(r.output);
-    act(output, source);
+    // Uncertain = spoken (not typed) and either the model missed (local keyword fallback) or the
+    // transcript came from the noisy Scribe fallback. Only the guided-task path acts on it.
+    const uncertain = source === 'voice' && transcript.length > 0 && (!r.planner || sttPath === 'scribe');
+    act(output, source, uncertain);
     last = { output, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs };
     return last;
   };
