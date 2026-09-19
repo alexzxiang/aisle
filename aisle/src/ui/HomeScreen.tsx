@@ -27,7 +27,7 @@ export const PRACTICE_LABEL = 'Practice the vibrations';
 export const SETTINGS_LABEL = 'Settings';
 export const CANCEL_LABEL = 'Cancel';
 export const PENDING_NOTE = 'Guidance starts when the route is ready.';
-export const HOME_TRANSCRIPT_MAX = 3;
+export const HOME_TRANSCRIPT_MAX = 50;
 
 export interface HomeScreenProps {
   onOpenDebug?: () => void;
@@ -43,7 +43,7 @@ export interface HomeScreenProps {
 }
 
 /** The Home camera is a viewfinder, not the page: about a quarter of the window at most. */
-export const HOME_CAMERA_MAX_HEIGHT_SHARE = 0.28;
+export const HOME_CAMERA_MAX_HEIGHT_SHARE = 0.42;
 
 export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const { onOpenDebug, onOpenSettings, voice, conversation, betaNotice = WALKING_BETA_FALLBACK, now: nowOverride } = props;

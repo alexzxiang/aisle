@@ -301,7 +301,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   const prompts = wirePrompts({ bus, store, conversation });
 
   // --- Awareness loop: where the user seems to be, checked with them --------------------
-  const situate = createSituate({ store, speech, vision, conversation, now });
+  const situate = createSituate({ store, speech, vision, conversation, now, narrate: () => store.getState().describeSurroundings });
   let guidedTaskRef: GuidedTask | null = null;
 
   // --- A: push-to-talk ---------------------------------------------------------

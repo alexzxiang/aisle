@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearPlacesCache, nameMatches, placesQuery, searchPlaces, toPlaces } from './places';
+import { clearPlacesCache, nameMatches, normStreet, onStreetHint, placesQuery, searchPlaces, toPlaces } from './places';
 
 const ORIGIN = { lat: 40.4443, lng: -79.9436 };
 const elements: Array<{ type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }> = [
@@ -30,6 +30,12 @@ describe('places query', () => {
     expect(q).not.toContain('~');
     expect(q).toContain('out center tags');
   });
+  it('nameMatches: an apostrophe joins ("trader joes" finds "Trader Joe\'s")', () => {
+    expect(nameMatches('trader joes', { name: "Trader Joe's" })).toBe(true);
+    expect(nameMatches("trader joe's", { name: 'Trader Joes' })).toBe(true);
+    expect(nameMatches('joes', { name: "Trader Joe's" })).toBe(true);
+  });
+
   it('nameMatches: substring or all-words, over name/brand/operator, punctuation-insensitive', () => {
     expect(nameMatches('cvs', { name: 'CVS Pharmacy' })).toBe(true);
     expect(nameMatches('CVS pharmacy', { brand: 'CVS', name: 'CVS Pharmacy #1234' })).toBe(true);
@@ -46,6 +52,26 @@ describe('places query', () => {
     const p = toPlaces(els, ORIGIN, 5, 'giant eagle');
     expect(p.map((x) => x.name)).toEqual(['Giant Eagle', 'GetGo']);
     expect(p.map((x) => x.rank)).toEqual([0, 1]);
+  });
+
+  it('a street hint ("the CVS on Forbes") puts the match on that street first, whatever the distance', () => {
+    const els: Array<{ type: string; id: number; lat?: number; lon?: number; tags?: Record<string, string> }> = [
+      { type: 'node', id: 1, lat: 40.4450, lon: -79.9440, tags: { name: 'CVS Pharmacy', amenity: 'pharmacy', 'addr:street': 'Murray Avenue' } },
+      { type: 'node', id: 2, lat: 40.4600, lon: -79.9600, tags: { name: 'CVS Pharmacy', amenity: 'pharmacy', 'addr:street': 'Forbes Avenue' } },
+      { type: 'node', id: 3, lat: 40.4455, lon: -79.9445, tags: { name: 'CVS Pharmacy', amenity: 'pharmacy' } },
+    ];
+    expect(normStreet('Forbes Ave.')).toBe('forbes');
+    expect(onStreetHint('forbes ave', els[1]!.tags)).toBe(true);
+    expect(onStreetHint('forbes', els[0]!.tags)).toBe(false);
+    expect(onStreetHint('forbes', els[2]!.tags)).toBe(false);
+    const p = toPlaces(els, ORIGIN, 5, 'cvs', 'Forbes Ave');
+    expect(p.map((x) => [x.id, x.onStreet, x.street])).toEqual([
+      ['node/2', true, 'Forbes Avenue'],
+      ['node/1', false, 'Murray Avenue'],
+      ['node/3', false, null],
+    ]);
+    // No hint: nearest first.
+    expect(toPlaces(els, ORIGIN, 5, 'cvs').map((x) => x.id)).toEqual(['node/1', 'node/3', 'node/2']);
   });
 });
 

@@ -34,9 +34,11 @@ export const STOP_ARMED_LABEL = 'Tap again to stop';
 export const REPEAT_LABEL = 'Repeat';
 export const FINISH_LABEL = 'Finish';
 /** Transcript lines on the trip screen. */
-export const NAV_TRANSCRIPT_MAX = 4;
+/** The whole log, scrollable (record keeping): the conversation keeps fifty lines. */
+export const NAV_TRANSCRIPT_MAX = 50;
 /** The camera panel never takes more than this share of the window. */
-export const CAMERA_MAX_HEIGHT_SHARE = 0.34;
+/** The camera is portrait now (theme.cameraAspect); it may take up to this share of the window. */
+export const CAMERA_MAX_HEIGHT_SHARE = 0.46;
 
 export interface NavScreenProps {
   onOpenDebug?: () => void;

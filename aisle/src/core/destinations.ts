@@ -38,6 +38,21 @@ export const DESTINATION_TIMEOUT_MS = 25_000;
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+const STREET_HINT_RE = /^(.{2,60}?)\s+(?:on|along|at|by|near|off)\s+(?:the\s+)?(.{3,60}?)\.?$/i;
+const STREET_TAIL_RE = /\b(street|st|avenue|ave|road|rd|boulevard|blvd|way|drive|dr|lane|ln|place|pl)\b\.?$/i;
+
+/** "the CVS on Forbes Ave" → { name: 'CVS', street: 'Forbes Ave' }; a plain name has no street. */
+export function splitDestination(raw: string): { name: string; street: string | null } {
+  const s = raw.trim().replace(/^(the|a)\s+/i, '');
+  const m = s.match(STREET_HINT_RE);
+  if (!m) return { name: s, street: null };
+  const name = m[1]!.trim().replace(/^(the|a)\s+/i, '');
+  const street = m[2]!.trim();
+  // "eggs on the shelf" is not a street; accept a street only with a road word or a proper-looking name.
+  const looksLikeStreet = STREET_TAIL_RE.test(street) || /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$/.test(street) || /^(forbes|fifth|penn|liberty|murray|craig|bigelow|centre|baum|walnut|smithfield|grant|wood)\b/i.test(street);
+  return looksLikeStreet ? { name, street } : { name: s, street: null };
+}
+
 /** Does the spoken name match the loaded map's display name (either direction)? */
 export function matchesStoreMap(name: string, map: AisleStoreMap | null | undefined): boolean {
   if (!map) return false;
@@ -59,10 +74,12 @@ export function mapForPlace(place: Place, now: number = Date.now()): AisleStoreM
 }
 
 export async function resolveDestination(name: string, fix: GeoFix | null, deps: ResolveDestinationDeps): Promise<DestinationOutcome> {
-  if (matchesStoreMap(name, deps.loadedMap)) return { kind: 'store_map', map: deps.loadedMap as AisleStoreMap };
+  const parts = splitDestination(name);
+  if (matchesStoreMap(parts.name, deps.loadedMap) || matchesStoreMap(name, deps.loadedMap)) return { kind: 'store_map', map: deps.loadedMap as AisleStoreMap };
   if (!fix) return { kind: 'none', reason: 'no_fix' };
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const q = new URLSearchParams({ q: name, lat: String(fix.lat), lng: String(fix.lng), radiusM: '2500', limit: '3' });
+  const q = new URLSearchParams({ q: parts.name, lat: String(fix.lat), lng: String(fix.lng), radiusM: parts.street ? '4000' : '2500', limit: '3' });
+  if (parts.street) q.set('street', parts.street);
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = setTimeout(() => controller?.abort(), deps.timeoutMs ?? DESTINATION_TIMEOUT_MS);
   try {

@@ -6,15 +6,19 @@
  */
 import type { VisionQuestion, VisionRequest } from '../../src/core/contracts';
 
-const COMMON = [
+const COMMON_CORE = [
   'You are the perception assistant inside Aisle, a phone navigation aid for a blind pedestrian.',
   'Answer only in the JSON schema you were given. Fill every field; use the neutral value when a field does not apply.',
   '"speech" is what the user will hear: at most twelve words, numbers written as words, or an empty string when there is nothing useful to say.',
   'State facts you can see. Never give permission or advice about crossing a street.',
   'Never use the words: safe, clear, go, cross now, no cars, you can cross.',
-  'Do not describe the scene. Do not add pleasantries.',
+  'Do not add pleasantries.',
   'If the image is dark, blurred or ambiguous, lower your confidence rather than guessing.',
 ].join(' ');
+/** Task questions answer one thing; the scene itself is the describer's and the awareness loop's business. */
+const COMMON = `${COMMON_CORE} Do not describe the scene.`;
+/** `situate` and `free` exist to say what is there. */
+const COMMON_DESCRIBING = COMMON_CORE;
 
 export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.freeze({
   storefront: [
@@ -60,13 +64,14 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'Never state that it is fine to proceed into traffic or when to cross a street.',
   ].join(' '),
   situate: [
-    COMMON,
+    COMMON_DESCRIBING,
     'Question: where does the camera seem to be? Fill scene.setting with the coarse kind of place (street, crossing, entrance, store, home, kitchen, hallway, room, vehicle, unknown) and scene.label with a place phrase of at most five words that a blind person would recognise, e.g. "on a sidewalk by a road", "in a kitchen", "in a store aisle", "at a store entrance", "in a hallway". scene.confidence is your belief in the label.',
-    'Speech is an empty string: the app turns the label into its own question. If the frame shows too little to tell (a wall, the floor, darkness), set scene.setting unknown, an empty label, and cameraRequest to what would help (up, left, right).',
+    'speech is required and never empty: one plain sentence of at most twelve words that tells a blind person what the camera is pointed at right now, in the second person, e.g. "You are looking at a wall.", "You are facing down a quiet street.", "A person walking a dog is ahead of you.", "Kitchen counter ahead, fridge on your left." Name the nearest thing that matters and where it is (ahead, left, right, close). Numbers as words. Never say that it is fine to proceed or to cross.',
+    'If the frame shows too little to tell (a blank wall, the floor, darkness), say so in speech ("You are looking at the floor."), set scene.setting unknown, an empty label, and cameraRequest to what would help (up, left, right).',
     'userText may carry what the user said about where they are; if it disagrees with the image, trust the user for the setting and describe what differs in the label.',
   ].join(' '),
   free: [
-    COMMON,
+    COMMON_DESCRIBING,
     'Question: the user asked something in their own words (userText). Answer the question about what the camera sees in at most twelve words.',
     'If the question is about whether to cross or whether traffic allows it, reply only "I report what I see. You decide." and nothing else.',
   ].join(' '),

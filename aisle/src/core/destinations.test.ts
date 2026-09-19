@@ -1,4 +1,4 @@
-import { mapForPlace, matchesStoreMap, resolveDestination } from './destinations';
+import { mapForPlace, matchesStoreMap, resolveDestination, splitDestination } from './destinations';
 import type { AisleStoreMap } from '../indoor/storeMap';
 
 const map = { storeId: 'demo-store-01', displayName: 'Demo Grocery', entrance: { lat: 1, lng: 2, radiusM: 35, pinnedBy: 'x', pinnedAt: 'y' }, aisles: [], landmarks: [], itemIndex: {} } as unknown as AisleStoreMap;
@@ -38,5 +38,17 @@ describe('destinations (round 4)', () => {
     expect(await resolveDestination('cvs', fix, { proxyUrl: 'http://p', fetchImpl: fetchWith(200, { places: [] }) })).toEqual({ kind: 'none', reason: 'no_match' });
     expect(await resolveDestination('cvs', fix, { proxyUrl: 'http://p', fetchImpl: fetchWith(502, {}) })).toEqual({ kind: 'none', reason: 'offline' });
     expect(await resolveDestination('cvs', fix, { proxyUrl: 'http://p', fetchImpl: (async () => { throw new Error('net'); }) as unknown as typeof fetch })).toEqual({ kind: 'none', reason: 'offline' });
+  });
+});
+
+describe('splitDestination', () => {
+  it('separates a street hint from the place name', () => {
+    expect(splitDestination('the CVS on Forbes Ave')).toEqual({ name: 'CVS', street: 'Forbes Ave' });
+    expect(splitDestination('cvs on forbes')).toEqual({ name: 'cvs', street: 'forbes' });
+    expect(splitDestination('Trader Joes at Penn Avenue')).toEqual({ name: 'Trader Joes', street: 'Penn Avenue' });
+    expect(splitDestination('Giant Eagle')).toEqual({ name: 'Giant Eagle', street: null });
+    expect(splitDestination('the library')).toEqual({ name: 'library', street: null });
+    // Not a street: the phrase is kept whole.
+    expect(splitDestination('eggs on the shelf')).toEqual({ name: 'eggs on the shelf', street: null });
   });
 });

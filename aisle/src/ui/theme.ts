@@ -100,7 +100,8 @@ export const sizes = {
   /** Pills. */
   radiusPill: 22,
   /** The camera panel's aspect (width : height). */
-  cameraAspect: 4 / 3,
+  /** Portrait: the phone is held upright and the frame should show what is ahead, floor to head height. */
+  cameraAspect: 3 / 4,
 } as const;
 
 /** Every motion in the app, all gated by reduce-motion (DESIGN.md, Motion). */

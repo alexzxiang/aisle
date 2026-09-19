@@ -137,7 +137,7 @@ describe('type scale, targets and motion', () => {
     expect(sizes.minTarget).toBe(44);
     expect(sizes.secondaryHeight).toBeGreaterThanOrEqual(44);
     expect(sizes.talkDiameter).toBe(88);
-    expect(sizes.cameraAspect).toBeCloseTo(4 / 3);
+    expect(sizes.cameraAspect).toBeCloseTo(3 / 4);   // portrait viewfinder
   });
 
   it('motion tokens match DESIGN.md', () => {

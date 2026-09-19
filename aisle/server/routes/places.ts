@@ -23,6 +23,8 @@ export const QuerySchema = z.object({
   lng: z.coerce.number().min(-180).max(180),
   radiusM: z.coerce.number().min(100).max(PLACES_MAX_RADIUS_M).default(PLACES_DEFAULT_RADIUS_M),
   limit: z.coerce.number().int().min(1).max(10).default(5),
+  /** "the CVS on Forbes": a street the match should sit on (addr:street), ranked first. */
+  street: z.string().trim().max(60).optional(),
 });
 export type PlacesQuery = z.infer<typeof QuerySchema>;
 
@@ -34,6 +36,8 @@ export interface Place {
   distanceM: number;
   kind: string | null;   // shop=chemist, amenity=pharmacy, …
   rank: 0 | 1;           // 0 = name match, 1 = brand/operator match only
+  street: string | null; // addr:street when tagged
+  onStreet: boolean;     // the street hint matched
 }
 
 export interface OverpassEl {
@@ -47,7 +51,8 @@ export interface OverpassEl {
 
 /** Normalise a name for matching: lowercase, ASCII letters/digits, single spaces. */
 export function normName(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // Apostrophes join ("Trader Joe's" → "trader joes", as people say it); other punctuation splits.
+  return s.toLowerCase().replace(/[’'`]/g, '').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -78,7 +83,24 @@ export function matchRank(q: string, tags: Record<string, string> | undefined): 
   return null;
 }
 
-export function toPlaces(elements: readonly OverpassEl[], origin: { lat: number; lng: number }, limit: number, q?: string): Place[] {
+const STREET_SUFFIX_RE = /\b(street|st|avenue|ave|road|rd|boulevard|blvd|way|drive|dr|lane|ln|place|pl)\b\.?/g;
+
+/** "Forbes Ave" → "forbes": the street's proper name, so hints and tags compare loosely. */
+export function normStreet(s: string): string {
+  return normName(s).replace(STREET_SUFFIX_RE, '').replace(/\s+/g, ' ').trim();
+}
+
+export function onStreetHint(hint: string | undefined, tags: Record<string, string> | undefined): boolean {
+  if (!hint) return false;
+  const h = normStreet(hint);
+  if (!h) return false;
+  const tagged = tags?.['addr:street'];
+  if (!tagged) return false;
+  const s = normStreet(tagged);
+  return s === h || s.includes(h) || h.includes(s);
+}
+
+export function toPlaces(elements: readonly OverpassEl[], origin: { lat: number; lng: number }, limit: number, q?: string, street?: string): Place[] {
   const seen = new Set<string>();
   const out: Place[] = [];
   for (const el of elements) {
@@ -92,9 +114,14 @@ export function toPlaces(elements: readonly OverpassEl[], origin: { lat: number;
     if (seen.has(id)) continue;
     seen.add(id);
     const kind = el.tags?.shop ? `shop=${el.tags.shop}` : el.tags?.amenity ? `amenity=${el.tags.amenity}` : el.tags?.building ? `building=${el.tags.building}` : null;
-    out.push({ id, name, lat, lng, distanceM: Math.round(haversineM(origin, { lat, lng })), kind, rank });
+    out.push({
+      id, name, lat, lng, distanceM: Math.round(haversineM(origin, { lat, lng })), kind, rank,
+      street: el.tags?.['addr:street'] ?? null,
+      onStreet: onStreetHint(street, el.tags),
+    });
   }
-  out.sort((a, b) => a.rank - b.rank || a.distanceM - b.distanceM);
+  // The named street first, then name matches over brand-only, then the nearest.
+  out.sort((a, b) => Number(b.onStreet) - Number(a.onStreet) || a.rank - b.rank || a.distanceM - b.distanceM);
   return out.slice(0, limit);
 }
 
@@ -117,7 +144,7 @@ export async function searchPlaces(q: PlacesQuery, deps: PlacesDeps = {}): Promi
   const timeoutMs = deps.timeoutMs ?? PLACES_TIMEOUT_MS;
   const key = `${q.lat.toFixed(3)}|${q.lng.toFixed(3)}|${q.radiusM}`;
   const hit = cache.get(key);
-  if (hit && now() - hit.at <= PLACES_CACHE_MS) return { places: toPlaces(hit.elements, { lat: q.lat, lng: q.lng }, q.limit, q.q), source: 'cache' };
+  if (hit && now() - hit.at <= PLACES_CACHE_MS) return { places: toPlaces(hit.elements, { lat: q.lat, lng: q.lng }, q.limit, q.q, q.street), source: 'cache' };
   const query = placesQuery(q.lat, q.lng, q.radiusM);
   const errors: string[] = [];
   for (const mirror of mirrors) {
@@ -135,7 +162,7 @@ export async function searchPlaces(q: PlacesQuery, deps: PlacesDeps = {}): Promi
       if (typeof json.remark === 'string' && /timed out/i.test(json.remark)) throw new Error(`overpass timeout: ${json.remark.slice(0, 80)}`);
       const elements = json.elements ?? [];
       cache.set(key, { at: now(), elements });
-      return { places: toPlaces(elements, { lat: q.lat, lng: q.lng }, q.limit, q.q), source: 'live' };
+      return { places: toPlaces(elements, { lat: q.lat, lng: q.lng }, q.limit, q.q, q.street), source: 'live' };
     } catch (e) {
       errors.push(`${mirror}: ${(e as Error)?.message ?? String(e)}`);
     } finally {

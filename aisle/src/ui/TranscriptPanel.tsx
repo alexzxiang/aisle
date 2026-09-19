@@ -13,7 +13,7 @@
  * line out loud.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Button } from './Button';
 import { GlassPanel } from './Glass';
 import { useMountIn, useResolvedReduceMotion } from './hooks';
@@ -26,7 +26,8 @@ export const DESCRIBE_LABEL = 'Describe surroundings';
 export const DESCRIBE_HINT = 'Aisle says what the camera sees right now';
 export const YOU_WORD = 'You';
 export const AISLE_WORD = 'Aisle';
-export const TRANSCRIPT_MAX = 5;
+/** Default cap: the whole log the conversation keeps (record keeping); screens that need a glance pass less. */
+export const TRANSCRIPT_MAX = 50;
 
 export interface TranscriptPanelProps {
   entries: readonly ConversationEntryLike[];
@@ -100,9 +101,27 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
 
   const pill = showDescribe && onDescribe !== undefined;
 
+  // Newest at the bottom, and the list follows it: a new line scrolls into view.
+  const scroller = useRef<ScrollView | null>(null);
+  const lastId = visible.length > 0 ? visible[visible.length - 1].id : null;
+  useEffect(() => {
+    if (lastId === null) return;
+    const id = setTimeout(() => scroller.current?.scrollToEnd({ animated: !reduceMotion }), 30);
+    return () => clearTimeout(id);
+  }, [lastId, reduceMotion]);
+
   return (
     <GlassPanel reduceMotion={reduceMotion} style={[styles.panel, style]} contentStyle={styles.content} testID={testID ?? 'transcript-panel'}>
-      <View style={styles.list} accessibilityRole="list" accessibilityLabel={TRANSCRIPT_LABEL}>
+      <ScrollView
+        ref={scroller}
+        style={styles.scroll}
+        contentContainerStyle={styles.list}
+        accessibilityRole="list"
+        accessibilityLabel={TRANSCRIPT_LABEL}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+        onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
+      >
         {visible.length === 0 ? (
           <Text accessible accessibilityRole="text" allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.empty}>
             {TRANSCRIPT_EMPTY}
@@ -110,7 +129,7 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
         ) : (
           visible.map((e) => <Line key={e.id} entry={e} reduceMotion={reduceMotion} />)
         )}
-      </View>
+      </ScrollView>
       {pill ? (
         <View style={styles.pillRow}>
           <Button label={DESCRIBE_LABEL} hint={DESCRIBE_HINT} onPress={describe} busy={busy} size="pill" reduceMotion={reduceMotion} testID="describe-pill" />
@@ -131,8 +150,11 @@ const styles = StyleSheet.create({
     paddingBottom: space.m,
     gap: space.m,
   },
-  list: {
+  scroll: {
     flex: 1,
+  },
+  list: {
+    flexGrow: 1,
     justifyContent: 'flex-end',
     gap: space.s,
   },

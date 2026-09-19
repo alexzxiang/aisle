@@ -26,11 +26,15 @@ import type { AppMode, SceneHypothesis, SceneSetting, SpeechService, TaskContext
 import type { AppStore } from './store';
 import type { ConversationLog } from './conversation';
 import { MAX_UTTERANCE_WORDS, PHRASES, countWords, findForbiddenTerm, hasDigit } from './phrases';
-import type { SemanticVision } from '../perception/semanticVision';
+import { sanitizeSpeech, type SemanticVision } from '../perception/semanticVision';
 
 export const SITUATE_TICK_MS = 1000;
 export const SITUATE_SETTLE_MS = 3000;
-export const SITUATE_ASK_INTERVAL_MS = 6000;
+/** Looks this often when the scene keeps changing (the vision service's scene gate skips a still frame). */
+export const SITUATE_ASK_INTERVAL_MS = 4000;
+/** Narration ("You are looking at a wall.") no more often than this, and never the same words twice within the suppress window. */
+export const SITUATE_NARRATE_GAP_MS = 5000;
+export const SITUATE_NARRATE_REPEAT_MS = 30_000;
 export const SITUATE_PROMPT_INTERVAL_MS = 30_000;
 export const SITUATE_QUESTION_GAP_MS = 45_000;
 export const SITUATE_QUESTION_TTL_MS = 20_000;
@@ -164,6 +168,10 @@ export interface SituateDeps {
   active?: () => boolean;
   /** Default: the mode is in SPEAK_MODES and no request is pending. */
   mayspeak?: () => boolean;
+  /** Narrate what the camera faces (the `describeSurroundings` preference). Default: on. */
+  narrate?: () => boolean;
+  narrateGapMs?: number;
+  narrateRepeatMs?: number;
   now?: () => number;
   tickMs?: number;
   settleMs?: number;
@@ -184,6 +192,7 @@ export interface SituateDebugState {
   asks: number;
   prompts: number;
   questions: number;
+  narrations: number;
   lastAskAt: number | null;
 }
 
@@ -214,6 +223,9 @@ export function createSituate(deps: SituateDeps): Situate {
   const questionGapMs = deps.questionGapMs ?? SITUATE_QUESTION_GAP_MS;
   const questionTtlMs = deps.questionTtlMs ?? SITUATE_QUESTION_TTL_MS;
   const reentryMs = deps.reentryMs ?? SITUATE_REENTRY_MS;
+  const narrateGapMs = deps.narrateGapMs ?? SITUATE_NARRATE_GAP_MS;
+  const narrateRepeatMs = deps.narrateRepeatMs ?? SITUATE_NARRATE_REPEAT_MS;
+  const narrateOn = deps.narrate ?? (() => true);
   const minConfidence = deps.minConfidence ?? SITUATE_MIN_CONFIDENCE;
   const setI: typeof setInterval = deps.setIntervalFn ?? setInterval;
   const clearI: typeof clearInterval = deps.clearIntervalFn ?? clearInterval;
@@ -249,6 +261,9 @@ export function createSituate(deps: SituateDeps): Situate {
   let asks = 0;
   let prompts = 0;
   let questions = 0;
+  let narrations = 0;
+  let lastNarrationAt: number | null = null;
+  const recentNarration = new Map<string, number>();
 
   const scene = (): SceneHypothesis | null => deps.store.getState().scene;
   const setScene = (s: SceneHypothesis | null): void => deps.store.setState({ scene: s });
@@ -273,6 +288,23 @@ export function createSituate(deps: SituateDeps): Situate {
     // The guess shows on screen at once; `confirmed` waits for the answer.
     setScene(candidate);
     ask(q);
+  };
+
+  /** "You are looking at a wall." — INFO, so any guidance in the queue wins; the same words are not news for a while. */
+  const narrate = (res: VisionResponse, t: number): void => {
+    if (!narrateOn() || !voiceFree()) return;
+    const text = sanitizeSpeech(res.speech);
+    if (!text) return;
+    if (lastNarrationAt !== null && t - lastNarrationAt < narrateGapMs) return;
+    const key = text.toLowerCase();
+    const seenAt = recentNarration.get(key);
+    if (seenAt !== undefined && t - seenAt < narrateRepeatMs) return;
+    for (const [k, at] of Array.from(recentNarration.entries())) if (t - at >= narrateRepeatMs) recentNarration.delete(k);
+    recentNarration.set(key, t);
+    lastNarrationAt = t;
+    narrations += 1;
+    deps.speech.say({ text, priority: 'INFO', dedupeKey: 'situate-narration', cooldownMs: narrateGapMs });
+    deps.conversation?.pushAisle(text, 'describe');
   };
 
   const consider = (res: VisionResponse, t: number): void => {
@@ -323,7 +355,11 @@ export function createSituate(deps: SituateDeps): Situate {
       void deps.vision.ask('situate', { silent: true, ...(said ? { userText: said } : {}) })
         .then((out) => {
           if (disposed) return;
-          if (out.status === 'applied' && out.response) consider(out.response, now());
+          if (out.status === 'applied' && out.response) {
+            const at = now();
+            narrate(out.response, at);
+            consider(out.response, at);
+          }
         })
         .catch(() => undefined)
         .then(() => {
@@ -391,7 +427,7 @@ export function createSituate(deps: SituateDeps): Situate {
       return c === 'unknown' ? null : c;
     },
     getDebugState() {
-      return { running: handle !== null, scene: scene(), pending: pending?.kind ?? null, asks, prompts, questions, lastAskAt };
+      return { running: handle !== null, scene: scene(), pending: pending?.kind ?? null, asks, prompts, questions, narrations, lastAskAt };
     },
     dispose() {
       if (disposed) return;

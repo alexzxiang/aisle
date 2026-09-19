@@ -23,9 +23,9 @@ import type { AskOutcome } from '../perception/semanticVision';
 
 const T0 = 1_700_000_000_000;
 
-function response(scene: VisionResponse['scene']): VisionResponse {
+function response(scene: VisionResponse['scene'], speech = ''): VisionResponse {
   return {
-    speech: '',
+    speech,
     cameraRequest: 'none',
     userAction: 'none',
     aisle: { matchedAisleId: null, matchedLandmarkId: null, confidence: 0 },
@@ -40,7 +40,7 @@ function response(scene: VisionResponse['scene']): VisionResponse {
   };
 }
 
-const applied = (scene: VisionResponse['scene']): AskOutcome => ({ status: 'applied', seq: 1, response: response(scene), streamed: false, latencyMs: 300 });
+const applied = (scene: VisionResponse['scene'], speech = ''): AskOutcome => ({ status: 'applied', seq: 1, response: response(scene, speech), streamed: false, latencyMs: 300 });
 const skipped: AskOutcome = { status: 'skipped', gate: 'scene_unchanged', seq: 1, response: null, streamed: false, latencyMs: null };
 
 function harness(readings: AskOutcome[] = []) {
@@ -225,6 +225,33 @@ describe('createSituate', () => {
     await flush(SITUATE_PROMPT_INTERVAL_MS);
     expect(h.said).toEqual([]);
     s.dispose();
+  });
+
+  it('narrates what the camera faces at INFO, at most every five seconds, never the same words twice in thirty; off with the preference', async () => {
+    const unknown = { setting: 'unknown' as const, label: '', confidence: 0 };
+    const h = harness([
+      applied(unknown, 'You are looking at a wall.'),
+      applied(unknown, 'You are looking at a wall.'),          // same words: not news
+      applied(unknown, 'A person is ahead of you, close.'),
+      applied(unknown, 'Aisle 3 is on your left.'),            // a digit: never spoken
+      applied(unknown, 'You may cross now, it is clear.'),     // forbidden: never spoken
+    ]);
+    const s = createSituate(h.deps);
+    s.start();
+    await flush(SITUATE_SETTLE_MS + SITUATE_ASK_INTERVAL_MS * 4 + 100);
+    const narrated = h.said.filter((r) => r.dedupeKey === 'situate-narration');
+    expect(narrated.map((r) => r.text)).toEqual(['You are looking at a wall.', 'A person is ahead of you, close.']);
+    expect(narrated.every((r) => r.priority === 'INFO')).toBe(true);
+    expect(h.log).toContain('You are looking at a wall.');
+    expect(s.getDebugState().narrations).toBe(2);
+    s.dispose();
+
+    const h2 = harness([applied(unknown, 'You are looking at a wall.')]);
+    const s2 = createSituate({ ...h2.deps, narrate: () => false });
+    s2.start();
+    await flush(SITUATE_SETTLE_MS + SITUATE_ASK_INTERVAL_MS);
+    expect(h2.said.filter((r) => r.dedupeKey === 'situate-narration')).toHaveLength(0);
+    s2.dispose();
   });
 
   it('a vision error or a low-confidence reading changes nothing', async () => {
