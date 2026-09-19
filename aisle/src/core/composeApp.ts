@@ -389,6 +389,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     vision,
     planner,
     describe: () => describer.describeNow(),
+    scene: () => situate.getScene()?.label ?? null,
     conversation,
     now,
   });

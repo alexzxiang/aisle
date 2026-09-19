@@ -25,7 +25,7 @@
  * Safety: nothing here speaks about traffic; the street context's template and
  * prompt confine the plan to doors and standing places (plannerJobs.ts).
  */
-import type { AppEvent, AppMode, HapticService, SpeechService, TaskContext, TaskPlanOutput, VisionResponse } from './contracts';
+import type { AppEvent, AppMode, HapticService, SpeechService, TaskContext, TaskPlanInput, TaskPlanOutput, VisionResponse } from './contracts';
 import type { AppEventBus } from './bus';
 import type { AppStore } from './store';
 import type { ConversationLog } from './conversation';
@@ -45,6 +45,16 @@ export const TASK_REMIND_MS = 20_000;
 export const TASK_DONE_STREAK = 2;
 /** An unanswered step check expires after this; the loop goes back to watching. */
 export const TASK_CHECK_TTL_MS = 15_000;
+/**
+ * A look-around step ("Turn slowly so I can see the room.") has no target the camera
+ * can confirm; it closes on the first `done` reading of any confidence, or after this.
+ */
+export const TASK_OBSERVE_MS = 8000;
+const OBSERVE_RE = /\b(turn slowly|look around|show me|so i can see|let me see|scan)\b/i;
+
+export function isObservationStep(instruction: string): boolean {
+  return OBSERVE_RE.test(instruction);
+}
 
 const NEXT_RE = /^(?:ok(?:ay)?[,. ]*)?(?:next(?: step)?|done|did it|i did it|got it|skip(?: (?:this|that|it))?(?: step)?|finished|complete[d]?|continue|go on)[.!]?$/i;
 const YES_RE = /^(?:yes|yeah|yep|yup|correct|right|that's right|thats right|that is right|exactly|sure|uh huh|affirmative)[.!]?$/i;
@@ -72,6 +82,8 @@ export interface GuidedTaskDeps {
   planner: Pick<PlannerClient, 'run'>;
   /** The scene describer's on-demand look (A's `describeNow`); resolves to what it spoke. */
   describe?: () => Promise<string | null>;
+  /** The awareness loop's current place label, for the planner and the step loop. */
+  scene?: () => string | null;
   conversation?: Pick<ConversationLog, 'pushAisle'>;
   now?: () => number;
   tickMs?: number;
@@ -80,6 +92,7 @@ export interface GuidedTaskDeps {
   askConfidence?: number;
   doneStreak?: number;
   checkTtlMs?: number;
+  observeMs?: number;
   setTimeoutFn?: typeof setTimeout;
   clearTimeoutFn?: typeof clearTimeout;
 }
@@ -125,6 +138,10 @@ interface RunState {
   asking: boolean;
   /** An open "Is that right?" for this step, with when it was asked. */
   check: { step: number; at: number } | null;
+  /** When the current step was spoken first (observation steps time out from here). */
+  stepAt: number;
+  /** The last description the camera gave (the look at the start), for the planner and the step loop. */
+  description: string | null;
   /** Steps already put to the user once (a "no" means: watch, do not ask again). */
   checked: Set<number>;
 }
@@ -137,6 +154,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const askConfidence = deps.askConfidence ?? TASK_ASK_CONFIDENCE;
   const doneStreak = deps.doneStreak ?? TASK_DONE_STREAK;
   const checkTtlMs = deps.checkTtlMs ?? TASK_CHECK_TTL_MS;
+  const observeMs = deps.observeMs ?? TASK_OBSERVE_MS;
   const setT: typeof setTimeout = deps.setTimeoutFn ?? setTimeout;
   const clearT: typeof clearTimeout = deps.clearTimeoutFn ?? clearTimeout;
   const { bus, store, speech } = deps;
@@ -178,6 +196,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (!s) return;
     speech.say({ text: s.instruction, priority: 'NAV', dedupeKey: `task-step-${r.step}`, cooldownMs: reminder ? 0 : 1500 });
     if (!reminder) {
+      r.stepAt = now();
       deps.conversation?.pushAisle(s.instruction, 'prompt');
       bus.emit({ type: 'TASK_STEP', index: r.step, total: r.steps.length, instruction: s.instruction });
     }
@@ -217,7 +236,9 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
 
   const userText = (r: RunState): string => {
     const s = r.steps[r.step]!;
-    return `Goal: ${r.goal}. Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${s.lookFor}.`;
+    const place = deps.scene?.();
+    const where = place ? ` Place: ${place}.` : '';
+    return `Goal: ${r.goal}.${where} Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${s.lookFor}.`;
   };
 
   /** 'done' closes on the streak; 'ask' puts it to the user; 'no' resets. */
@@ -252,7 +273,11 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       try {
         if (r.check && now() - r.check.at > checkTtlMs) r.check = null; // no answer: back to watching
         const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: r.check !== null });
-        if (run === r && out.status === 'applied') {
+        const observing = isObservationStep(r.steps[r.step]?.instruction ?? '');
+        if (run === r && observing && (now() - r.stepAt >= observeMs || (out.status === 'applied' && out.response?.task.done === true))) {
+          // A look-around step is done once the camera has had its look.
+          advanceRun(r, false);
+        } else if (run === r && out.status === 'applied') {
           const verdict = readDone(out.response);
           if (verdict === 'done') {
             r.doneReadings += 1;
@@ -274,25 +299,31 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     r.timer = setT(() => { void tick(r); }, tickMs);
   };
 
-  const factsForPlanner = (): { detections: string[]; ocr: string[] } | undefined => {
-    if (!deps.vision.getFacts) return undefined;
+  const factsForPlanner = (description: string | null): NonNullable<TaskPlanInput['facts']> | undefined => {
+    let detections: string[] = [];
+    let ocr: string[] = [];
     try {
-      const f = deps.vision.getFacts();
-      const detections = Array.from(new Set(f.detections.map((d) => d.cls))).slice(0, 12);
-      const ocr = f.ocrTokens.slice(0, 12);
-      return { detections, ocr };
+      const f = deps.vision.getFacts?.();
+      if (f) {
+        detections = Array.from(new Set(f.detections.map((d) => d.cls))).slice(0, 12);
+        ocr = f.ocrTokens.slice(0, 12);
+      }
     } catch {
-      return undefined;
+      // facts are a courtesy
     }
+    const scene = deps.scene?.() ?? null;
+    if (detections.length === 0 && ocr.length === 0 && !scene && !description) return undefined;
+    return { detections, ocr, ...(scene ? { scene } : {}), ...(description ? { description } : {}) };
   };
 
   const begin = async (goal: string, context: TaskContext): Promise<void> => {
     stop();
     const gen = ++generation;
     sayPhrase('let_me_see', 0);
+    let description: string | null = null;
     if (deps.describe) {
       try {
-        await deps.describe();
+        description = await deps.describe();
       } catch {
         // A failed look is not a failed task.
       }
@@ -301,7 +332,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
 
     let plan: TaskPlanOutput;
     try {
-      const facts = factsForPlanner();
+      const facts = factsForPlanner(description);
       const result = await deps.planner.run('taskPlan', { goal, context, ...(facts ? { facts } : {}) });
       plan = result.output;
       plannerFallback = result.fallback;
@@ -312,7 +343,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
-    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, asking: false, check: null, checked: new Set() };
+    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description };
     run = r;
     deps.conversation?.pushAisle(`Plan: ${plan.steps.length === 1 ? 'one step' : `${plan.steps.length} steps`} to ${goal}.`, 'prompt');
     speakStep(r, false);

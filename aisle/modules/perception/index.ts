@@ -97,7 +97,7 @@ export declare class PerceptionNativeModule extends NativeModule<WireEvents> {
   setCourseReference(bearingDeg: number | null): void;
   setBodyOffsetDeg(offsetDeg: number): void;
   setKnownSigns(words: string[]): void;
-  snapshotJPEG(maxWidth: 512 | 640 | 1024): Promise<Snapshot>;
+  snapshotJPEG(maxWidth: SnapshotWidth): Promise<Snapshot>;
   getTrackingState(): TrackingState;
   getStats(): PerceptionStats;
   /** 09 §10 fixture recorder: writes `{"t","event","payload"}` jsonl lines to `path`. */
@@ -278,7 +278,7 @@ export function subscribePerceptionEvent<K extends PerceptionEventName>(
   }
 }
 
-export const SNAPSHOT_WIDTHS = [512, 640, 1024] as const;
+export const SNAPSHOT_WIDTHS = [512, 640, 768, 1024] as const;
 export type SnapshotWidth = (typeof SNAPSHOT_WIDTHS)[number];
 
 export function isSnapshotWidth(w: number): w is SnapshotWidth {

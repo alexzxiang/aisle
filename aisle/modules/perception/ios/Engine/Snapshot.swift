@@ -29,7 +29,7 @@ public enum SnapshotError: Error, CustomStringConvertible {
   public var description: String {
     switch self {
     case .noFrame: return "no camera frame available yet"
-    case .invalidWidth(let w): return "snapshot width must be 512, 640 or 1024, got \(w)"
+    case .invalidWidth(let w): return "snapshot width must be 512, 640, 768 or 1024, got \(w)"
     case .encodeFailed: return "JPEG encoding failed"
     }
   }
@@ -54,7 +54,9 @@ public struct SnapshotSource {
 }
 
 public final class SnapshotEncoder {
-  public static let allowedWidths: Set<Int> = [512, 640, 1024]
+  /// 768 is the awareness / guided-task size: a 576×768 portrait frame is what
+  /// Claude needs to tell eggs from a milk carton; 384×512 was not (round 6).
+  public static let allowedWidths: Set<Int> = [512, 640, 768, 1024]
   public static let jpegQuality: Double = 0.8
   public static let curbCropWidth = 1024
   /// Curb crop keeps this fraction of the frame height around the horizon row.

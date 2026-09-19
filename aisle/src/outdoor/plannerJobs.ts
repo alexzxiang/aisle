@@ -372,7 +372,11 @@ function validateParseIntent(raw: unknown, input: ParseIntentInput): { output: P
   }
   const cleanName = (v: unknown, max: number): string | null => {
     if (typeof v !== 'string') return null;
-    const c = v.trim().replace(/[\r\n]+/g, ' ').slice(0, max);
+    // The model sometimes echoes the verb ("find the eggs in my kitchen"): keep the thing, not the ask.
+    const c = v.trim().replace(/[\r\n]+/g, ' ')
+      .replace(/^(?:please\s+)?(?:find|get|locate|reach|take me to|bring me to|walk me to|guide me to|go to)\s+(?:the\s+|a\s+|my\s+)?/i, (m) => (/\bmy\s*$/i.test(m) ? 'my ' : ''))
+      .trim()
+      .slice(0, max);
     return c.length > 0 && findForbiddenTerm(c) === null ? c : null;
   };
   let destination: string | null = null;
@@ -622,6 +626,7 @@ export const TASK_PLAN_PROMPT = [
   'You plan step-by-step camera-guided help for a blind person reaching a goal. Input: JSON with goal, context (home, store, street, unknown) and optional facts the camera already sees.',
   'Return askFirst: one short request to look around first, e.g. "Let me see your surroundings." Then steps: three to eight ordered steps, each an instruction of at most twelve words the person performs (walk, turn, reach, open) and lookFor: what the camera should confirm to call that step done.',
   'Adjust to the context: at home use rooms, door frames, appliances and furniture ("Walk to the kitchen door frame.", "Open the fridge."); in a store use aisles, signs and shelves; on the street use doors, entrances and crossings only as places to stand, never when to cross.',
+  'facts.scene says where the person is and facts.description says what the camera sees right now, with sides. Plan from there: if the fridge is already on the left, the first step is "Turn left to face the fridge.", not a look around. Start with a "turn slowly" step only when facts say nothing useful. Put the target where it usually is ("Eggs are often on the door shelf or the middle shelf.") in the reach step.',
   'No digits: numbers as words. Never state or imply that it is fine to proceed, that a way is free of traffic, or when to cross a street. Output JSON only.',
 ].join('\n');
 

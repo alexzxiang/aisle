@@ -58,9 +58,9 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
   ].join(' '),
   task_step: [
     COMMON,
-    'Question: the user is doing a multi-step task with camera guidance. userText names the goal, the current step and what to look for.',
+    'Question: the user is doing a multi-step task with camera guidance. userText names the goal, the place when known, the current step and what to look for.',
     'Set task.done true only when the camera clearly shows the current step is complete (the named thing is reached, opened, or within arm\'s reach), with task.confidence.',
-    'Otherwise put one concrete micro-instruction in speech (at most twelve words): a direction, a distance in steps, or what to reach for, e.g. "Door frame ahead, three steps.", "Fridge handle at waist height, right hand." Use cameraRequest when the camera must move to see the target and userAction when the person must move.',
+    'Otherwise speech is required: one concrete micro-instruction (at most twelve words) that moves the person toward the step from what you see now: a direction, a distance in steps, or what to reach for, e.g. "Door frame ahead, three steps.", "Turn left, the fridge is at your left shoulder.", "Fridge handle at waist height, right hand.", "Eggs: middle shelf, a carton at your right hand." If the target is not in view, say which way to turn to find it. Use cameraRequest when the camera must move to see the target and userAction when the person must move.',
     'Never state that it is fine to proceed into traffic or when to cross a street.',
   ].join(' '),
   situate: [

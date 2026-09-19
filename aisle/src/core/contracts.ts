@@ -269,6 +269,9 @@ export interface DepthSummary {
   timestamp: number;
 }
 
+/** Long edge of a `snapshotJPEG`: 512 scans, 640 signs/labels, 768 the room (awareness, guided steps), 1024 the curb crop. */
+export type SnapshotWidth = 512 | 640 | 768 | 1024;
+
 export interface Snapshot {
   base64: string; width: number; height: number; seq: number; timestamp: number;
 }
@@ -296,7 +299,7 @@ export interface PerceptionService {
   onDepth(cb: (d: DepthSummary) => void): () => void;           // ≤ 5 Hz
   onTrackingState(cb: (s: TrackingState) => void): () => void;
 
-  snapshotJPEG(maxWidth: 512 | 640 | 1024): Promise<Snapshot>;  // upright, EXIF baked in
+  snapshotJPEG(maxWidth: SnapshotWidth): Promise<Snapshot>;  // upright, EXIF baked in
   getTrackingState(): TrackingState;
   getStats(): { detectorFps: number; depthFps: number; ocrFps: number; frameToEventMs: number; thermalState: string };
 }
@@ -402,7 +405,18 @@ export interface AnswerInput { question: 'repeat' | 'how_far' | 'where_am_i' | '
 export interface AnswerOutput { reply: string }   // ≤ 12 words
 
 // taskPlan — a goal in the user's words → 3–8 spoken steps for the guided-task loop
-export interface TaskPlanInput { goal: string; context: TaskContext; facts?: { detections: string[]; ocr: string[] } }
+export interface TaskPlanInput {
+  goal: string;
+  context: TaskContext;
+  facts?: {
+    detections: string[];
+    ocr: string[];
+    /** The awareness loop's place label ("in a kitchen by a refrigerator"). */
+    scene?: string;
+    /** What the camera described just now ("Kitchen counter ahead, fridge on your left."). */
+    description?: string;
+  };
+}
 export interface TaskPlanOutput {
   askFirst: string;                                        // ≤ 12 words, e.g. "Let me see your surroundings."
   steps: Array<{ instruction: string; lookFor: string }>;  // instruction ≤ 12 words; lookFor = what the camera should confirm

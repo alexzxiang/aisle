@@ -31,13 +31,19 @@ import { loadConfig, type ProxyConfig } from '../config';
 import { toPlannerResult, withFirstTokenDeadline, type DeadlineOutcome, type StreamHandle } from '../lib/deadline';
 import { requestLog, type RequestLog } from '../lib/log';
 import { nimChat, type NimChatParams, type NimChatResult } from '../lib/nim';
+import { sdkClaudePlan, type ClaudePlanStarter } from '../lib/claudePlan';
 
 export type NimStarter = (params: NimChatParams) => StreamHandle<NimChatResult>;
+
+/** How long after Nemotron's deadline the understudy may still answer before the template wins. */
+export const CLAUDE_GRACE_MS = 1500;
 
 export interface PlanDeps {
   config?: ProxyConfig;
   /** Override the NIM transport (tests, fault injection). Default: D's `nimChat` with `config`. */
   nim?: NimStarter;
+  /** The understudy (lib/claudePlan.ts). Default: Haiku with the config key; `null` disables the race. */
+  claude?: ClaudePlanStarter | null;
   log?: RequestLog;
   now?: () => number;
   /** Deadline timer injection (tests). */
@@ -73,7 +79,14 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
   let validationFallback = false;
   let thinkingLeaked = false;
 
-  const outcome = await withFirstTokenDeadline<NimChatResult, JobOutput<J>>(
+  // The understudy starts now; it is only read if Nemotron misses (see lib/claudePlan.ts).
+  const claudeStarter = deps.claude === undefined ? (config.anthropicApiKey ? sdkClaudePlan(config.anthropicApiKey) : null) : deps.claude;
+  const understudy = claudeStarter
+    ? claudeStarter({ system: spec.prompt, user: JSON.stringify(input), schema: spec.schema, maxTokens: MAX_COMPLETION_TOKENS })
+    : null;
+  if (understudy) understudy.result.catch(() => undefined); // an aborted / failed understudy is not an unhandled rejection
+
+  let outcome = await withFirstTokenDeadline<NimChatResult, JobOutput<J>>(
     () => nim({
       system: spec.prompt,
       user: JSON.stringify(input),
@@ -99,6 +112,37 @@ export async function runPlannerJob<J extends PlannerJob>(job: J, input: JobInpu
       clearTimeoutFn: deps.clearTimeoutFn,
     },
   );
+
+  if (understudy) {
+    if (!outcome.fallback) {
+      understudy.abort();
+    } else {
+      // Nemotron missed or answered badly: take Haiku's answer if it is in (or arrives within the grace).
+      const t1 = now();
+      const graced = await Promise.race<{ text: string; model: string } | null>([
+        understudy.result.catch(() => null),
+        new Promise<null>((resolve) => { (deps.setTimeoutFn ?? setTimeout)(() => resolve(null), CLAUDE_GRACE_MS); }),
+      ]);
+      if (graced) {
+        const parsed = extractJsonObject(graced.text);
+        if (parsed !== null) {
+          const v = validateFor(job, parsed, input);
+          validationFallback = v.usedFallback;
+          outcome = {
+            value: v.output,
+            fallback: false,
+            firstTokenMs: outcome.firstTokenMs,
+            latencyMs: outcome.latencyMs + (now() - t1),
+            provider: 'anthropic',
+            model: graced.model,
+            reason: outcome.reason,
+          };
+        }
+      } else {
+        understudy.abort();
+      }
+    }
+  }
 
   const base = toPlannerResult(job, outcome);
   const result: PlanRunResult<JobOutput<J>> = {

@@ -99,22 +99,46 @@ public struct TrackingWatchdog {
 // MARK: - Video format
 
 public enum VideoFormatPolicy {
-  /// The lowest-resolution 30 fps format whose width ≥ 1280 (09 §2); never
-  /// 60 fps. Falls back to the first 30 fps format, then to ARKit's default.
+  /// Field of view first, pixels second (the user held the phone in a kitchen
+  /// and the app saw a letterboxed strip):
+  ///   1. the ultra-wide camera when ARKit offers it (iOS 14.5+
+  ///      `captureDeviceType`; ~120° instead of ~70°),
+  ///   2. a 4:3 format over 16:9 (16:9 formats crop the sensor's top and
+  ///      bottom, which is exactly the floor and the shelf we need),
+  ///   3. 30 fps, never 60 (09 §2),
+  ///   4. then the fewest pixels with width ≥ 1280.
+  /// Falls back to the first 30 fps format, then to ARKit's default.
   public static func pick(from formats: [ARConfiguration.VideoFormat]) -> ARConfiguration.VideoFormat? {
     let thirty = formats.filter { $0.framesPerSecond == 30 }
-    let wide = thirty.filter { Double($0.imageResolution.width) >= 1280 }
-    if let best = wide.min(by: { lhs, rhs in
-      lhs.imageResolution.width * lhs.imageResolution.height
-        < rhs.imageResolution.width * rhs.imageResolution.height
-    }) {
-      return best
+    let candidates = thirty.isEmpty ? formats : thirty
+    guard !candidates.isEmpty else { return nil }
+    return candidates.min { lhs, rhs in
+      let l = score(lhs)
+      let r = score(rhs)
+      if l.ultraWide != r.ultraWide { return l.ultraWide }
+      if l.fourByThree != r.fourByThree { return l.fourByThree }
+      if l.bigEnough != r.bigEnough { return l.bigEnough }
+      return l.pixels < r.pixels
     }
-    return thirty.first
+  }
+
+  static func score(_ f: ARConfiguration.VideoFormat) -> (ultraWide: Bool, fourByThree: Bool, bigEnough: Bool, pixels: CGFloat) {
+    let w = f.imageResolution.width
+    let h = f.imageResolution.height
+    let aspect = h > 0 ? w / h : 0
+    var ultraWide = false
+    if #available(iOS 14.5, *) {
+      ultraWide = f.captureDeviceType == .builtInUltraWideCamera
+    }
+    return (ultraWide, abs(aspect - 4.0 / 3.0) < 0.05, w >= 1280, w * h)
   }
 
   public static func describe(_ format: ARConfiguration.VideoFormat) -> String {
-    "\(Int(format.imageResolution.width))x\(Int(format.imageResolution.height))@\(format.framesPerSecond)"
+    var lens = "wide"
+    if #available(iOS 14.5, *) {
+      if format.captureDeviceType == .builtInUltraWideCamera { lens = "ultrawide" }
+    }
+    return "\(Int(format.imageResolution.width))x\(Int(format.imageResolution.height))@\(format.framesPerSecond) \(lens)"
   }
 }
 

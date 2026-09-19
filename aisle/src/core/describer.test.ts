@@ -92,7 +92,7 @@ describe('SceneDescriber', () => {
     mode('OUTDOOR_NAV');
     expect(asks).toHaveLength(1);
     expect(asks[0].question).toBe('free');
-    expect(asks[0].opts).toMatchObject({ userText: DESCRIBE_PROMPT, image: 512, priority: 'INFO', silent: true });
+    expect(asks[0].opts).toMatchObject({ userText: DESCRIBE_PROMPT, image: 768, priority: 'INFO', silent: true });
     reply('Person ahead on the left. Door on the right.');
     await flush();
     expect(said).toEqual([expect.objectContaining({

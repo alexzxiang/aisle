@@ -41,6 +41,7 @@ import {
   type PerceptionService,
   type SceneSetting,
   type SignalState,
+  type SnapshotWidth,
   type SpeechPriority,
   type SpeechService,
   type UserAction,
@@ -80,7 +81,7 @@ export const MIN_INTERVAL_MS: Readonly<Record<VisionQuestion, number>> = Object.
 });
 
 /** Thumbnail width per question: 640 when text must be read, 1024 for the curb crop, 512 otherwise. */
-export const SNAPSHOT_WIDTH: Readonly<Record<VisionQuestion, 512 | 640 | 1024 | null>> = Object.freeze({
+export const SNAPSHOT_WIDTH: Readonly<Record<VisionQuestion, SnapshotWidth | null>> = Object.freeze({
   storefront: 512,
   scan_left: 512,
   scan_right: 512,
@@ -88,8 +89,8 @@ export const SNAPSHOT_WIDTH: Readonly<Record<VisionQuestion, 512 | 640 | 1024 | 
   hand_guidance: 640,
   curb_crop: 1024,
   free: null,
-  task_step: 640,   // read labels, door signs, fridge contents
-  situate: 512,
+  task_step: 768,   // read labels, door signs, fridge contents — a 384×512 frame could not
+  situate: 768,     // the room, floor to shelf
 });
 
 const CROSSING_QUESTIONS: ReadonlySet<VisionQuestion> = new Set<VisionQuestion>(['scan_left', 'scan_right', 'curb_crop']);
@@ -513,7 +514,7 @@ export interface AskOptions {
   targetItem?: string;
   knownSigns?: string[];
   /** Override the per-question width; `'none'` sends facts only. */
-  image?: 512 | 640 | 1024 | 'none';
+  image?: SnapshotWidth | 'none';
   /** Bypass the interval and scene gates (B's one-shot scans; the pickup loop). */
   force?: boolean;
   /** Speech priority for the `speech` field; default NAV (`free` → INFO). */

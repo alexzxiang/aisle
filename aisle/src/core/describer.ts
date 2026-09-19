@@ -36,7 +36,7 @@ export const DESCRIBE_TICK_MS = 1000;
 /** The same wording twice inside this window is not news. */
 export const DESCRIBE_REPEAT_SUPPRESS_MS = 30_000;
 export const DESCRIBE_DEDUPE_KEY = 'describe';
-export const DESCRIBE_SNAPSHOT_WIDTH = 512;
+export const DESCRIBE_SNAPSHOT_WIDTH = 768;
 
 /** Modes the cadence runs in. */
 export const DESCRIBE_MODES: ReadonlySet<AppMode> = new Set<AppMode>(['OUTDOOR_NAV', 'INDOOR_NAV', 'AT_ITEM', 'CHECKOUT_NAV']);

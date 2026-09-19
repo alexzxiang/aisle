@@ -28,6 +28,15 @@ describe('navigate_to / guided_task intents (round 4)', () => {
     expect(o.destination).toBe('CVS');
     expect(o.reply).toBe('CVS. Got it.');
   });
+  it('a model goal that echoes the verb is trimmed to the thing', () => {
+    const v = validateFor('parseIntent', { intent: 'guided_task', item: null, destination: null, goal: 'find the eggs in my kitchen', reply: 'Eggs. Got it.' }, { transcript: 'find the eggs in my kitchen', mode: 'IDLE', knownItems: known });
+    expect(v.output.goal).toBe('eggs in my kitchen');
+    const v2 = validateFor('parseIntent', { intent: 'guided_task', item: null, destination: null, goal: 'find my keys', reply: 'Keys. Got it.' }, { transcript: 'find my keys', mode: 'IDLE', knownItems: known });
+    expect(v2.output.goal).toBe('my keys');
+    const v3 = validateFor('parseIntent', { intent: 'navigate_to', item: null, destination: 'take me to CVS', goal: null, reply: 'CVS. Got it.' }, { transcript: 'take me to CVS', mode: 'IDLE', knownItems: known });
+    expect(v3.output.destination).toBe('CVS');
+  });
+
   it('classifies home goals as guided_task with the goal text', () => {
     for (const t of ['take me to the eggs in my fridge', 'get to the living room', 'find my keys']) {
       const o = templateFor('parseIntent', { transcript: t, mode: 'IDLE', knownItems: known });

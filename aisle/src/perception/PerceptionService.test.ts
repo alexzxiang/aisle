@@ -109,7 +109,7 @@ describe('createNativePerceptionService', () => {
     expect(trk).toEqual(['LIMITED']);
     expect(svc.getStats().detectorFps).toBe(15);
     expect((await svc.snapshotJPEG(640)).width).toBe(640);
-    await expect(svc.snapshotJPEG(700 as unknown as 640)).rejects.toThrow(/512 \| 640 \| 1024/);
+    await expect(svc.snapshotJPEG(700 as unknown as 640)).rejects.toThrow(/512 \| 640 \| 768 \| 1024/);
   });
   it('the factory prefers the mock and otherwise needs a native module', () => {
     const mock = createNativePerceptionService(fakeNative());

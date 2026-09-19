@@ -10,9 +10,16 @@ const T0 = 1_700_000_000_000;
 const PLAN: TaskPlanOutput = {
   askFirst: 'Let me see your surroundings.',
   steps: [
-    { instruction: 'Turn slowly so I can see the room.', lookFor: 'the room layout' },
     { instruction: 'Walk to the kitchen door frame.', lookFor: 'a door frame close ahead' },
-    { instruction: 'Open the fridge and reach for the eggs.', lookFor: 'the eggs within reach' },
+    { instruction: 'Open the fridge door.', lookFor: 'the fridge door open' },
+    { instruction: 'Reach for the eggs on the door shelf.', lookFor: 'the eggs within reach' },
+  ],
+};
+const OBSERVE_PLAN: TaskPlanOutput = {
+  askFirst: 'Let me see your surroundings.',
+  steps: [
+    { instruction: 'Turn slowly so I can see the room.', lookFor: 'the room layout' },
+    ...PLAN.steps,
   ],
 };
 
@@ -93,7 +100,8 @@ describe('createGuidedTask', () => {
     expect(h.said[0].text).toBe(PHRASES.let_me_see);
     await flush();
     expect(h.describe).toHaveBeenCalledTimes(1);
-    expect(h.planner).toHaveBeenCalledWith('taskPlan', { goal: 'eggs in my fridge', context: 'home', facts: { detections: ['refrigerator'], ocr: ['MILK'] } });
+    // The look's own words reach the planner, so it can plan from "fridge on the left".
+    expect(h.planner).toHaveBeenCalledWith('taskPlan', { goal: 'eggs in my fridge', context: 'home', facts: { detections: ['refrigerator'], ocr: ['MILK'], description: 'A kitchen with a fridge on the left.' } });
     expect(h.said.map((r) => r.text)).toEqual([PHRASES.let_me_see, PLAN.steps[0].instruction]);
     const steps = h.bus.history().filter((r) => r.event.type === 'TASK_STEP').map((r) => r.event);
     expect(steps).toEqual([{ type: 'TASK_STEP', index: 0, total: 3, instruction: PLAN.steps[0].instruction }]);
@@ -122,7 +130,7 @@ describe('createGuidedTask', () => {
     await flush(TASK_TICK_MS);
     expect(h.asks).toHaveBeenCalledTimes(1);
     expect(h.asks.mock.calls[0][0]).toBe('task_step');
-    expect(seen[0]).toBe('Goal: eggs in my fridge. Step 1 of 3: Turn slowly so I can see the room. Look for: the room layout.');
+    expect(seen[0]).toBe('Goal: eggs in my fridge. Step 1 of 3: Walk to the kitchen door frame. Look for: a door frame close ahead.');
     await flush(TASK_TICK_MS * 3);
     // readings: no, yes, weak-yes → still on step one
     expect(task.getDebugState().step).toBe(0);
@@ -134,7 +142,7 @@ describe('createGuidedTask', () => {
     expect(h.deps.store.getState().taskStep).toBe(1);
     // The next ask carries step two.
     await flush(TASK_TICK_MS);
-    expect(seen[5]).toContain('Step 2 of 3: Walk to the kitchen door frame.');
+    expect(seen[5]).toContain('Step 2 of 3: Open the fridge door.');
     task.dispose();
   });
 
@@ -218,7 +226,7 @@ describe('createGuidedTask', () => {
     h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
     await flush();
     await flush(TASK_TICK_MS);
-    expect(h.said[h.said.length - 1].text).toBe('It looks like the room layout. Is that right?');
+    expect(h.said[h.said.length - 1].text).toBe('It looks like a door frame close ahead. Is that right?');
     expect(task.getDebugState()).toMatchObject({ checkOpen: true, checks: 1, step: 0 });
     // While the check is open the loop keeps asking silently and does not re-ask the user.
     await flush(TASK_TICK_MS);
@@ -242,6 +250,30 @@ describe('createGuidedTask', () => {
     // Nothing open: intercept passes.
     expect(task.intercept('yes')).toBe(false);
     task.dispose();
+  });
+
+  it('a look-around step closes on the first done reading of any confidence, or after eight seconds; the place rides along in the ask', async () => {
+    const h = harness({ plan: OBSERVE_PLAN, askImpl: async () => applied({ done: true, confidence: 0.3 }) });
+    const task = createGuidedTask({ ...h.deps, scene: () => 'in a kitchen by a refrigerator' });
+    h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush();
+    expect(task.getDebugState().step).toBe(0);
+    await flush(TASK_TICK_MS);
+    expect(task.getDebugState().step).toBe(1);
+    expect(h.said.slice(-2).map((r) => r.text)).toEqual([PHRASES.task_step_done, PLAN.steps[0].instruction]);
+    expect(h.asks.mock.calls[0][1].userText).toBe('Goal: eggs in my fridge. Place: in a kitchen by a refrigerator. Step 1 of 4: Turn slowly so I can see the room. Look for: the room layout.');
+    task.dispose();
+
+    // No done reading at all: the timeout closes it.
+    const h2 = harness({ plan: OBSERVE_PLAN, askImpl: async () => applied({ done: false, confidence: 0 }) });
+    const task2 = createGuidedTask(h2.deps);
+    h2.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush();
+    await flush(TASK_TICK_MS * 2);
+    expect(task2.getDebugState().step).toBe(0);
+    await flush(TASK_TICK_MS);
+    expect(task2.getDebugState().step).toBe(1);
+    task2.dispose();
   });
 
   it('a failed look and a vision error do not stop the task', async () => {

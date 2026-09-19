@@ -83,6 +83,82 @@ describe('runPlannerJob', () => {
     expect(nim.aborted).toBe(1);
   });
 
+  describe('the Haiku understudy (lib/claudePlan.ts)', () => {
+    const intentInput = { transcript: 'take me to CVS', mode: 'IDLE' as const, knownItems: ['eggs'] };
+    const fakeClaude = (text: string, delayMs = 0) => {
+      const calls: Array<{ system: string; user: string }> = [];
+      let aborted = 0;
+      const starter = (params: { system: string; user: string; schema: Record<string, unknown>; maxTokens: number }) => {
+        calls.push({ system: params.system, user: params.user });
+        return {
+          result: new Promise<{ text: string; model: string }>((resolve) => setTimeout(() => resolve({ text, model: 'claude-haiku-4-5' }), delayMs)),
+          abort: () => { aborted += 1; },
+        };
+      };
+      return { starter, calls, get aborted() { return aborted; } };
+    };
+
+    it('is started with the job prompt and input, and aborted when Nemotron answers in time', async () => {
+      const nim = fakeNim({ text: JSON.stringify({ intent: 'navigate_to', item: null, destination: 'CVS', goal: null, reply: 'CVS. Got it.' }) });
+      const claude = fakeClaude('{}');
+      const r = await runPlannerJob('parseIntent', intentInput, { nim, claude: claude.starter, log: createRequestLog({ sink: () => {} }) });
+      expect(r.fallback).toBe(false);
+      expect(r.provider).not.toBe('anthropic');
+      expect(claude.calls).toHaveLength(1);
+      expect(claude.calls[0]!.user).toBe(JSON.stringify(intentInput));
+      expect(claude.aborted).toBe(1);
+    });
+
+    it('answers when Nemotron misses its deadline: fallback false, provider anthropic, output validated', async () => {
+      const nim = fakeNim({ firstTokenMs: 5000, totalMs: 5100 });
+      const claude = fakeClaude(JSON.stringify({ intent: 'navigate_to', item: null, destination: 'CVS', goal: null, reply: 'CVS. Got it.' }));
+      let clock = 0;
+      const timers: Array<{ fn: () => void; at: number }> = [];
+      const p = runPlannerJob('parseIntent', intentInput, {
+        nim,
+        claude: claude.starter,
+        log: createRequestLog({ sink: () => {} }),
+        now: () => clock,
+        setTimeoutFn: (fn, ms) => { timers.push({ fn, at: clock + ms }); return timers.length; },
+        clearTimeoutFn: () => {},
+      });
+      await new Promise((r) => setTimeout(r, 1));
+      clock = 1500;
+      for (const t of timers.splice(0)) t.fn();
+      const r = await p;
+      expect(r.fallback).toBe(false);
+      expect(r.provider).toBe('anthropic');
+      expect(r.model).toBe('claude-haiku-4-5');
+      expect(r.output).toMatchObject({ intent: 'navigate_to', destination: 'CVS' });
+      expect(nim.aborted).toBe(1);
+    });
+
+    it('a slow understudy loses to the template after the grace, and is aborted', async () => {
+      const nim = fakeNim({ firstTokenMs: 5000, totalMs: 5100 });
+      const claude = fakeClaude('{}', 60_000);
+      let clock = 0;
+      const timers: Array<{ fn: () => void; at: number }> = [];
+      const p = runPlannerJob('parseIntent', intentInput, {
+        nim,
+        claude: claude.starter,
+        log: createRequestLog({ sink: () => {} }),
+        now: () => clock,
+        setTimeoutFn: (fn, ms) => { timers.push({ fn, at: clock + ms }); return timers.length; },
+        clearTimeoutFn: () => {},
+      });
+      await new Promise((r) => setTimeout(r, 1));
+      clock = 1500;
+      for (const t of timers.splice(0)) t.fn();      // Nemotron's deadline
+      await new Promise((r) => setTimeout(r, 1));
+      clock = 3000;
+      for (const t of timers.splice(0)) t.fn();      // the grace
+      const r = await p;
+      expect(r.fallback).toBe(true);
+      expect(r.output.intent).toBe('navigate_to');   // the template still classifies it
+      expect(claude.aborted).toBe(1);
+    });
+  });
+
   it('upstream rejection (429 storm past every failover) → template, reason upstream_error', async () => {
     const nim = fakeNim({ reject: 'http 429' });
     const r = await runPlannerJob('answer', { question: 'how_far', context: { metersToManeuver: 61 } }, { nim, log: createRequestLog({ sink: () => {} }) });
