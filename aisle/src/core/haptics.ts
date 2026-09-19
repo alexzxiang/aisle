@@ -12,7 +12,12 @@
  * Rules enforced here, verbatim from 01 §2 / 02 Task 3:
  *   dead zone 12° at compass tier 3, 18° at tier 2, no buzz below tier 2
  *   (say `compass_uncertain` once per 30 s, keep polling); roadward drift needs
- *   two agreeing signals; 0.5 s hysteresis both ways; minimum burst 150 ms;
+ *   two agreeing signals, and the heading one must be meaningful (≥ 5° toward
+ *   the road: GPS noise plus a heading inside the dead zone never buzzes);
+ *   drift adds at most 30° of equivalent error; cross-track reaches this rule
+ *   only from the perception module (sensors.courseErrorFor zeroes GPS / dead
+ *   reckoning cross-track, which routinely exceeds 0.5 m); 0.5 s hysteresis
+ *   both ways; minimum burst 150 ms;
  *   one CONFIRM on the first re-entry to the dead zone after TURN; STOP
  *   pre-empts COURSE for 1 s and COURSE resumes without a CONFIRM.
  */
@@ -33,6 +38,19 @@ export const DEAD_ZONE_DEG: Readonly<Record<3 | 2, number>> = { 3: 12, 2: 18 };
 export const DRIFT_THRESHOLD_M = 0.5;
 /** 20° of equivalent error per 0.5 m of qualifying drift. */
 export const DRIFT_DEG_PER_M = 20 / 0.5;
+/**
+ * Drift can add at most this much equivalent error: 1 m of cross-track must
+ * never become a Heavy / 150 ms train on its own (01 §2: buzz fatigue is a
+ * safety failure).
+ */
+export const DRIFT_DEG_CAP = 30;
+/**
+ * The heading half of the two-signal roadward rule: the user must be pointed
+ * at least this far toward the road (or, with no road, toward the drift side).
+ * A heading inside ±5° is straight ahead for every practical purpose, so a
+ * cross-track reading alone can never start the buzz.
+ */
+export const ROADWARD_MIN_HEADING_DEG = 5;
 export const PULSE_INTERVAL_MAX_MS = 600;
 export const PULSE_INTERVAL_MIN_MS = 150;
 export const PULSE_INTERVAL_SLOPE_MS_PER_DEG = 8;
@@ -51,7 +69,10 @@ export interface CourseSchedule {
   deadZoneDeg: number | null;
   /** |headingErrorDeg| beyond the dead zone, ≥ 0. */
   headingExcessDeg: number;
-  /** The two-signal roadward rule tripped (or, with roadSide NONE, |crossTrack| > 0.5 m). */
+  /**
+   * The two-signal roadward rule tripped: > 0.5 m of cross-track toward the
+   * road (with roadSide NONE, toward either side) AND a heading ≥ 5° the same way.
+   */
   roadward: boolean;
   /** Which side the drift is on when `roadward`. */
   driftSide: Side | null;
@@ -94,22 +115,22 @@ export function courseSchedule(err: CourseError): CourseSchedule {
   const ct = Number.isFinite(err.crossTrackM) ? err.crossTrackM : 0;
   const headingExcessDeg = Math.max(0, Math.abs(h) - deadZoneDeg);
 
+  // Two agreeing signals, and the heading one has to be meaningful: a
+  // cross-track reading (GPS, dead reckoning, or even a perception pose) with
+  // the user pointed straight down the line is noise, not a drift toward the
+  // road. With no road on this leg the "road" is whichever side the drift is on.
   let roadward = false;
   let driftSide: Side | null = null;
-  if (err.roadSide === 'NONE') {
-    if (Math.abs(ct) > DRIFT_THRESHOLD_M) {
+  const towardSide: Side | null = err.roadSide === 'NONE' ? (ct > 0 ? 'RIGHT' : ct < 0 ? 'LEFT' : null) : err.roadSide;
+  if (towardSide !== null) {
+    const towardRoadM = towardSide === 'RIGHT' ? ct : -ct;
+    const headingTowardRoadDeg = towardSide === 'RIGHT' ? h : -h;
+    if (towardRoadM > DRIFT_THRESHOLD_M && headingTowardRoadDeg >= ROADWARD_MIN_HEADING_DEG) {
       roadward = true;
-      driftSide = ct > 0 ? 'RIGHT' : 'LEFT';
-    }
-  } else {
-    const towardRoadM = err.roadSide === 'RIGHT' ? ct : -ct;
-    const headingTowardRoad = err.roadSide === 'RIGHT' ? h > 0 : h < 0;
-    if (towardRoadM > DRIFT_THRESHOLD_M && headingTowardRoad) {
-      roadward = true;
-      driftSide = err.roadSide;
+      driftSide = towardSide;
     }
   }
-  const driftDeg = roadward ? Math.abs(ct) * DRIFT_DEG_PER_M : 0;
+  const driftDeg = roadward ? Math.min(DRIFT_DEG_CAP, Math.abs(ct) * DRIFT_DEG_PER_M) : 0;
   const e = headingExcessDeg + driftDeg;
   const active = headingExcessDeg > 0 || roadward;
   const correction: Side | null = headingExcessDeg > 0 ? (h > 0 ? 'LEFT' : 'RIGHT') : null;

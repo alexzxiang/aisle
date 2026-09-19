@@ -332,14 +332,18 @@ describe('createSensorService', () => {
     expect(per.calls).toContain('ref:90');
     get();                                                             // baseline steps
     sinks.steps!(10);                                                  // 10 steps at +30°
-    expect(get().crossTrackM).toBeCloseTo(10 * STRIDE_M * 0.5, 6);
+    // Dead reckoning is tracked for the DebugPanel but never fed to the roadward rule (01 §2: buzz fatigue).
+    expect(get().crossTrackM).toBe(0);
     expect(svc.getDebugState().lastCourseError!.crossTrackSource).toBe('dr');
+    expect(svc.getDebugState().lastCourseError!.rawCrossTrackM).toBeCloseTo(10 * STRIDE_M * 0.5, 6);
     per.emitLateral(-0.4, 'pose');
     expect(get()).toMatchObject({ crossTrackM: -0.4 });
     expect(svc.getDebugState().lastCourseError!.crossTrackSource).toBe('perception');
     jest.setSystemTime(Date.now() + LATERAL_FRESH_MS + 1);
     expect(svc.getDebugState().lastCourseError!.crossTrackSource).toBe('perception'); // debug state is from the last call
-    expect(get().crossTrackM).toBeCloseTo(3.5, 6);                     // stale → back to dead reckoning
+    expect(get().crossTrackM).toBe(0);                                 // stale → back to dead reckoning → not trusted
+    expect(svc.getDebugState().lastCourseError!.crossTrackSource).toBe('dr');
+    expect(svc.getDebugState().lastCourseError!.rawCrossTrackM).toBeCloseTo(3.5, 6);
   });
 
   it('re-emits pose from the perception service and fuses it', async () => {

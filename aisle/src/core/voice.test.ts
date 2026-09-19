@@ -11,6 +11,7 @@ import {
   keytermsFrom,
   parseIntentFallback,
   sanitizeReply,
+  type ListenOptions,
   type Recognizer,
   type RecognizerHandlers,
   type VoiceInput,
@@ -95,7 +96,7 @@ describe('bestTranscript / sanitizeReply / coerceParseIntentOutput / keytermsFro
 function fakeRecognizer(opts: { available?: boolean; onDevice?: boolean; granted?: boolean } = {}) {
   let handlers: RecognizerHandlers | null = null;
   const calls: string[] = [];
-  let listenOpts: { lang: string; onDevice: boolean; contextualStrings: string[] } | null = null;
+  let listenOpts: ListenOptions | null = null;
   const rec: Recognizer = {
     isAvailable: () => opts.available ?? true,
     supportsOnDevice: () => opts.onDevice ?? true,
@@ -238,6 +239,80 @@ describe('createVoiceInput', () => {
     expect(uploads).toEqual([`file:///rec.wav|${KNOWN.length}`]);
     expect(out).toMatchObject({ transcript: 'I need butter', sttPath: 'scribe' });
     expect(events).toEqual(['butter@voice']);
+  });
+
+  it('records nothing to disk unless a Scribe upload is configured (privacy)', async () => {
+    const r = fakeRecognizer();
+    const v = make(r.rec);
+    await v.begin();
+    expect(r.listenOpts()?.persistAudio).toBe(false);
+    r.final('eggs');
+    await v.end();
+
+    const r2 = fakeRecognizer();
+    const v2 = make(r2.rec, { sttUpload: async () => null });
+    await v2.begin();
+    expect(r2.listenOpts()?.persistAudio).toBe(true);
+    r2.final('eggs');
+    await v2.end();
+  });
+
+  it('deletes the persisted clip once end() is through with it, whether or not it was uploaded', async () => {
+    const deleted: string[] = [];
+    const deleteFile = (uri: string) => { deleted.push(uri); };
+
+    // Uploaded (on-device heard nothing) → deleted after the upload.
+    let r = fakeRecognizer();
+    let v = make(r.rec, { sttUpload: async () => 'I need butter', deleteFile });
+    await v.begin();
+    r.audio('file:///rec-1.wav');
+    r.end();
+    await v.end();
+    expect(deleted).toEqual(['file:///rec-1.wav']);
+
+    // Not uploaded (on-device heard the item) → still deleted, exactly once.
+    r = fakeRecognizer();
+    v = make(r.rec, { sttUpload: async () => null, deleteFile });
+    await v.begin();
+    r.audio('file:///rec-2.wav');
+    r.final('eggs');
+    await v.end();
+    expect(deleted).toEqual(['file:///rec-1.wav', 'file:///rec-2.wav']);
+
+    // A clip the recognizer hands over after end() finished is deleted on arrival.
+    r = fakeRecognizer();
+    v = make(r.rec, { sttUpload: async () => null, deleteFile });
+    await v.begin();
+    r.final('eggs');
+    await v.end();
+    r.audio('file:///rec-late.wav');
+    expect(deleted).toEqual(['file:///rec-1.wav', 'file:///rec-2.wav', 'file:///rec-late.wav']);
+  });
+
+  it('cancel() deletes the persisted clip too, and a throwing delete never surfaces', async () => {
+    const deleted: string[] = [];
+    let r = fakeRecognizer();
+    let v = make(r.rec, { sttUpload: async () => null, deleteFile: (uri) => { deleted.push(uri); } });
+    await v.begin();
+    r.audio('file:///rec-cancel.wav');
+    v.cancel();
+    await Promise.resolve();
+    expect(deleted).toEqual(['file:///rec-cancel.wav']);
+
+    r = fakeRecognizer();
+    v = make(r.rec, { sttUpload: async () => null, deleteFile: () => { throw new Error('disk'); } });
+    await v.begin();
+    r.audio('file:///rec-throw.wav');
+    r.final('eggs');
+    const out = await v.end();
+    expect(out.transcript).toBe('eggs');
+
+    r = fakeRecognizer();
+    v = make(r.rec, { sttUpload: async () => null, deleteFile: async () => { throw new Error('disk'); } });
+    await v.begin();
+    r.audio('file:///rec-reject.wav');
+    r.final('eggs');
+    await expect(v.end()).resolves.toMatchObject({ transcript: 'eggs' });
   });
 
   it('nothing heard → "Say the item again", no event, session torn down', async () => {

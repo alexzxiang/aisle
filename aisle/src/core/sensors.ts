@@ -23,7 +23,9 @@
  * heading error from the fused heading; cross-track from, in order of trust,
  * C's lateral offset (`pose` | `curb`, < 1 s old), else dead reckoning
  * (Σ sin(headingError) × 0.7 m per step) against `line`, re-anchored by GPS
- * only when `accuracyM ≤ 10`.
+ * only when `accuracyM ≤ 10`. Only the perception-sourced value is handed to
+ * the COURSE rule (`crossTrackM` is 0 otherwise); the GPS / dead-reckoning
+ * estimate is kept in the debug state as `rawCrossTrackM`.
  *
  * The platform is behind `SensorSources` so the whole service is unit-tested
  * with scripted samples; `EXPO_PUBLIC_MOCK=1` swaps the entire service for
@@ -336,7 +338,7 @@ export interface AisleSensorService extends SensorService {
   getDebugState(): {
     heading: HeadingSample | null; fused: FusedHeading | null; pose: Pose | null; tracking: TrackingState;
     fix: GeoFix | null; steps: number; bodyOffsetDeg: number; lateral: LateralSample | null;
-    lastCourseError: (CourseError & { crossTrackSource: string }) | null; needsRecalibration: boolean;
+    lastCourseError: (CourseError & { crossTrackSource: string; rawCrossTrackM: number }) | null; needsRecalibration: boolean;
   };
 }
 
@@ -385,7 +387,7 @@ export function createSensorService(opts: SensorServiceOptions = {}): AisleSenso
   let starting: Promise<void> | null = null;
   let disagreeSince: number | null = null;
   let needsRecal = false;
-  let lastCourseError: (CourseError & { crossTrackSource: string }) | null = null;
+  let lastCourseError: (CourseError & { crossTrackSource: string; rawCrossTrackM: number }) | null = null;
   const calibrationTaps = new Set<(fix: GeoFix, heading: HeadingSample | null) => void>();
 
   const headingE = new Emitter<HeadingSample>();
@@ -518,8 +520,14 @@ export function createSensorService(opts: SensorServiceOptions = {}): AisleSenso
         est.fix(lastFix);
       }
       const ct = est.estimate(t, lateral);
-      const err: CourseError = { headingErrorDeg, crossTrackM: ct.crossTrackM, roadSide: target.roadSide, compassAccuracy };
-      lastCourseError = { ...err, crossTrackSource: ct.source };
+      // Only the perception module's lateral offset ('pose' / 'curb', fresh) is
+      // precise enough to feed the roadward buzz. A GPS anchor at ≤ 10 m or dead
+      // reckoning routinely reads > 0.5 m off the line while the user is on it,
+      // and a false roadward buzz is a safety failure (01 §2), so those sources
+      // reach the COURSE rule as 0 m and are kept only for the DebugPanel.
+      const trusted = ct.source === 'perception';
+      const err: CourseError = { headingErrorDeg, crossTrackM: trusted ? ct.crossTrackM : 0, roadSide: target.roadSide, compassAccuracy };
+      lastCourseError = { ...err, crossTrackSource: ct.source, rawCrossTrackM: ct.crossTrackM };
       return err;
     };
   };

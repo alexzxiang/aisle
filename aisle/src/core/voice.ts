@@ -4,15 +4,20 @@
  *
  * Flow on release of the talk button:
  *   recording mode on → on-device `expo-speech-recognition` (contextual
- *   strings = the store's item vocabulary; the audio is persisted) → final
- *   transcript, or the persisted clip through the proxy `/api/stt`
- *   (ElevenLabs Scribe) when on-device returned nothing → `POST /api/plan
+ *   strings = the store's item vocabulary; the audio is persisted only when a
+ *   Scribe upload is configured) → final transcript, or the persisted clip
+ *   through the proxy `/api/stt` (ElevenLabs Scribe) when on-device returned
+ *   nothing → `POST /api/plan
  *   {job: 'parseIntent'}` with a 1.5 s first-token deadline on the proxy and a
  *   local keyword fallback here → one ≤ 12-word reply via `say()` → recording
  *   mode off. `ITEM_REQUESTED {source}` records which path produced the item.
  *
  * COURSE pauses while recording (iOS suppresses haptics in a recording
  * session), through `haptics.setSuspended`.
+ *
+ * Privacy: a persisted clip lives exactly as long as the utterance. It is
+ * deleted as soon as `end()` has finished with it (uploaded or not) and on
+ * `cancel()`, so no voice recording ever accumulates on the phone.
  *
  * The recognizer, the STT upload and fetch are injected so the flow is
  * unit-tested; the expo implementations are at the bottom and required lazily.
@@ -146,11 +151,19 @@ export interface RecognizerSession {
   abort(): void;
 }
 
+export interface ListenOptions {
+  lang: string;
+  onDevice: boolean;
+  contextualStrings: string[];
+  /** Keep the clip on disk for the Scribe fallback; false = record nothing. */
+  persistAudio: boolean;
+}
+
 export interface Recognizer {
   isAvailable(): boolean;
   supportsOnDevice(): boolean;
   requestPermissions(): Promise<boolean>;
-  listen(opts: { lang: string; onDevice: boolean; contextualStrings: string[] }, handlers: RecognizerHandlers): RecognizerSession;
+  listen(opts: ListenOptions, handlers: RecognizerHandlers): RecognizerSession;
 }
 
 export interface VoiceInputOptions {
@@ -163,8 +176,10 @@ export interface VoiceInputOptions {
   recognizer?: Recognizer;
   audio?: { setRecordingMode(on: boolean): Promise<void> };
   haptics?: { setSuspended(suspended: boolean): void };
-  /** Upload the persisted clip to `/api/stt`; resolves to the transcript or null. */
+  /** Upload the persisted clip to `/api/stt`; resolves to the transcript or null. Absent = never persist audio. */
   sttUpload?: (uri: string, keyterms: string[], timeoutMs: number) => Promise<string | null>;
+  /** Remove a persisted clip once the utterance is over. Default: expo-file-system. Failures are swallowed. */
+  deleteFile?: (uri: string) => Promise<void> | void;
   fetchImpl?: typeof fetch;
   now?: () => number;
   finalTimeoutMs?: number;
@@ -203,6 +218,8 @@ interface Session {
   audioUri: string | null;
   ended: boolean;
   error: string | null;
+  /** end()/cancel() are through with the clip: delete it now, or as soon as it arrives. */
+  done: boolean;
   waiters: Array<() => void>;
 }
 
@@ -211,8 +228,22 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   const finalTimeoutMs = opts.finalTimeoutMs ?? RECOGNIZER_FINAL_TIMEOUT_MS;
   const planTimeoutMs = opts.planTimeoutMs ?? PLAN_TIMEOUT_MS;
   const fetchImpl = opts.fetchImpl ?? fetch;
+  const persistAudio = opts.sttUpload !== undefined;
+  const deleteFile = opts.deleteFile ?? createExpoFileDelete();
   let session: Session | null = null;
   let last: VoiceOutcome | null = null;
+
+  /** Delete the persisted clip (if any) exactly once; never throws. */
+  const discardClip = (s: Session): void => {
+    const uri = s.audioUri;
+    if (!uri) return;
+    s.audioUri = null;
+    try {
+      void Promise.resolve(deleteFile(uri)).catch(() => undefined);
+    } catch {
+      // a clip we cannot delete is not worth failing the reply over
+    }
+  };
 
   const wake = (s: Session): void => {
     for (const w of s.waiters.splice(0)) w();
@@ -275,7 +306,11 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     return last;
   };
 
-  const teardown = async (): Promise<void> => {
+  const teardown = async (s: Session | null): Promise<void> => {
+    if (s) {
+      s.done = true;
+      discardClip(s);
+    }
     opts.haptics?.setSuspended(false);
     try {
       await opts.audio?.setRecordingMode(false);
@@ -287,7 +322,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   return {
     async begin() {
       if (session) return;
-      const s: Session = { handle: null, results: [], finalTranscript: null, audioUri: null, ended: false, error: null, waiters: [] };
+      const s: Session = { handle: null, results: [], finalTranscript: null, audioUri: null, ended: false, error: null, done: false, waiters: [] };
       session = s;
       opts.haptics?.setSuspended(true);
       try {
@@ -309,7 +344,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       }
       if (session !== s) return; // cancelled while asking
       s.handle = rec.listen(
-        { lang: 'en-US', onDevice: rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()) },
+        { lang: 'en-US', onDevice: rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()), persistAudio },
         {
           onResult(e) {
             s.results = e.results;
@@ -329,6 +364,8 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
           },
           onAudioEnd(uri) {
             s.audioUri = uri;
+            // The recognizer may hand the file over after end()/cancel() finished: delete it then.
+            if (s.done) discardClip(s);
           },
         },
       );
@@ -350,11 +387,11 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
           }
         }
         session = null;
-        await teardown();
+        await teardown(s);
         return await finishWith(transcript, sttPath, 'voice');
       } catch {
         session = null;
-        await teardown();
+        await teardown(s);
         return finishWith('', 'none', 'voice');
       }
     },
@@ -369,7 +406,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
           // already gone
         }
       }
-      void teardown();
+      void teardown(s);
     },
 
     isListening: () => session !== null && !session.ended,
@@ -435,13 +472,30 @@ export function createExpoRecognizer(): Recognizer {
           categoryOptions: ['duckOthers', 'defaultToSpeaker', 'allowBluetooth'],
           mode: 'measurement',
         },
-        recordingOptions: { persist: true, outputSampleRate: 16_000, outputEncoding: 'pcmFormatInt16' },
+        // Persist only for the Scribe fallback; otherwise nothing is written to disk.
+        ...(o.persistAudio
+          ? { recordingOptions: { persist: true, outputSampleRate: 16_000, outputEncoding: 'pcmFormatInt16' } }
+          : {}),
       });
       return {
         stop: () => M.stop(),
         abort: () => M.abort(),
       };
     },
+  };
+}
+
+/** Deletes a persisted clip through expo-file-system; every failure is swallowed. */
+export function createExpoFileDelete(): NonNullable<VoiceInputOptions['deleteFile']> {
+  return (uri) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const FS = require('expo-file-system') as typeof import('expo-file-system');
+      const file = new FS.File(uri);
+      if (file.exists) file.delete();
+    } catch {
+      // nothing to delete, or the module is absent (tests)
+    }
   };
 }
 

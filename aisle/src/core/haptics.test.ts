@@ -5,6 +5,8 @@ import {
   COMPASS_UNCERTAIN_COOLDOWN_MS,
   CourseEngine,
   DEAD_ZONE_DEG,
+  DRIFT_DEG_CAP,
+  ROADWARD_MIN_HEADING_DEG,
   HYSTERESIS_MS,
   MIN_BURST_MS,
   PULSE_INTERVAL_MAX_MS,
@@ -82,9 +84,9 @@ describe('courseSchedule (pure)', () => {
     }
   });
 
-  it('roadward drift needs two agreeing signals (drift toward the road AND heading toward it)', () => {
-    // Road on the right, drifting right, heading right (inside the dead zone): both agree → buzz.
-    const both = courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: 5, roadSide: 'RIGHT' }));
+  it('roadward drift needs two agreeing signals (drift toward the road AND a heading meaningfully toward it)', () => {
+    // Road on the right, drifting right, heading 8° right (inside the dead zone): both agree → buzz.
+    const both = courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: 8, roadSide: 'RIGHT' }));
     expect(both.roadward).toBe(true);
     expect(both.driftSide).toBe('RIGHT');
     expect(both.driftDeg).toBeCloseTo(24, 6);   // 20° per 0.5 m
@@ -92,12 +94,40 @@ describe('courseSchedule (pure)', () => {
     expect(both.style).toBe('Medium');
 
     // Drifting right but heading left: only one signal → no buzz.
-    expect(courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: -5, roadSide: 'RIGHT' })).active).toBe(false);
+    expect(courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: -8, roadSide: 'RIGHT' })).active).toBe(false);
     // Heading right but not yet 0.5 m over: no buzz.
-    expect(courseSchedule(err({ crossTrackM: 0.4, headingErrorDeg: 5, roadSide: 'RIGHT' })).active).toBe(false);
+    expect(courseSchedule(err({ crossTrackM: 0.4, headingErrorDeg: 8, roadSide: 'RIGHT' })).active).toBe(false);
     // Mirror image for a road on the left.
-    expect(courseSchedule(err({ crossTrackM: -0.6, headingErrorDeg: -5, roadSide: 'LEFT' })).roadward).toBe(true);
-    expect(courseSchedule(err({ crossTrackM: -0.6, headingErrorDeg: 5, roadSide: 'LEFT' })).roadward).toBe(false);
+    expect(courseSchedule(err({ crossTrackM: -0.6, headingErrorDeg: -8, roadSide: 'LEFT' })).roadward).toBe(true);
+    expect(courseSchedule(err({ crossTrackM: -0.6, headingErrorDeg: 8, roadSide: 'LEFT' })).roadward).toBe(false);
+  });
+
+  it('GPS noise never buzzes: 3 m of cross-track with the user pointed straight ahead is silent', () => {
+    expect(ROADWARD_MIN_HEADING_DEG).toBe(5);
+    for (const roadSide of ['RIGHT', 'LEFT', 'NONE'] as const) {
+      for (const ct of [3, -3]) {
+        for (const h of [2, -2, 0, 4.9, -4.9]) {
+          const s = courseSchedule(err({ crossTrackM: ct, headingErrorDeg: h, roadSide }));
+          expect(s.roadward).toBe(false);
+          expect(s.active).toBe(false);
+          expect(s.intervalMs).toBeNull();
+        }
+      }
+    }
+    // The same 3 m with a heading that means it (≥ 5° toward the road) does count.
+    expect(courseSchedule(err({ crossTrackM: 3, headingErrorDeg: 5, roadSide: 'RIGHT' })).roadward).toBe(true);
+    expect(courseSchedule(err({ crossTrackM: 3, headingErrorDeg: 4.99, roadSide: 'RIGHT' })).roadward).toBe(false);
+  });
+
+  it('the CourseEngine stays silent for the whole GPS-noise episode (ct = 3 m, h = +2°)', () => {
+    const eng = new CourseEngine();
+    for (const roadSide of ['RIGHT', 'NONE'] as const) {
+      const r = run(eng, 0, 10_000, 50, err({ crossTrackM: 3, headingErrorDeg: 2, roadSide }));
+      expect(r.pulses).toEqual([]);
+      expect(r.deviations).toEqual([]);
+      expect(r.buzzingAt).toBeNull();
+      expect(eng.isBuzzing()).toBe(false);
+    }
   });
 
   it('drift away from the road relies on heading alone', () => {
@@ -110,17 +140,35 @@ describe('courseSchedule (pure)', () => {
     expect(awayButTurned.e).toBe(8);
   });
 
-  it('indoors (roadSide NONE) uses |crossTrack| > 0.5 m from either side', () => {
-    expect(courseSchedule(err({ crossTrackM: 0.6 })).roadward).toBe(true);
-    expect(courseSchedule(err({ crossTrackM: 0.6 })).driftSide).toBe('RIGHT');
-    expect(courseSchedule(err({ crossTrackM: -0.6 })).driftSide).toBe('LEFT');
-    expect(courseSchedule(err({ crossTrackM: 0.5 })).roadward).toBe(false);
+  it('with no road (roadSide NONE) the drift side is the road: |crossTrack| > 0.5 m AND heading ≥ 5° that way', () => {
+    expect(courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: 8 })).roadward).toBe(true);
+    expect(courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: 8 })).driftSide).toBe('RIGHT');
+    expect(courseSchedule(err({ crossTrackM: -0.6, headingErrorDeg: -8 })).driftSide).toBe('LEFT');
+    // Cross-track alone (heading straight, or turned back toward the line) is not a drift.
+    expect(courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: 0 })).roadward).toBe(false);
+    expect(courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: -8 })).roadward).toBe(false);
+    expect(courseSchedule(err({ crossTrackM: -0.6, headingErrorDeg: 8 })).roadward).toBe(false);
+    expect(courseSchedule(err({ crossTrackM: 0.5, headingErrorDeg: 8 })).roadward).toBe(false);
+  });
+
+  it('caps the drift contribution at 30°, so one metre of drift is never a Heavy train by itself', () => {
+    expect(DRIFT_DEG_CAP).toBe(30);
+    const one = courseSchedule(err({ crossTrackM: 1.0, headingErrorDeg: 8, roadSide: 'RIGHT' }));
+    expect(one.driftDeg).toBe(30);
+    expect(one.e).toBe(30);
+    expect(one.style).toBe('Medium');
+    const five = courseSchedule(err({ crossTrackM: 5, headingErrorDeg: 8, roadSide: 'RIGHT' }));
+    expect(five.driftDeg).toBe(30);
+    expect(five.e).toBe(30);
+    // Below the cap the slope is unchanged.
+    expect(courseSchedule(err({ crossTrackM: 0.6, headingErrorDeg: 8, roadSide: 'RIGHT' })).driftDeg).toBeCloseTo(24, 6);
   });
 
   it('adds drift degrees to heading excess and reports the correction side', () => {
     const s = courseSchedule(err({ headingErrorDeg: 22, crossTrackM: 1.0, roadSide: 'RIGHT' }));
-    expect(s.e).toBeCloseTo(10 + 40, 6);
-    expect(s.style).toBe('Heavy');
+    expect(s.e).toBeCloseTo(10 + DRIFT_DEG_CAP, 6);
+    expect(s.style).toBe('Medium');
+    expect(courseSchedule(err({ headingErrorDeg: 40, crossTrackM: 1.0, roadSide: 'RIGHT' })).style).toBe('Heavy');
     expect(s.correction).toBe('LEFT');
     expect(courseSchedule(err({ headingErrorDeg: -30 })).correction).toBe('RIGHT');
     expect(courseSchedule(err({ headingErrorDeg: 5 })).correction).toBeNull();
@@ -259,7 +307,7 @@ describe('CourseEngine (hysteresis, pre-emption, CONFIRM)', () => {
 
   it('emits COURSE_DEVIATION once per roadward episode', () => {
     const eng = new CourseEngine();
-    const drift = err({ crossTrackM: 0.8, headingErrorDeg: 5, roadSide: 'RIGHT' });
+    const drift = err({ crossTrackM: 0.8, headingErrorDeg: 8, roadSide: 'RIGHT' });
     const first = run(eng, 0, 3000, 50, drift);
     expect(first.deviations).toHaveLength(1);
     expect(first.deviations[0]).toMatchObject({ side: 'RIGHT', meters: 0.8 });
@@ -433,10 +481,13 @@ describe('createHapticService', () => {
     jest.advanceTimersByTime(200);
     expect(said.map((s) => s.cacheKey)).toEqual(['compass_uncertain']);
     expect(be.log).toEqual([]);
-    e = err({ crossTrackM: 1, headingErrorDeg: 4, roadSide: 'LEFT' });   // drifting right, road on the left → no
+    e = err({ crossTrackM: 1, headingErrorDeg: 8, roadSide: 'LEFT' });   // drifting right, road on the left → no
     jest.advanceTimersByTime(1500);
     expect(events).toEqual([]);
-    e = err({ crossTrackM: -1, headingErrorDeg: -4, roadSide: 'LEFT' }); // drifting left toward the road, heading left → yes
+    e = err({ crossTrackM: -1, headingErrorDeg: -2, roadSide: 'LEFT' });  // toward the road but pointed straight: GPS noise → no
+    jest.advanceTimersByTime(1500);
+    expect(events).toEqual([]);
+    e = err({ crossTrackM: -1, headingErrorDeg: -8, roadSide: 'LEFT' }); // drifting left toward the road, heading left → yes
     jest.advanceTimersByTime(1500);
     expect(events).toEqual(['LEFT:1']);
     h.dispose();
