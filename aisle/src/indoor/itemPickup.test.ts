@@ -74,7 +74,7 @@ describe('createItemPickup (runner)', () => {
         const h = hints[Math.min(i, hints.length - 1)] ?? null;
         i += 1;
         if (h === null) return { status: 'low_confidence', seq: i, response: emptyVisionResponse(i), streamed: false, latencyMs: 100 };
-        const response = { ...emptyVisionResponse(i), confidence: 0.9, hand: { hint: h } };
+        const response = { ...emptyVisionResponse(i), confidence: 0.9, hand: { hint: h, box: null } };
         return { status: 'applied', seq: i, response, streamed: false, latencyMs: 100 };
       },
     };

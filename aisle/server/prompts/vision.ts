@@ -55,6 +55,7 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'Question: the user is holding out a hand toward the target item — a package on a shelf, a carton or eggs in a fridge, an object on a table. You get the target item (targetItem) and, when known, a package hint.',
     'Find the hand and the target in the frame. Return exactly one hint in hand.hint for the hand\'s next move: left, right, higher, lower, forward (reach further), touching (the hand is on the item — grab), or not_seen (the target is not visible; say nothing about the hand). Speech is that single word (for example "Higher.") or empty when not_seen.',
     'Prefer the larger correction first; when the hand is within about a hand-width on every axis, say forward; when it is on the item, touching. You are guiding a hand, not identifying a product.',
+    'Report where they are, not only which way to move: target.box on the item with target.confidence, and hand.box on the hand. The app steers from these boxes and they outrank the word, so give null for whichever you cannot see rather than a guessed rectangle.',
   ].join(' '),
   task_step: [
     COMMON,
@@ -63,6 +64,7 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'Otherwise speech is required: one concrete micro-instruction (at most twelve words) that moves the person toward the step from what you see now: a direction, a distance in steps, or what to reach for, e.g. "Door frame ahead, three steps.", "Turn left, the fridge is at your left shoulder.", "Fridge handle at waist height, right hand.", "Eggs: middle shelf, a carton at your right hand." If the target is not in view, say which way to turn to find it. Use cameraRequest when the camera must move to see the target and userAction when the person must move.',
     'Never state that it is fine to proceed into traffic or when to cross a street.',
     'Always return a nonempty directional instruction in speech, including when task.done is true ("Keep your hand there."). Use only observed sides and landmarks; never guess a distance or target location. If unseen or uncertain, say "Stay still and turn the camera slowly." and request a camera turn, not walking.',
+    'Locate the step\'s target in the frame as well: target.box with target.confidence, null when it is not visible. The phone computes the direction and the distance from that box, so a correct box is worth more than the sentence.',
   ].join(' '),
   situate: [
     COMMON_DESCRIBING,

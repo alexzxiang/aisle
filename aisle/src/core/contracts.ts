@@ -367,6 +367,30 @@ export interface VisionRequest {
   userText?: string;                        // 'free' only
 }
 
+/** Normalized upright-frame box [x, y, w, h], 0..1 from the top-left. Same convention as `Detection.box`. */
+export type VisionBox = [x: number, y: number, w: number, h: number];
+
+/**
+ * A model's box, or null. Lives here because the proxy and the phone both parse vision
+ * replies and must agree; structured outputs cannot express the length or the range.
+ *
+ * A box answered in pixels ("[120, 300, 200, 150]") is rejected rather than clamped: null
+ * makes the caller fall back, while a clamped [1,1,1,1] would steer a hand confidently at
+ * nothing. Slight overflow past an edge is clamped, since a target half out of frame is
+ * still a true direction.
+ */
+export function boxOrNull(v: unknown): VisionBox | null {
+  if (!Array.isArray(v) || v.length !== 4) return null;
+  const n = v.map((x) => (typeof x === 'number' && Number.isFinite(x) ? x : NaN));
+  if (n.some((x) => Number.isNaN(x) || x < -0.05 || x > 1.05)) return null;
+  const clamp = (x: number): number => Math.min(1, Math.max(0, x));
+  const x = clamp(n[0]!);
+  const y = clamp(n[1]!);
+  const w = Math.min(1 - x, clamp(n[2]!));
+  const h = Math.min(1 - y, clamp(n[3]!));
+  return w > 0 && h > 0 ? [x, y, w, h] : null;
+}
+
 // Response schema (field order is the contract — `speech` first so TTS can start when it closes)
 export interface VisionResponse {
   speech: string;                           // ≤ 12 words or "" ; never the forbidden words
@@ -376,8 +400,9 @@ export interface VisionResponse {
   storefront: { visible: boolean; confidence: number };
   scan: { vehiclesSeen: VehiclesSeen; confidence: number };
   signal: { state: SignalState; confidence: number };      // curb_crop only; UNKNOWN unless confident
-  hand: { hint: HandHint };                                 // hand_guidance only
+  hand: { hint: HandHint; box: VisionBox | null };          // hand_guidance only; box is the fallback when Vision hand pose is unavailable
   task: { done: boolean; confidence: number };              // task_step only: is the current step complete?
+  target: { box: VisionBox | null; confidence: number };    // task_step / hand_guidance: where the step's target is, for guide.ts to steer from
   scene: { setting: SceneSetting; label: string; confidence: number }; // situate only: label ≤ 5 words ("in a kitchen", "on a sidewalk")
   confidence: number;                                        // 0..1 overall; < 0.5 → callers ignore
   seq: number;

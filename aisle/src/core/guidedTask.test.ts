@@ -42,8 +42,9 @@ function visionResponse(task: VisionResponse['task'], speech = ''): VisionRespon
     storefront: { visible: false, confidence: 0 },
     scan: { vehiclesSeen: 'none', confidence: 0 },
     signal: { state: 'UNKNOWN', confidence: 0 },
-    hand: { hint: 'not_seen' },
+    hand: { hint: 'not_seen', box: null },
     task,
+    target: { box: null, confidence: 0 },
     scene: { setting: 'unknown', label: '', confidence: 0 },
     confidence: 0.9,
     seq: 1,
@@ -77,7 +78,7 @@ function harness(opts: { plan?: TaskPlanOutput; askImpl?: (userText: string) => 
   const handAnswer = async (): Promise<AskOutcome> => {
     const hint = handHints.length > 0 ? handHints.shift()! : 'touching';
     const r = visionResponse({ done: false, confidence: 0 });
-    return { status: 'applied', seq: 1, response: { ...r, hand: { hint } }, streamed: false, latencyMs: 300 };
+    return { status: 'applied', seq: 1, response: { ...r, hand: { hint, box: null } }, streamed: false, latencyMs: 300 };
   };
   const asks = jest.fn((q: string, o: { userText?: string }) => {
     if (q === 'hand_guidance') return handAnswer();

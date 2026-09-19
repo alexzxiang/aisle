@@ -34,6 +34,7 @@
  */
 import {
   SCENE_SETTINGS,
+  boxOrNull,
   type AppMode,
   type CameraDirection,
   type DepthSummary,
@@ -122,8 +123,9 @@ export function emptyVisionResponse(seq: number): VisionResponse {
     storefront: { visible: false, confidence: 0 },
     scan: { vehiclesSeen: 'unclear', confidence: 0 },
     signal: { state: 'UNKNOWN', confidence: 0 },
-    hand: { hint: 'not_seen' },
+    hand: { hint: 'not_seen', box: null },
     task: { done: false, confidence: 0 },
+    target: { box: null, confidence: 0 },
     scene: { setting: 'unknown', label: '', confidence: 0 },
     confidence: 0,
     seq,
@@ -156,8 +158,9 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
     storefront: { visible: storefront.visible === true, confidence: num(storefront.confidence, 0) },
     scan: { vehiclesSeen: str(scan.vehiclesSeen, 'unclear') as VisionResponse['scan']['vehiclesSeen'], confidence: num(scan.confidence, 0) },
     signal: { state: str(signal.state, 'UNKNOWN') as SignalState, confidence: num(signal.confidence, 0) },
-    hand: { hint: str(hand.hint, 'not_seen') as VisionResponse['hand']['hint'] },
+    hand: { hint: str(hand.hint, 'not_seen') as VisionResponse['hand']['hint'], box: boxOrNull(hand.box) },
     task: { done: sub(raw.task).done === true, confidence: num(sub(raw.task).confidence, 0) },
+    target: { box: boxOrNull(sub(raw.target).box), confidence: num(sub(raw.target).confidence, 0) },
     scene: {
       setting: (SCENE_SETTINGS as readonly string[]).includes(str(sub(raw.scene).setting, 'unknown')) ? (str(sub(raw.scene).setting, 'unknown') as SceneSetting) : 'unknown',
       label: str(sub(raw.scene).label, '').trim(),
