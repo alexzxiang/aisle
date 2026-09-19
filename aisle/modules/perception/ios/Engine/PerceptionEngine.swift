@@ -227,7 +227,9 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   public func nativeLogLines() -> [String] {
     let frameAge = session.lastFrameContext.map { ProcessInfo.processInfo.systemUptime - $0.geometry.timestamp } ?? -1
     return ["videoFormat=\(session.chosenFormat)",
-            "engineRunning=\(isRunning) sessionRunning=\(session.isRunning) profile=\(profile.rawValue) frameAgeSeconds=\(frameAge)"] + registry.loadLog()
+            "engineRunning=\(isRunning) sessionRunning=\(session.isRunning) profile=\(profile.rawValue) frameAgeSeconds=\(frameAge)"]
+      + registry.presence().lines
+      + registry.loadLog()
   }
 
   // MARK: Profile (frameQueue)

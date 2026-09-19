@@ -179,6 +179,43 @@ export interface BindPerceptionOptions {
   onHealth?: (health: Record<string, unknown>) => void;
 }
 
+/** The `models: detector=… depth=…` line the engine prints at start. */
+export const MODELS_LOG_PREFIX = 'models:';
+/** Stages whose absence leaves the app unable to see objects or judge distance. */
+export const REQUIRED_MODEL_STAGES: readonly string[] = ['detector', 'depth'];
+
+/**
+ * Which required model stages the engine reported as absent from the bundle.
+ * `null` when the engine said nothing about models (an older build, or mock mode).
+ */
+export function missingRequiredModels(lines: readonly string[]): string[] | null {
+  const line = lines.find((l) => l.trim().startsWith(MODELS_LOG_PREFIX));
+  if (line === undefined) return null;
+  const missing: string[] = [];
+  for (const stage of REQUIRED_MODEL_STAGES) {
+    if (new RegExp(`\\b${stage}=MISSING\\b`).test(line)) missing.push(stage);
+  }
+  return missing;
+}
+
+/**
+ * Says so when the phone has no detector or depth model.
+ *
+ * Weights are git-ignored and exported per machine (`npm run models:coco`), so
+ * a checkout builds, installs and runs perfectly with nothing inside: the
+ * detector never fires, the "Sees:" strip stays empty, and every cloud question
+ * goes out with zero on-device facts. That reads as "the camera is bad at
+ * recognising things" and sent one of us hunting through the camera pipeline
+ * for hours. One loud line instead.
+ */
+export function reportMissingModels(lines: readonly string[], report: (scope: string, err: unknown) => void): void {
+  const missing = missingRequiredModels(lines);
+  if (missing === null || missing.length === 0) return;
+  const message = `No ${missing.join(' or ')} model in this build — the camera cannot recognise objects. Run npm run models:coco && npm run models:depth, then rebuild.`;
+  console.warn(`[perception] ${message}`);
+  report('perception.models', new Error(message));
+}
+
 export interface PerceptionBinding {
   /** The profile last applied to the module. */
   getProfile(): ModeProfile;
@@ -222,6 +259,7 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
           const lines = perception.debugLog?.() ?? [];
           const format = lines.find((l) => l.includes('videoFormat'));
           if (format) console.log(`[perception] ${format}`);
+          reportMissingModels(lines, report);
         })
         .catch((err: unknown) => { started = false; report('perception.start', err); });
       return;
