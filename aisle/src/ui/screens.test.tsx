@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, ScrollView } from 'react-native';
 import { services } from '../core/services';
 import { bindStoreToBus, createAppStore, type AppStore } from '../core/store';
 import { createStubServices, type StubServices } from '../core/stubs';
@@ -28,7 +28,7 @@ import { DebugPanel, DEBUG_CLOSE_LABEL } from './DebugPanel';
 import { SettingsSheet, CLOSE_LABEL, FASTER_LABEL, SLOWER_LABEL, TRAINING_LABEL } from './SettingsSheet';
 import { StateBand, DEBUG_LONG_PRESS_MS, HERO_ANNOUNCE_GRACE_MS, shouldAnnounceHero } from './StateBand';
 import { CAMERA_LABEL, CAMERA_PLACEHOLDER, CameraPanel, hasCameraPreview, setCameraPreviewForTests } from './CameraPanel';
-import { DESCRIBE_LABEL, NARRATE_LABEL, QUIET_LABEL, TRANSCRIPT_EMPTY, TRANSCRIPT_LABEL, TranscriptPanel, visibleEntries } from './TranscriptPanel';
+import { DESCRIBE_LABEL, FOLLOW_BOTTOM_SLACK_PX, NARRATE_LABEL, QUIET_LABEL, TRANSCRIPT_EMPTY, TRANSCRIPT_LABEL, TranscriptPanel, isNearBottom, visibleEntries } from './TranscriptPanel';
 import { DESCRIBE_SETTING_LABEL } from './SettingsSheet';
 import { GlassPanel, isBlurAvailable } from './Glass';
 import { stripSlots, EMPTY_FACTS } from './derive';
@@ -900,6 +900,97 @@ function fakeLog(initial: ConversationEntryLike[] = []): ConversationLogPort & {
 
 const you = (id: string, text: string): ConversationEntryLike => ({ id, role: 'you', text, t: T0, source: 'voice' });
 const aisle = (id: string, text: string): ConversationEntryLike => ({ id, role: 'aisle', text, t: T0, source: 'speech' });
+
+describe('TranscriptPanel follows the newest line only from the bottom', () => {
+  /**
+   * The panel holds a ref to the ScrollView *instance* and calls scrollToEnd on
+   * it, so the spy replaces that method rather than mocking a host node.
+   */
+  function renderWithScrollSpy(el: React.ReactElement): { r: ReactTestRenderer; calls: { animated: boolean }[] } {
+    const calls: { animated: boolean }[] = [];
+    let r!: ReactTestRenderer;
+    act(() => {
+      r = create(el);
+    });
+    mounted.push(r);
+    const inst = r.root.findByType(ScrollView).instance as unknown as { scrollToEnd?: (o?: { animated?: boolean }) => void } | null;
+    if (inst === null) throw new Error('no ScrollView instance to spy on');
+    inst.scrollToEnd = (o?: { animated?: boolean }) => calls.push({ animated: o?.animated === true });
+    return { r, calls };
+  }
+
+  function scrollView(r: ReactTestRenderer): ReactTestInstance {
+    return r.root.findAll((n: ReactTestInstance) => n.props.accessibilityRole === 'list' && typeof n.type === 'string')[0];
+  }
+
+  /** The shape RN hands onScroll; `remaining` px left below the viewport. */
+  function scrollEvent(remaining: number) {
+    return {
+      nativeEvent: {
+        layoutMeasurement: { width: 300, height: 200 },
+        contentSize: { width: 300, height: 1000 },
+        contentOffset: { x: 0, y: 800 - remaining },
+      },
+    };
+  }
+
+  it('measures "at the bottom" with a little slack', () => {
+    expect(isNearBottom(scrollEvent(0).nativeEvent)).toBe(true);
+    expect(isNearBottom(scrollEvent(FOLLOW_BOTTOM_SLACK_PX).nativeEvent)).toBe(true);
+    expect(isNearBottom(scrollEvent(FOLLOW_BOTTOM_SLACK_PX + 1).nativeEvent)).toBe(false);
+    expect(isNearBottom(scrollEvent(400).nativeEvent)).toBe(false);
+  });
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  const first = [you('1', 'I need eggs')];
+  const second = [...first, aisle('2', 'You are looking at a kitchen')];
+
+  it('a reader scrolled up is left alone when new lines arrive', async () => {
+    setup('OUTDOOR_NAV');
+    const { r, calls } = renderWithScrollSpy(<TranscriptPanel entries={first} reduceMotion />);
+
+    // Scroll up to re-read something.
+    await act(async () => {
+      (scrollView(r).props.onScroll as (e: unknown) => void)(scrollEvent(400));
+    });
+    calls.length = 0;
+
+    // The awareness loop keeps narrating; none of it may steal the view.
+    await act(async () => {
+      r.update(<TranscriptPanel entries={second} reduceMotion />);
+      jest.advanceTimersByTime(200);
+    });
+    await act(async () => {
+      (scrollView(r).props.onContentSizeChange as () => void)();
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('a reader at the bottom keeps following', async () => {
+    setup('OUTDOOR_NAV');
+    const { r, calls } = renderWithScrollSpy(<TranscriptPanel entries={first} reduceMotion />);
+    await act(async () => {
+      (scrollView(r).props.onScroll as (e: unknown) => void)(scrollEvent(0));
+    });
+    calls.length = 0;
+    await act(async () => {
+      r.update(<TranscriptPanel entries={second} reduceMotion />);
+      jest.advanceTimersByTime(200);
+    });
+    expect(calls.length).toBeGreaterThan(0);
+  });
+
+  it('follows before the reader has touched it at all', async () => {
+    setup('OUTDOOR_NAV');
+    const { r, calls } = renderWithScrollSpy(<TranscriptPanel entries={first} reduceMotion />);
+    await act(async () => {
+      (scrollView(r).props.onContentSizeChange as () => void)();
+    });
+    expect(calls.length).toBeGreaterThan(0);
+  });
+});
 
 describe('TranscriptPanel', () => {
   it('shows the newest lines, oldest first, as a list of "You:" / "Aisle:" sentences', async () => {

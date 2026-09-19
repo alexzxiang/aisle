@@ -24,6 +24,8 @@ import {
   AWARENESS_STRIP_MODES,
   SCENE_LINE_SUPPRESSED_MODES,
   showSceneLine,
+  needsClock,
+  AGE_SETTLES_AFTER_MS,
 } from './derive';
 
 const T0 = 1_700_000_000_000;
@@ -338,6 +340,46 @@ describe('awareness strip (IDLE / guided task)', () => {
     ]);
     expect(awarenessSlots({ scene: { label: 'in a kitchen', confirmed: true }, cameraLive: true, detections: [] })[2].value).toBe('where you are, or what you need');
     expect(Array.from(AWARENESS_STRIP_MODES)).toEqual(['IDLE', 'ONBOARDING', 'GUIDED_TASK', 'DONE']);
+  });
+});
+
+describe('needsClock', () => {
+  const leg = run([[{ type: 'OUTDOOR_LEG_ADVANCED', index: 0, instruction: 'Keep walking on Forbes' }, T0]]);
+  const vehicle = run([[{ type: 'VEHICLE_APPROACHING', direction: 'RIGHT', trackId: 1 }, T0]]);
+
+  it('stays off when nothing on screen is time-dependent', () => {
+    // A leg instruction never expires and the awareness strip prints no ages:
+    // ticking here re-rendered the whole tree once a second for nothing.
+    expect(needsClock('OUTDOOR_NAV', leg, T0, false)).toBe(false);
+    expect(needsClock('IDLE', EMPTY_FACTS, T0, false)).toBe(false);
+    expect(needsClock('IDLE', EMPTY_FACTS, T0, true)).toBe(false);
+  });
+
+  it('runs while a transient hero is still waiting to expire, then stops', () => {
+    expect(needsClock('OUTDOOR_NAV', vehicle, T0, false)).toBe(true);
+    expect(needsClock('OUTDOOR_NAV', vehicle, T0 + INSTRUCTION_TTL_MS.vehicle - 1, false)).toBe(true);
+    // Once the TTL passes the hero falls back to the standing one and the clock is done.
+    expect(needsClock('OUTDOOR_NAV', vehicle, T0 + INSTRUCTION_TTL_MS.vehicle, false)).toBe(false);
+  });
+
+  it('runs while an age is on screen, and settles when the age stops changing', () => {
+    const signal = run([[{ type: 'SIGNAL_STATE', state: 'DONT_WALK', fresh: true, confidence: 0.9 }, T0]]);
+    expect(needsClock('AT_CURB', signal, T0 + 5000, true)).toBe(true);
+    expect(needsClock('AT_CURB', signal, T0 + AGE_SETTLES_AFTER_MS, true)).toBe(false);
+    // The same facts with the awareness strip showing: no ages rendered, no clock.
+    expect(needsClock('AT_CURB', signal, T0 + 5000, false)).toBe(false);
+  });
+
+  it('runs while an error line is still inside its window', () => {
+    const err = run([[{ type: 'ERROR', scope: 'route', message: 'no route' }, T0]]);
+    expect(needsClock('IDLE', err, T0 + 1000, false)).toBe(true);
+    expect(needsClock('IDLE', err, T0 + ERROR_TTL_MS, false)).toBe(false);
+  });
+
+  it('an instruction from another mode is not on screen, so it does not hold the clock', () => {
+    const tagged = reduceUi(EMPTY_FACTS, { type: 'VEHICLE_APPROACHING', direction: 'LEFT', trackId: 2 }, T0, 'AT_CURB');
+    expect(needsClock('AT_CURB', tagged, T0, false)).toBe(true);
+    expect(needsClock('INDOOR_NAV', tagged, T0, false)).toBe(false);
   });
 });
 
