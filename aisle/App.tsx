@@ -78,6 +78,7 @@ function composeOnce(): Composed {
         end: async () => {
           const outcome = await app.voice.end();
           void app.trip.onVoiceOutcome(outcome);
+          void app.guidedTask.onVoiceOutcome(outcome);
           return outcome;
         },
         cancel: () => app.voice.cancel(),

@@ -18,7 +18,7 @@ import type {
 
 export type InstructionKind =
   | 'leg' | 'crossing' | 'signal' | 'vehicle' | 'scan' | 'obstacle'
-  | 'aisle' | 'transition' | 'checkout' | 'route' | 'error';
+  | 'aisle' | 'transition' | 'checkout' | 'route' | 'error' | 'task';
 
 export interface Instruction {
   text: string;
@@ -76,6 +76,7 @@ export const INSTRUCTION_TTL_MS: Readonly<Record<InstructionKind, number>> = {
   checkout: Number.POSITIVE_INFINITY,
   route: 8000,
   error: 8000,
+  task: Number.POSITIVE_INFINITY,
 };
 
 export function isFresh(i: Instruction, now: number): boolean {
@@ -241,6 +242,12 @@ export function reduceUi(facts: UiFacts, e: AppEvent, ts: number, mode: AppMode 
     case 'CHECKOUT_REACHED':
       return { ...facts, instruction: instruction("You've reached checkout", 'checkout') };
 
+    case 'TASK_STEP':
+      return { ...facts, instruction: instruction(e.instruction, 'task') };
+
+    case 'TASK_COMPLETED':
+      return { ...facts, instruction: instruction('Task complete', 'task') };
+
     case 'CROSSING_ABORTED':
       return { ...facts, signal: null, instruction: instruction('Back on the sidewalk', 'leg') };
 
@@ -284,7 +291,8 @@ function capitalize(s: string): string {
 export function standingHero(mode: AppMode, facts: UiFacts, ctx: HeroContext = EMPTY_CTX): string {
   switch (mode) {
     case 'IDLE':
-      return ctx.item ? `Planning a route for ${ctx.item}` : 'What do you need?';
+      if (!ctx.item) return 'What do you need?';
+      return ctx.destinationOnly ? `Planning a route to ${ctx.item}` : `Planning a route for ${ctx.item}`;
     case 'ONBOARDING':
       return 'Practice the vibrations';
     case 'OUTDOOR_NAV':

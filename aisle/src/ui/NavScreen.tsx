@@ -55,6 +55,8 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   const mode = useMode();
   const item = useStoreSlice((s) => s.targetItem);
   const side = useStoreSlice((s) => s.targetSide);
+  const destinationOnly = useStoreSlice((s) => s.destinationOnly);
+  const taskGoal = useStoreSlice((s) => s.taskGoal);
   const abort = useStoreSlice((s) => s.abort);
   const facts = useUiFacts();
   const now = useNow(1000, nowOverride);
@@ -66,7 +68,7 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
 
   const signal = bandSignal(facts);
   const accent = accentFor(mode, signal);
-  const hero = heroText(mode, facts, now, { item, side });
+  const hero = heroText(mode, facts, now, { item, side, destinationOnly, taskGoal });
   const slots = stripSlots(facts, now);
 
   // ---- Repeat: say the hero again, through the queue like everything else ----

@@ -38,6 +38,7 @@ import { createVoiceInput, type Recognizer, type VoiceInput, type VoiceInputOpti
 import { bindPrefs, createMemoryPrefsStorage, type PrefsBinding, type PrefsStorage } from './prefs';
 import { createConversationLog, type ConversationLog } from './conversation';
 import { createSceneDescriber, type SceneDescriber } from './describer';
+import { createGuidedTask, type GuidedTask } from './guidedTask';
 import { wirePrompts, type PromptsBinding } from './prompts';
 import { LatencyRing, liveMetrics, observePlanner, timedTransport, type LiveMetrics } from './metrics';
 import { createFixtureRouteClient, type FixtureTrack } from './fixtureRoute';
@@ -127,6 +128,8 @@ export interface AppComposition {
   indoor: IndoorController;
   voice: VoiceInput;
   trip: Trip;
+  /** Round 4: "take me to the eggs in my fridge" — camera-guided steps with no route. */
+  guidedTask: GuidedTask;
   prefs: PrefsBinding;
   /** The transcript blurb's data (also registered as the `conversation` service). */
   conversation: ConversationLog;
@@ -361,6 +364,23 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     conversation,
     now,
     fixTimeoutMs: opts.fixTimeoutMs,
+    // Round 4: "take me to <place>" — look, then resolve the name through the proxy's places search.
+    proxyUrl: config.proxyUrl,
+    fetchImpl: mocks ? plannerFetch(planner, platform.fetchImpl) : platform.fetchImpl,
+    describe: () => describer.describeNow(),
+  });
+
+  // --- Round 4: guided tasks (no route; Tier 2 plans the steps, Tier 1 confirms each) ---
+  const guidedTask = createGuidedTask({
+    bus,
+    store,
+    speech,
+    haptics,
+    vision,
+    planner,
+    describe: () => describer.describeNow(),
+    conversation,
+    now,
   });
 
   // --- cross-service glue that belongs to no track -----------------------------------
@@ -406,6 +426,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     indoor,
     voice,
     trip,
+    guidedTask,
     prefs,
     conversation,
     describer,
@@ -441,6 +462,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
       for (const u of unsubs.splice(0)) u();
       describer.stop();
       prompts.dispose();
+      guidedTask.dispose();
       trip.dispose();
       voice.cancel();
       indoor.dispose();

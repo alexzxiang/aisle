@@ -649,7 +649,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       },
     };
     if (image) req.image = image;
-    if (question === 'free' && o.userText) req.userText = o.userText;
+    if ((question === 'free' || question === 'task_step') && o.userText) req.userText = o.userText;
     return req;
   };
 

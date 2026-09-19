@@ -159,6 +159,8 @@ export function warmInputFor(job: PlannerJob): JobInput<PlannerJob> {
       };
     case 'crossingAnnounce':
       return { candidates: [{ nodeId: '1', distToPolylineM: 2, tags: { highway: 'crossing' } }], street: 'Forbes Ave' };
+    case 'taskPlan':
+      return { goal: 'eggs in my fridge', context: 'home' };
     case 'answer':
     default:
       return { question: 'replan', context: {} };

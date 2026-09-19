@@ -47,6 +47,7 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const setMode = useStoreSlice((s) => s.setMode);
   const abort = useStoreSlice((s) => s.abort);
   const targetItem = useStoreSlice((s) => s.targetItem);
+  const destinationOnly = useStoreSlice((s) => s.destinationOnly);
   const bus = useBus();
   const haptics = useOptionalService('haptics');
   const speech = useOptionalService('speech');
@@ -73,7 +74,7 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
 
   // A request is in flight: the store holds the item while we wait for ROUTE_READY.
   const pending = mode === 'IDLE' && targetItem !== null;
-  const hero = heroText(mode, facts, now, { item: targetItem, side: null });
+  const hero = heroText(mode, facts, now, { item: targetItem, side: null, destinationOnly });
   const error = visibleError(facts, now);
   const accent = accentFor(mode);
 
