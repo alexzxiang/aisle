@@ -496,7 +496,7 @@ describe('createGuidedTask', () => {
     h.bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas on the table', context: 'home', source: 'voice' });
     expect(h.planner).not.toHaveBeenCalled();
     expect(h.describe).not.toHaveBeenCalled();
-    expect(h.said[0].text).toMatch(/^Bananas just to your right\. Turn right a little, then walk/);
+    expect(h.said[0].text).toMatch(/^Bananas slightly right\. Turn right a little, then walk/);
     expect(h.haptic).toContain('TURN');
     expect(task.getDebugState()).toMatchObject({ stage: 'approach_item', goal: 'bananas on the table', total: 3, step: 0 });
     // The model is asked silently for the item's box; its words stay muted while geometry speaks.
@@ -521,7 +521,7 @@ describe('createGuidedTask', () => {
     const guide = createGuide({ detections: () => dets, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => Date.now() });
     const task = createGuidedTask({ ...h.deps, guide });
     h.bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas on the table', context: 'home', source: 'voice' });
-    expect(h.said[0].text).toMatch(/^No bananas yet\. Table at (?:eleven|ten) o'clock\. Turn left/);
+    expect(h.said[0].text).toMatch(/^Table at (?:eleven|ten) o'clock\. Turn left/);
     expect(task.getDebugState().stage).toBe('approach_place');
     dets = [{ cls: 'table', box: [0.1, 0.1, 0.8, 0.9], score: 0.9, trackId: 2 }];
     await flush(2500);
@@ -549,7 +549,7 @@ describe('createGuidedTask', () => {
     expect(task.getDebugState()).toMatchObject({ active: true, stage: 'find_door', goal: 'bananas on the table' });
     await flush(TASK_TICK_MS + 3000);
     expect(h.asks.mock.calls.some(([, o]: [string, { userText?: string }]) => /Look for: the doorway/.test(o.userText ?? ''))).toBe(true);
-    expect(h.said.map((s) => s.text).some((x) => /^Doorway just to your right\. Turn right a little, then walk (?:four|five|six) steps\.$/.test(x))).toBe(true);
+    expect(h.said.map((s) => s.text).some((x) => /^Doorway slightly right\. Turn right a little, then walk (?:four|five|six) steps\.$/.test(x))).toBe(true);
     expect(h.said.filter((r) => r.text === 'I think the table is in the kitchen. Is that right?')).toHaveLength(1);
     task.dispose();
   });

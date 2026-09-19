@@ -1,7 +1,8 @@
 import type { Detection } from './contracts';
 import { createGuide, type GuideInstruction } from './guide';
+import { MAX_UTTERANCE_WORDS, checkPhrase, countWords } from './phrases';
 import {
-  answerOpen, answerRoom, clockWord, createMissionRunner, decide, guessRoom, initialMissionState, missionName, parseMissionGoal,
+  answerOpen, answerRoom, clockWord, createMissionRunner, decide, guessRoom, initialMissionState, itemLine, missionName, parseMissionGoal,
   MISSION_CHANGE_FLOOR_MS, MISSION_REPEAT_MS, MISSION_SLOW_REPEAT_MS,
 } from './itemMission';
 
@@ -35,6 +36,23 @@ describe('parseMissionGoal / names / clock', () => {
 const g = (over: Partial<GuideInstruction>): GuideInstruction => ({ kind: 'forward', text: '', relativeDeg: 0, steps: 4, targetVisible: true, ...over });
 const goal = parseMissionGoal('bananas on the table')!;
 const start = () => initialMissionState(goal.place);
+
+describe('every walking line fits twelve words by construction (round 13)', () => {
+  it('two-word names, the longest step count, every kind', () => {
+    const kinds = ['arrived', 'forward', 'sidestep', 'turn_little', 'turn', 'turn_around', 'scan_remembered', 'scan_unknown'] as const;
+    for (const kind of kinds) {
+      for (const rel of [-70, -10, 10, 70, 170]) {
+        const l = itemLine('produce display', { kind, text: '', relativeDeg: rel, steps: 17, targetVisible: true });
+        expect(countWords(l.text)).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
+        expect(checkPhrase(l.text)).toEqual([]);
+      }
+    }
+    // A three-word landmark name still yields an instruction, not silence.
+    const long = itemLine('kitchen counter top', { kind: 'turn_little', text: '', relativeDeg: 10, steps: 17, targetVisible: true });
+    expect(countWords(long.text)).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
+    expect(long.text).toMatch(/walk seventeen steps\.$/);
+  });
+});
 
 describe('decide: where the person stands → what to say', () => {
   const snap = (over: Partial<Parameters<typeof decide>[2]>) => ({ now: T0, item: null, place: null, door: null, sceneLabel: null, ...over });
@@ -80,9 +98,9 @@ describe('decide: where the person stands → what to say', () => {
 
   it('only the table in view: walk to it, then scan its surface; the item appearing takes over', () => {
     let r = decide(goal, start(), snap({ place: g({ kind: 'turn_little', relativeDeg: -25, steps: 6 }) }));
-    expect(r.decision).toMatchObject({ phase: 'approach_place', text: "No bananas yet. Table at eleven o'clock. Turn left a little, then walk six steps." });
+    expect(r.decision).toMatchObject({ phase: 'approach_place', text: "Table at eleven o'clock. Turn left a little, then walk six steps." });
     r = decide(goal, r.next, snap({ place: g({ kind: 'forward', relativeDeg: 0, steps: 5 }) }));
-    expect(r.decision.text).toBe('No bananas yet. Table ahead. Walk forward five steps.');
+    expect(r.decision.text).toBe('Table ahead. Walk forward five steps.');
     r = decide(goal, r.next, snap({ place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }));
     expect(r.decision).toMatchObject({ phase: 'scan_place', text: 'At the table. Tilt the camera down and pan slowly.', haptic: 'CONFIRM', boxTarget: 'bananas' });
     r = decide(goal, r.next, snap({ now: T0 + 5000, place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }));
@@ -139,7 +157,7 @@ describe('decide: where the person stands → what to say', () => {
     expect(r.next.working).toBe('countertop');
     // The item itself remembered from earlier still wins over any guess.
     expect(decide(keys, initialMissionState(), snap({ item: g({ kind: 'scan_remembered', relativeDeg: 50, steps: null, targetVisible: false }) })).decision.text)
-      .toBe('Keys was on your right. Turn right slowly.');
+      .toBe('Keys were on your right. Turn right slowly.');
   });
 
   it('rules a place out after a fruitless scan, says so, moves to the next guess, and finally asks where else (round 11)', () => {
@@ -161,8 +179,45 @@ describe('decide: where the person stands → what to say', () => {
       state = decide(keys, { ...state, scanSince: T0 }, snap({ now: T0 + 20_000, item: unseen, place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) })).next;
     }
     const done = decide(keys, { ...state, working: null, tried: ['table', 'countertop', 'desk', 'couch', 'nightstand', 'door'] }, snap({ now: T0 + 20_000, item: unseen }));
-    expect(done.decision.text).toMatch(/^I have checked the table, the counter, the desk, the couch, the nightstand and the door\. Where else should I look\?$/);
+    expect(done.decision.text).toBe('Checked the table, counter, desk, couch, nightstand and door. Where else?');
     expect(done.decision.explore).toBe(true);
+  });
+
+  it('the whole chain when the bananas are not where they usually are: table → counter → bowl → fridge → "where else?" → explore', () => {
+    const unseen = g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false });
+    const bananas = parseMissionGoal('bananas')!;
+    const said: string[] = [];
+    let state = initialMissionState();
+    let now = T0;
+    const step = (snapPatch: Partial<Parameters<typeof decide>[2]>, ms = 0): ReturnType<typeof decide>['decision'] => {
+      now += ms;
+      const r = decide(bananas, state, snap({ now, item: unseen, ...snapPatch }));
+      state = r.next;
+      if (r.decision.text) said.push(r.decision.text);
+      return r.decision;
+    };
+    // Table in view: the first guess, walk there, scan it, rule it out.
+    step({ candidates: [{ place: 'countertop', evidence: 'unseen' }, { place: 'table', evidence: 'visible' }, { place: 'bowl', evidence: 'unseen' }, { place: 'fridge', evidence: 'unseen' }] });
+    expect(said.at(-1)).toBe('No bananas in view. They are usually on the table.');
+    step({ place: g({ kind: 'forward', relativeDeg: 0, steps: 3 }) }, 500);
+    expect(said.at(-1)).toBe('Bananas ahead. Walk forward three steps.'.replace('Bananas', 'Table'));
+    step({ place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }, 3000);
+    expect(said.at(-1)).toBe('At the table. Tilt the camera down and pan slowly.');
+    step({ place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }, 16_000);
+    expect(said.at(-1)).toBe('Not on the table. Maybe on the counter.');
+    // The counter is nowhere in sight: a short look with the explorer's poses, then the next guess.
+    const look = step({ place: unseen }, 500);
+    expect(look.explore).toBe(true);
+    step({ place: unseen }, 9000);
+    expect(said.at(-1)).toBe('Not on the counter. Maybe in the bowl.');
+    step({ place: unseen }, 500);
+    step({ place: unseen }, 9000);
+    expect(said.at(-1)).toBe('Not in the bowl. Maybe in the fridge.');
+    step({ place: unseen }, 500);
+    const done = step({ place: unseen }, 9000);
+    expect(said.at(-1)).toBe('Checked the table, counter, bowl and fridge. Where else?');
+    expect(done.explore).toBe(true);
+    for (const line of said) expect(countWords(line)).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
   });
 
   it('a container has to be opened: "may be inside, open it, then say open" → open → scan inside; cannot open → next guess', () => {
@@ -189,13 +244,13 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     const guide = createGuide({ detections: () => dets, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
     const m = createMissionRunner(goal, { guide, now: () => t });
     const first = m.tick();
-    expect(first.text).toMatch(/^Bananas just to your right\. Turn right a little, then walk/);
+    expect(first.text).toMatch(/^Bananas slightly right\. Turn right a little, then walk/);
     expect(first.haptic).toBe('TURN');
     expect(m.phase()).toBe('approach_item');
     t += 1000;
     expect(m.tick().text).toBeNull();                      // same line inside the repeat window
     t += MISSION_REPEAT_MS;
-    expect(m.tick().text).toMatch(/^Bananas just to your right/); // said again after four seconds
+    expect(m.tick().text).toMatch(/^Bananas slightly right/); // said again after four seconds
     t += MISSION_CHANGE_FLOOR_MS;
     dets = [{ cls: 'banana', box: [0.3, 0.2, 0.4, 0.7], score: 0.9, trackId: 1 }];
     const near = m.tick();
@@ -233,7 +288,7 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     expect(m.tick().text).toBe('Turn slowly all the way around so I can find the table.');
     m.onModelBox('keys', [0.6, 0.5, 0.05, 0.03], t);
     t += MISSION_CHANGE_FLOOR_MS;
-    expect(m.tick().text).toMatch(/^Keys just to your right/);
+    expect(m.tick().text).toMatch(/^Keys slightly right/);
     expect(m.userText()).toContain('Look for: keys');
   });
 

@@ -794,3 +794,12 @@ blocked headings) and the explorer walks legs toward unvisited ground with headi
 blockage stops when Claude offers no landmark; the item's own section is searched shelf by
 shelf before proposing to leave it. App 1301 tests, proxy 215. JS only — Metro reload. Not yet
 walked in a store.
+
+### Round 13 (Stream A) — 2026-09-20
+Nothing to merge. The "stuck when the bananas are not on the table" report was silence, not
+reasoning: the walking lines ran to sixteen words and the dev speech service threw them away.
+Every generated line now fits twelve words by construction and a long one is fitted to its
+action sentence instead of dropped; the reasoning chain (table → counter → bowl → fridge →
+"Checked the table, counter, bowl and fridge. Where else?" → explore) is pinned end to end.
+Obstacles are described — "Chair ahead, close. Open on your right." — from the detections and
+the depth grid in both reflex paths. App 1320 tests, proxy 217. JS only — Metro reload.

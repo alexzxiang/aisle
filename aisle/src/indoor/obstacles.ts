@@ -44,6 +44,8 @@ export interface ObstacleReporterOptions {
   /** Only speak while the indoor leg runs (01 §3 permits `obstacle` indoors; A's policy drops it elsewhere anyway). */
   isActive?: () => boolean;
   onWallAhead?: (e: { distanceClass: DistanceClass; direction: Direction }) => void;
+  /** Round 13: the words for the INFO line — what, where, how far, the open side — or null for the plain phrase. */
+  describe?: (e: { distanceClass: DistanceClass; direction: Direction }) => string | null;
   now?: () => number;
 }
 
@@ -73,13 +75,10 @@ export function createObstacleReporter(opts: ObstacleReporterOptions): ObstacleR
     const t = now();
     if (t - lastObstacleAt < OBSTACLE_INFO_COOLDOWN_MS) return;
     lastObstacleAt = t;
-    opts.speech.say({
-      text: phraseText('obstacle_ahead'),
-      priority: 'INFO',
-      cacheKey: 'obstacle_ahead',
-      dedupeKey: 'obstacle-info',
-      cooldownMs: OBSTACLE_INFO_COOLDOWN_MS,
-    });
+    const described = opts.describe?.(e) ?? null;
+    opts.speech.say(described
+      ? { text: described, priority: 'INFO', dedupeKey: 'obstacle-info', cooldownMs: OBSTACLE_INFO_COOLDOWN_MS }
+      : { text: phraseText('obstacle_ahead'), priority: 'INFO', cacheKey: 'obstacle_ahead', dedupeKey: 'obstacle-info', cooldownMs: OBSTACLE_INFO_COOLDOWN_MS });
   }));
 
   unsubs.push(opts.perception.onHazard((e) => {

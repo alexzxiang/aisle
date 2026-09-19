@@ -27,7 +27,7 @@ import { foodSection, sectionFromFoods, type FoodSection } from './foodCatalog';
 import { itemLine } from './itemMission';
 import type { SearchLandmark, SearchObservation, SearchView } from './searchObservation';
 import { isAffirmative, isNegative } from './yesNo';
-import { countWords, findForbiddenTerm, hasDigit } from './phrases';
+import { countWords, findForbiddenTerm, fitWords, hasDigit } from './phrases';
 
 export interface SearchArea {
   id: string;
@@ -122,6 +122,8 @@ const AISLE_SCANS = [
 const cap = (s: string): string => (s.length ? s[0]!.toUpperCase() + s.slice(1) : s);
 const clean = (s: string): string => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const speakable = (s: string): boolean => !hasDigit(s) && !findForbiddenTerm(s) && countWords(s) <= 12;
+/** A line that ran long (a three-word landmark name) keeps its instruction instead of being dropped. */
+const fit = (s: string): string => (countWords(s) <= 12 ? s : fitWords(s));
 
 /** A bounded search, with consent and measured progress before changing the search area. */
 export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
@@ -172,7 +174,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     if (areas.length > 24) areas.shift();
     return next;
   }
-  const emit = (text: string, target = targetWords): SearchDirective => {
+  const emit = (raw: string, target = targetWords): SearchDirective => {
+    const text = fit(raw);
     const interval = phase === 'paused' ? 20000 : phase === 'permission' ? 15000 : 5000;
     const ready = now() - saidAt >= interval || saidAt === -Infinity;
     if (ready && speakable(text)) { saidAt = now(); return { text, target, phase }; }
@@ -180,8 +183,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   };
   const resetScan = (): void => { scan = 0; scanAt = -Infinity; phase = 'scan'; proposal = null; arrivalHits = 0; saidAt = -Infinity; moveKey = null; lastMoveSteps = null; leg = null; };
   /** A walking line, paced like the navigator's: news after two seconds, the same line again after four. */
-  const move = (text: string, key: string, target: string, haptic: SearchDirective['haptic'] = null): SearchDirective => {
+  const move = (raw: string, key: string, target: string, haptic: SearchDirective['haptic'] = null): SearchDirective => {
     const t = now();
+    const text = fit(raw);
     const news = key !== moveKey;
     if (t - moveSaidAt < (news ? MOVE_CHANGE_FLOOR_MS : MOVE_REPEAT_MS) && !(news && haptic === 'STOP')) return { text: null, target, phase, haptic: null };
     if (!speakable(text)) return { text: null, target, phase, haptic: null };

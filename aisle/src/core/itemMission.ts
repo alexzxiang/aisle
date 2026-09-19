@@ -30,6 +30,7 @@ import { stepsWords } from './guide';
 import { classForWords, spokenName } from './sceneMemory';
 import { itemOfGoal, normalizeGoal } from './handGuide';
 import { isAffirmative, isNegative, normalizeAnswer } from './yesNo';
+import { fitWords } from './phrases';
 import type { SearchExplorer } from './searchExplorer';
 import { checkedLine, hypothesisLine, rankHypotheses, spoken, statedPlaceIn, type PlaceEvidence, type PlaceHypothesis } from './hypotheses';
 
@@ -173,6 +174,8 @@ export function initialMissionState(place: string | null = null): MissionState {
 export const MISSION_SCAN_GIVE_UP_MS = 15_000;
 /** Looking around for the stated place this long before asking whether it is in another room. */
 export const MISSION_ASK_ROOM_AFTER_MS = 12_000;
+/** A usual place that is nowhere in sight is looked for this long before the next guess. */
+export const MISSION_UNSEEN_GUESS_MS = 8000;
 
 /** A close thing that drops out of view within this long was walked past, not lost. */
 export const MISSION_OVERSHOOT_MS = 4000;
@@ -185,16 +188,19 @@ export const itemLine = (name: string, g: GuideInstruction): { text: string; key
   const steps = g.steps === null ? 'a few steps' : stepsWords(g.steps);
   const side = (g.relativeDeg ?? 0) < 0 ? 'left' : 'right';
   // Under fifteen degrees a clock hour rounds to twelve, which contradicts "turn a little".
-  const clock = g.relativeDeg === null ? null : Math.abs(g.relativeDeg) < 15 ? `just to your ${side}` : `at ${clockWord(g.relativeDeg)}`;
+  // "slightly left" (two words) keeps the longest line at twelve words for a two-word name.
+  const clock = g.relativeDeg === null ? null : Math.abs(g.relativeDeg) < 15 ? `slightly ${side}` : `at ${clockWord(g.relativeDeg)}`;
+  const were = isPlural(name) ? 'were' : 'was';
+  const line = (text: string, key: string, haptic: HapticPattern | null): { text: string; key: string; haptic: HapticPattern | null } => ({ text: fitWords(text), key, haptic });
   switch (g.kind) {
-    case 'arrived': return { text: `${n} right in front of you. Reach out.`, key: 'arrived', haptic: 'CONFIRM' };
-    case 'forward': return { text: `${n} ahead. Walk forward ${steps}.`, key: `forward:${g.steps}`, haptic: null };
-    case 'sidestep': return { text: `Something in your way. Step ${side}, then walk forward.`, key: `sidestep:${side}`, haptic: 'STOP' };
-    case 'turn_little': return { text: `${n} ${clock}. Turn ${side} a little, then walk ${steps}.`, key: `turn_little:${side}:${g.steps}`, haptic: 'TURN' };
-    case 'turn': return { text: `${n} ${clock}. Turn ${side} to face it.`, key: `turn:${side}`, haptic: 'TURN' };
-    case 'turn_around': return { text: `${n} behind you. Turn around slowly.`, key: 'turn_around', haptic: 'TURN' };
-    case 'scan_remembered': return { text: `${n} was on your ${side}. Turn ${side} slowly.`, key: `remembered:${side}`, haptic: 'TURN' };
-    case 'scan_unknown': return { text: `${n} not seen yet. Turn slowly all the way around.`, key: 'unknown', haptic: null };
+    case 'arrived': return line(`${n} right in front of you. Reach out.`, 'arrived', 'CONFIRM');
+    case 'forward': return line(`${n} ahead. Walk forward ${steps}.`, `forward:${g.steps}`, null);
+    case 'sidestep': return line(`Something in your way. Step ${side}, then walk forward.`, `sidestep:${side}`, 'STOP');
+    case 'turn_little': return line(`${n} ${clock}. Turn ${side} a little, then walk ${steps}.`, `turn_little:${side}:${g.steps}`, 'TURN');
+    case 'turn': return line(`${n} ${clock}. Turn ${side} to face it.`, `turn:${side}`, 'TURN');
+    case 'turn_around': return line(`${n} behind you. Turn around slowly.`, 'turn_around', 'TURN');
+    case 'scan_remembered': return line(`${n} ${were} on your ${side}. Turn ${side} slowly.`, `remembered:${side}`, 'TURN');
+    case 'scan_unknown': return line(`${n} not seen yet. Turn slowly all the way around.`, 'unknown', null);
   }
 };
 
@@ -283,7 +289,7 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     const picked = nextHypothesis();
     if (picked) return picked;
     if (state.tried.length > 0) {
-      return out('find_place', `${checkedLine(state.tried)} Where else should I look?`, 'exhausted', goal.item, null, false, null, true);
+      return out('find_place', `${checkedLine(state.tried)} Where else?`, 'exhausted', goal.item, null, false, null, true);
     }
   }
 
@@ -316,7 +322,7 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
           const picked = nextHypothesis();
           if (picked) return picked;
           next.working = null;
-          return out('find_place', `${checkedLine(next.tried)} Where else should I look?`, 'exhausted', goal.item, null, false, null, true);
+          return out('find_place', `${checkedLine(next.tried)} Where else?`, 'exhausted', goal.item, null, false, null, true);
         }
         if (!s.place.targetVisible && s.now - since > 8000) {
           // The place itself is gone from view while scanning: we drifted; find it again.
@@ -325,9 +331,9 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
         }
         return out('scan_place', `Still looking for the ${itemName}. Pan slowly across the ${placeName}.`, 'looking', goal.item, null, true);
       }
+      // The reason was said once (the hypothesis line); the walk itself is plain and short.
       const l = itemLine(placeName, s.place);
-      const prefix = l.text.startsWith('Something') ? '' : `No ${itemName} yet. `;
-      return out('approach_place', `${prefix}${l.text}`, l.key, goal.item, l.haptic);
+      return out('approach_place', l.text, l.key, goal.item, l.haptic);
     }
     // The place is remembered from earlier: turn to it.
     if (s.place.kind === 'scan_remembered' || s.place.kind === 'turn' || s.place.kind === 'turn_around') {
@@ -356,13 +362,15 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     // A usual place (not stated) that is nowhere in sight: look for it briefly, then move on to the next guess.
     const usual = goal.place === null || working.toLowerCase() !== goal.place.toLowerCase();
     if (usual) {
+      // A guess that is nowhere in sight gets a short look (the explorer's poses run meanwhile),
+      // then the next guess; the stated place, below, gets the full search.
       const since = state.scanSince ?? s.now;
       next.scanSince = since;
-      if (s.now - since > MISSION_SCAN_GIVE_UP_MS) {
+      if (s.now - since > MISSION_UNSEEN_GUESS_MS) {
         const picked = nextHypothesis();
         if (picked) return picked;
         next.working = null;
-        return out('find_place', `${checkedLine(next.tried)} Where else should I look?`, 'exhausted', goal.item, null, false, null, true);
+        return out('find_place', `${checkedLine(next.tried)} Where else?`, 'exhausted', goal.item, null, false, null, true);
       }
       return out('find_place', `Turn slowly all the way around so I can find the ${placeName}.`, 'scan', working, null, true, null, true);
     }
@@ -542,7 +550,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       }
       lastKey = decision.key;
       lastSpokenAt = t;
-      return { text: decision.text, haptic: decision.haptic, modelMaySpeak: decision.modelMaySpeak, decision };
+      return { text: fitWords(decision.text), haptic: decision.haptic, modelMaySpeak: decision.modelMaySpeak, decision };
     },
     boxTarget() {
       if (searchTarget) return deps.search?.target() ?? searchTarget;
@@ -572,7 +580,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
         return { consumed: true, text: `Okay. Trying the ${spoken(redirect)}.` };
       }
       if (/^(?:where have (?:we|you) (?:looked|checked|been)|what have (?:we|you) checked|what did you check)\??$/i.test(t)) {
-        return { consumed: true, text: state.tried.length ? checkedLine(state.tried) : `I have not checked anywhere yet.` };
+        return { consumed: true, text: checkedLine(state.tried) };
       }
       const searchAnswer = deps.search?.intercept(t);
       if (searchAnswer?.consumed) return searchAnswer;

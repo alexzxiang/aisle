@@ -177,6 +177,8 @@ export interface BindPerceptionOptions {
   isForeground?: () => boolean;
   healthIntervalMs?: number;
   onHealth?: (health: Record<string, unknown>) => void;
+  /** Round 13: the words for an obstacle — what, where, how far, the open side — or null for the plain phrase. */
+  describeObstacle?: (e: { distanceClass: DistanceClass; direction: Direction }) => string | null;
 }
 
 /** The `models: detector=… depth=…` line the engine prints at start. */
@@ -311,14 +313,10 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
     const reflex = obstacleReflexFor(profile, e, lastDepth, store.getState().mode);
     if (reflex !== 'NONE') haptics.play('STOP');
     if (reflex === 'STOP_AND_SPEAK') {
-      speech.say({
-        text: 'Obstacle ahead.',
-        priority: 'CRITICAL',
-        cacheKey: 'obstacle_ahead',
-        interrupt: true,
-        dedupeKey: 'obstacle-near',
-        cooldownMs: 2000,
-      });
+      const described = opts.describeObstacle?.(e) ?? null;
+      speech.say(described
+        ? { text: described, priority: 'CRITICAL', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs: 2000 }
+        : { text: 'Obstacle ahead.', priority: 'CRITICAL', cacheKey: 'obstacle_ahead', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs: 2000 });
     }
     bus.emit({ type: 'OBSTACLE_AHEAD', distanceClass: e.distanceClass, direction: e.direction });
   }));

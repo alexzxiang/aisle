@@ -46,6 +46,7 @@ import {
   TIER1_PROMPT_KEYS,
   checkPhrase,
   isPhraseKey,
+  fitWords,
   truncateWords,
   phraseKeyForText,
   type PhraseCategory,
@@ -154,14 +155,17 @@ export function validateText(text: string, opts: { allowLong: boolean; isPrompt:
       : v.kind === 'too_long' ? `${v.words} words (max ${v.max})`
         : v.kind === 'digit' ? 'digits must be written as words'
           : 'empty text');
-  if (opts.isDev) {
+  // A line that is merely too long is fitted, in dev as in prod (round 13): throwing here
+  // left the person in silence for every fourteen-word walking line, which is the one
+  // failure a guidance app must never have. Forbidden words and empties still throw in dev.
+  if (opts.isDev && violations.some((v) => v.kind !== 'too_long')) {
     throw new SpeechTextError(`[speech] rejected "${text}": ${problems.join('; ')}`, text);
   }
   let out = text;
   let drop = false;
   for (const v of violations) {
     if (v.kind === 'forbidden' || v.kind === 'empty') drop = true;
-    if (v.kind === 'too_long') out = truncateWords(out, v.max);
+    if (v.kind === 'too_long') out = fitWords(out, v.max);
   }
   return { text: out, problems, drop };
 }

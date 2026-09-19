@@ -69,6 +69,30 @@ export function countWords(text: string): number {
 }
 
 /** Keeps the first `max` words (prod truncation path). */
+/**
+ * Fit a generated line into the word budget without losing the instruction (round 13): a
+ * long line is usually a reason clause in front of the action ("No bananas yet. Table
+ * slightly left. Turn left a little, then walk two steps."). Drop leading sentences while
+ * the rest still fits; when a single sentence is too long, cut at the last sentence
+ * boundary inside the budget, else at the word limit.
+ */
+export function fitWords(text: string, max: number = MAX_UTTERANCE_WORDS): string {
+  const clean = text.trim();
+  if (countWords(clean) <= max) return clean;
+  const sentences = clean.split(/(?<=[.!?])\s+/);
+  for (let i = 1; i < sentences.length; i += 1) {
+    const rest = sentences.slice(i).join(' ');
+    if (countWords(rest) <= max) return rest;
+  }
+  let kept = '';
+  for (const s of sentences) {
+    const candidate = kept ? `${kept} ${s}` : s;
+    if (countWords(candidate) > max) break;
+    kept = candidate;
+  }
+  return kept || truncateWords(clean, max);
+}
+
 export function truncateWords(text: string, max: number = MAX_UTTERANCE_WORDS): string {
   const toks = text.trim().split(/\s+/);
   const kept: string[] = [];

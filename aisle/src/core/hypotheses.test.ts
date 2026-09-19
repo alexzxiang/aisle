@@ -26,7 +26,7 @@ describe('where things usually are (round 11)', () => {
     expect(a).toBe('No keys in view. They are usually on the table.');
     expect(b).toBe('Not on the table. Maybe on the counter.');
     expect(hypothesisLine('milk', false, usualPlaces('milk')[0]!, true, null)).toBe('No milk in view. It is usually in the fridge.');
-    expect(checkedLine(['table', 'countertop', 'drawer'])).toBe('I have checked the table, the counter and the drawer.');
+    expect(checkedLine(['table', 'countertop', 'drawer'])).toBe('Checked the table, counter and drawer.');
     for (const s of [a, b, checkedLine(['table']), checkedLine([])]) expect(checkPhrase(s)).toEqual([]);
   });
 

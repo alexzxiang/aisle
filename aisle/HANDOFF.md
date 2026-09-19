@@ -101,7 +101,7 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1301 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1320 tests
 cd aisle/server && npx tsc --noEmit && npx vitest run   # 215 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
@@ -329,6 +329,25 @@ redirect), `adaptiveSearch.test.ts`.
   bananas → "This is the right section. Let me search these shelves closely." (upper, middle,
   lower) before any proposal to leave.
 `coverage()` on the explorer reports visited/scanned cells (DebugPanel via `searchAreas` soon).
+
+## Round 13 (Stream A): the silent lines, and obstacles with names
+- **Why "not on the table" felt stuck:** the walking lines were thirteen to sixteen words
+  ("No bananas yet. Table just to your left. Turn left a little, then walk two steps."), and in
+  dev the speech service *threw* on anything over twelve — the person heard nothing while the
+  reasoning chain ran perfectly in the log. Now: `fitWords()` (phrases.ts) trims a long line
+  to its action sentence and the service never throws for length (still throws in dev for
+  forbidden words and digits); every template fits twelve words by construction ("slightly
+  left" for under fifteen degrees, no "No bananas yet." prefix on the walk — the hypothesis
+  line already said why; "Checked the table, counter and bowl. Where else?"); a test walks every
+  kind × a two-word name × "seventeen steps". A usual place that is nowhere in sight gets an
+  eight-second look, not fifteen, before the next guess.
+- **Obstacles say what, where, how far, and the open side** (`src/core/obstacleWords.ts`):
+  "Chair ahead, close. Open on your right." / "Person on your left, two steps. Open on your
+  right." / "Something close ahead. Stop." — the biggest low box in the reflex's direction
+  (never the hand), steps from its height, sides from the depth grid. Wired into both reflex
+  speakers (`PerceptionService` CRITICAL, `indoor/obstacles.ts` INFO) through
+  `describeObstacle` from composeApp; the cached "Obstacle ahead." remains the fallback when
+  nothing is known.
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

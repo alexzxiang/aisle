@@ -91,23 +91,24 @@ export function rankHypotheses(item: string, statedPlace: string | null, tried: 
 
 /** The spoken reason for heading somewhere: "No bananas in view. They are usually on the counter." */
 export function hypothesisLine(itemName: string, plural: boolean, h: PlaceHypothesis, first: boolean, previous: string | null): string {
-  const prep = h.opens ? 'in' : h.place === 'door' ? 'by' : 'on';
+  const prep = prepFor(h.place);
   const be = plural ? 'are' : 'is';
   if (h.why === 'stated') return `Heading for the ${h.place}.`;
   if (first) return `No ${itemName} in view. ${plural ? 'They' : 'It'} ${be} usually ${prep} the ${spoken(h.place)}.`;
   return `Not ${previous ? `${prepFor(previous)} the ${spoken(previous)}` : 'there'}. Maybe ${prep} the ${spoken(h.place)}.`;
 }
 
-/** "I have checked the counter and the table." */
+/** "Checked the table, counter and bowl." — compact, so the question after it still fits twelve words. */
 export function checkedLine(tried: readonly string[]): string {
   const names = tried.map(spoken);
-  if (names.length === 0) return 'I have not found it yet.';
-  if (names.length === 1) return `I have checked the ${names[0]}.`;
-  return `I have checked the ${names.slice(0, -1).join(', the ')} and the ${names[names.length - 1]}.`;
+  if (names.length === 0) return 'Nothing checked yet.';
+  if (names.length === 1) return `Checked the ${names[0]}.`;
+  return `Checked the ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}.`;
 }
 
+const INSIDE = new Set(['bowl', 'basket', 'bin', 'trash_can', 'sink', 'bag', 'backpack', 'handbag', 'bathtub', 'shower']);
 function prepFor(place: string): string {
-  return OPENS.has(place) ? 'in' : place === 'door' ? 'by' : 'on';
+  return OPENS.has(place) || INSIDE.has(place) ? 'in' : place === 'door' ? 'by' : 'on';
 }
 
 export function spoken(place: string): string {

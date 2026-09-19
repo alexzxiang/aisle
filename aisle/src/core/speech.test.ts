@@ -319,13 +319,14 @@ describe('SpeechService', () => {
 
   // --- text guard ---------------------------------------------------------------
 
-  it('dev: throws on > 12 words, digits, forbidden words; the disclaimer is exempt from length only', () => {
+  it('dev: throws on digits and forbidden words; a long line is fitted, never thrown away (round 13); the disclaimer is exempt from length only', () => {
     make();
-    expect(() => svc.say({ text: 'one two three four five six seven eight nine ten eleven twelve thirteen', priority: 'NAV' })).toThrow(SpeechTextError);
+    // Thirteen words: the line is fitted to twelve and spoken, in dev as in prod.
+    expect(() => svc.say({ text: 'one two three four five six seven eight nine ten eleven twelve thirteen', priority: 'NAV' })).not.toThrow();
     expect(() => svc.say({ text: 'Turn right in 20 feet', priority: 'NAV' })).toThrow(/digits/);
     expect(() => svc.say({ text: 'The road is clear', priority: 'NAV' })).toThrow(/forbidden/);
     expect(() => svc.say({ text: PHRASES.disclaimer, priority: 'NAV', cacheKey: 'disclaimer' })).not.toThrow();
-    expect(() => svc.say({ text: PHRASES.disclaimer, priority: 'NAV' })).toThrow(/words/);
+    expect(() => svc.say({ text: PHRASES.disclaimer, priority: 'NAV' })).not.toThrow();
     // The allow-list key cannot smuggle other text (forbidden or not): the mismatch guard fires first,
     // and the table wording itself is lint-clean (phrases.test), so no forbidden word reaches the queue.
     expect(() => svc.say({ text: `${PHRASES.disclaimer} It is safe.`, priority: 'NAV', cacheKey: 'disclaimer' })).toThrow(/differs from the phrase table/);

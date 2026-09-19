@@ -129,3 +129,15 @@ describe('language rules', () => {
     expect(checkPhrase(PHRASES.disclaimer).map((v) => v.kind)).toEqual(['too_long']);
   });
 });
+
+describe('fitWords (round 13): a long generated line keeps its instruction', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { fitWords } = require('./phrases') as typeof import('./phrases');
+  it('drops the reason clause in front of the action, keeps a short line as is, and cuts at a sentence when it must', () => {
+    expect(fitWords('No bananas yet. Table slightly left. Turn left a little, then walk two steps.')).toBe('Table slightly left. Turn left a little, then walk two steps.');
+    expect(fitWords('Bananas ahead. Walk forward two steps.')).toBe('Bananas ahead. Walk forward two steps.');
+    expect(fitWords('One two three four five six. Seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen.')).toBe('One two three four five six.');
+    expect(fitWords('One two three four five six. Seven eight nine ten eleven twelve thirteen fourteen.')).toBe('Seven eight nine ten eleven twelve thirteen fourteen.');
+    expect(fitWords('one two three four five six seven eight nine ten eleven twelve thirteen')).toBe('one two three four five six seven eight nine ten eleven twelve');
+  });
+});

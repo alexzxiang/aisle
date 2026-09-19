@@ -25,7 +25,7 @@
  *   `speech` field, so the socket stays closed and Tier 1 runs over HTTP until
  *   the relay exists (`STREAMED_SPEECH_RELAY_AVAILABLE`).
  */
-import type { CrossingController, PerceptionService, PlannerJob, SensorService, SignalState, Detection } from './contracts';
+import type { CrossingController, Detection, Direction, DistanceClass, PerceptionService, PlannerJob, SensorService, SignalState } from './contracts';
 import type { AppEventBus } from './bus';
 import type { AppConfig } from './config';
 import type { AppStore } from './store';
@@ -42,6 +42,7 @@ import { createGuidedTask, type GuidedTask } from './guidedTask';
 import { createSituate, type Situate } from './situate';
 import { createSceneMemory, type SceneMemory } from './sceneMemory';
 import { createGuide } from './guide';
+import { describeObstacle } from './obstacleWords';
 import { createTracer } from './trace';
 import { createHandGuide } from './handGuide';
 import { wirePrompts, type PromptsBinding } from './prompts';
@@ -237,9 +238,13 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   const perception: PerceptionService = mocks
     ? createPerceptionService({ mock: mocks.perception })
     : createPerceptionService({ native: platform.nativePerception });
+  // Round 13: obstacle lines say what is in the way, where, how far and which side is open. The
+  // detections and the depth grid are captured further down; the closure reads them when asked.
+  let obstacleWords: ((e: { distanceClass: DistanceClass; direction: Direction }) => string | null) | null = null;
   const perceptionBinding = bindPerceptionToApp({ perception, bus, store, haptics, speech,
     isForeground: platform.isForeground, healthIntervalMs: config.mock ? undefined : 5000,
     onHealth: (health) => trace('perception_health', health),
+    describeObstacle: (e) => obstacleWords?.(e) ?? null,
   });
   realSensors?.attachPerception(perception);
 
@@ -295,7 +300,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     nextSeq: () => vision.nextSeq(),
     now,
   });
-  const indoor = createIndoorController({ bus, store, speech, haptics, sensors, perception, vision, resolver, now });
+  const indoor = createIndoorController({ bus, store, speech, haptics, sensors, perception, vision, resolver, now, describeObstacle: (e) => obstacleWords?.(e) ?? null });
 
   // --- A: scene descriptions and proactive prompts ------------------------------------
   const describer = createSceneDescriber({
@@ -353,6 +358,12 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   unsubs.push(perception.onDepth((d) => {
     latestDepth = { at: now(), closingRate: d.closingRate, center: d.centerBottomRel, ...(typeof d.leftBottomRel === 'number' ? { left: d.leftBottomRel } : {}), ...(typeof d.rightBottomRel === 'number' ? { right: d.rightBottomRel } : {}) };
   }));
+  obstacleWords = (e) => describeObstacle({
+    detections: now() - latestDetectionAt <= 1500 ? latestDetections : [],
+    depth: latestDepth && now() - latestDepth.at <= 1000 ? latestDepth : null,
+    hfovDeg: lensHfov(),
+    direction: e.direction,
+  });
   const guide = createGuide({
     detections: () => now() - latestDetectionAt <= 1500 ? latestDetections : [],
     detectionTimestamp: () => latestDetectionAt,

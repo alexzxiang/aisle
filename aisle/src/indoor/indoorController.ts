@@ -10,7 +10,7 @@
  * Everything decision-shaped lives in the pure modules; this file only performs
  * their actions and subscribes/unsubscribes at the right mode edges.
  */
-import type { AppMode, HapticService, OcrRead, PerceptionService, SensorService, SpeechService } from '../core/contracts';
+import type { AppMode, Direction, DistanceClass, HapticService, OcrRead, PerceptionService, SensorService, SpeechService } from '../core/contracts';
 import type { AppEventBus } from '../core/bus';
 import type { AppStore } from '../core/store';
 import { AISLE_MATCH_MIN_CONFIDENCE, type SemanticVision } from '../perception/semanticVision';
@@ -36,6 +36,8 @@ export interface IndoorControllerOptions {
   resolver: StoreResolver;
   now?: () => number;
   aislePitchM?: number;
+  /** Round 13: the words for an obstacle line (composeApp builds them from the detections and the depth grid). */
+  describeObstacle?: (e: { distanceClass: DistanceClass; direction: Direction }) => string | null;
   setIntervalFn?: (fn: () => void, ms: number) => unknown;
   clearIntervalFn?: (h: unknown) => void;
 }
@@ -182,6 +184,7 @@ export function createIndoorController(opts: IndoorControllerOptions): IndoorCon
       now,
       isActive: () => active,
       onWallAhead: () => navigator.onWallAhead(),
+      describe: opts.describeObstacle,
     });
     tickHandle = setIntervalFn(() => {
       if (!active) return;
