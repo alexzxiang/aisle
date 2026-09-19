@@ -15,7 +15,7 @@ zero model weights, zero cached ElevenLabs phrases, zero API keys, zero real rec
 store and crossing fixtures carry invented coordinates. The proxy is not hosted anywhere. What
 the team has is a complete, well-tested **mock-mode** application and a complete but **unproven**
 live path. The working tree is committed (HEAD `577fe25`); 19 of the reviewer's 20 issues are
-closed in code, the 20th (empty phrase cache, G9/G39) needs keys, not code.
+closed in code; the 20th (empty phrase cache, G9/G39) closed on 2026-09-18 once the ElevenLabs key was available (`d62a026`).
 
 Status words used below: **Implemented** = real code path, tested, nothing known missing in the
 code; **Partial** = real code path with a named hole; **Stub** = interface and scaffolding, no
@@ -37,7 +37,7 @@ device" — see §5.
 | 7 | CoreML models (COCO nano, ped-signal-v1, Depth Anything V2 small, optional walkable-seg) | Not started | `models/README.md`, `manifest.json`, `LICENSES.md` only | **No weights of any kind.** Without them every model-driven stream (`onDetections`, `onVehicleApproaching`, `onSignalState` from the model, `onDepth`, `onObstacleAhead`) is silent; only ARKit pose and Vision OCR would work. Depth Anything CoreML build not located; licence unverified. |
 | 8 | Indoor OCR matcher, navigator, centring, obstacles, checkout, item pickup | Implemented | `src/indoor/*` | Pure JS is complete and tested against all 04 edge cases. Depends on Vision OCR from the uncompiled module; never read a real sign. Claude `aisle_disambiguate` path never called live. |
 | 9 | Transition (store-entry handoff, five-signal fusion, forceEnter, announcement) | Implemented | `src/transition/TransitionDetector.ts`, `announce.ts`, `src/core/trip.ts` | Tuned and tested only on the synthetic `fixtures/track.json` entry profile. Never fired on a real door. |
-| 10 | Speech: two-tier ElevenLabs (cached phrases + live/streamed) with expo-speech fallback | Partial | `src/core/speech.ts`, `speechBackend.ts`, `phrases.ts`, `scripts/generate-audio.ts`, `assets/audio/manifest.ts`, `server/routes/tts.ts`, `server/lib/elevenlabs.ts` | `AUDIO_MANIFEST` is **empty**: every phrase, including the disclaimer, speaks via `expo-speech` today. Tier-1 streamed speech is **disabled** (`STREAMED_SPEECH_RELAY_AVAILABLE = false`): A's player fetches `GET /api/tts/stream/<id>`, D's proxy only relays audio as binary WebSocket frames — the two halves do not meet. Live TTS first-audio < 400 ms and cached < 50 ms unmeasured. Since the review `say()` with a phrase-table key speaks `PHRASES[key]` (mismatched caller text throws in dev, is replaced and reported in prod), CRITICAL bypasses the mode table only for `always` / `vehicle` / `obstacle` / `scan`, cooldowns arm only on an accepted enqueue, and the disclaimer has one owner (`OnboardingScreen`). None of that puts an mp3 in the bundle. |
+| 10 | Speech: two-tier ElevenLabs (cached phrases + live/streamed) with expo-speech fallback | Partial | `src/core/speech.ts`, `speechBackend.ts`, `phrases.ts`, `scripts/generate-audio.ts`, `assets/audio/manifest.ts`, `server/routes/tts.ts`, `server/lib/elevenlabs.ts` | `AUDIO_MANIFEST` now holds all 65 phrases (closed 2026-09-18, `d62a026`); the disclaimer, onboarding and every curb/vehicle phrase play from bundled mp3. Tier-1 streamed speech is **disabled** (`STREAMED_SPEECH_RELAY_AVAILABLE = false`): A's player fetches `GET /api/tts/stream/<id>`, D's proxy only relays audio as binary WebSocket frames — the two halves do not meet. Live TTS first-audio < 400 ms and cached < 50 ms unmeasured. Since the review `say()` with a phrase-table key speaks `PHRASES[key]` (mismatched caller text throws in dev, is replaced and reported in prod), CRITICAL bypasses the mode table only for `always` / `vehicle` / `obstacle` / `scan`, cooldowns arm only on an accepted enqueue, and the disclaimer has one owner (`OnboardingScreen`). None of that puts an mp3 in the bundle. |
 | 11 | Voice input (push-to-talk, on-device STT, Scribe fallback, keyboard) | Implemented | `src/core/voice.ts`, `src/ui/TalkButton.tsx`, `server/routes/stt.ts` | Never exercised with a microphone. Push-to-talk clips are now persisted only when Scribe upload is configured and deleted after use (was: every clip kept forever). No live partial transcript (no `onPartial`). Volume-button PTT cut (no API). Keyboard path is planner-free by design. |
 | 12 | Nemotron planner jobs (routeCompile, parseIntent, disambiguate, crossingAnnounce, answer) + eval | Partial | `src/outdoor/plannerJobs.ts`, `planner.ts`, `server/routes/plan.ts`, `plan.eval.ts`, `plan.eval.md`, `server/lib/nim.ts`, `deadline.ts` | Code is complete with validators and deterministic templates. **Never called NIM.** Model id `nvidia/nemotron-3.5-lightning-30b-a3b` is a guess to be read from `/v1/models`; `nvext.guided_json` acceptance unverified. `plan.eval.md` is a **template-only run** (model column `n/a`, human rating column empty). The sponsor-track "evidence" currently proves the fallback works, not Nemotron. |
 | 13 | Claude semantic vision (Tier 1: storefront, aisle disambiguation, scan stills, curb crop, hand guidance) | Partial | `src/perception/semanticVision.ts`, `server/routes/vision.ts`, `server/ws/visionSocket.ts`, `server/lib/anthropic.ts`, `server/schemas/vision.ts`, `server/prompts/vision.ts` | HTTP path wired and used; WS path built and tested against fakes but never opened by the app (see #10). Never called Anthropic; structured-output schema, Haiku 4.5 / Sonnet 5 ids, thinking-disabled param unverified live. p95 < 3 s unmeasured. |
@@ -78,7 +78,7 @@ Grouped by what unblocks them.
 
 | # | Gap | Owner | Why it is open | What finishes it |
 |---|---|---|---|---|
-| G9 | Cached ElevenLabs phrases: `assets/audio/<key>.mp3`, populated `manifest.ts` | A | No `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`; the generator refuses to fake audio | Audition and pick a voice (07 §2), then `ELEVENLABS_API_KEY=… ELEVENLABS_VOICE_ID=… npm run gen:audio`; commit the mp3s, `manifest.ts`, `manifest.json`. Until then the disclaimer and everything else is `expo-speech`. |
+| G9 | ~~Cached ElevenLabs phrases~~ **Closed 2026-09-18 (`d62a026`)**: 65 phrases generated with `eleven_flash_v2_5`, 1.0 MB of mp3 + `manifest.ts`/`manifest.json` committed | A | — | Remaining nit: six onboarding lines run 2.0–4.3 s (over the 2 s budget); shorten the text or raise the onboarding playback rate, then regenerate those keys. |
 | G10 | Live Google Routes call and a captured demo-route fixture | B | No `GOOGLE_MAPS_API_KEY`; current `computeRoutes-forbes-bouquet.json` is hand-authored | Key in `server/.env`, then `npx tsx data/record-demo-route.ts` from `server/` after the venue walk; check `routes.warnings` carries the walking-beta text |
 | G11 | Live Overpass query proven on the Oakland bbox (`sources.overpass === 'live'`) | B | No network calls made | One live `/api/route` |
 | G12 | Nemotron live: exact model id from `GET /v1/models`, `nvext.guided_json` acceptance, `max_completion_tokens` honoured, thinking off, TTFT; the model column of `plan.eval.md` | B / D | No `NVIDIA_API_KEY` (and NIM key approval can take days — 11 A1) | Key(s) in `server/.env`; `GET /api/health` (`modelSeen`); `NVIDIA_API_KEY=… npx tsx routes/plan.eval.ts`; set `NVIDIA_MODEL` if the id differs |
@@ -122,8 +122,8 @@ Grouped by what unblocks them.
 | G35 | Contract flags raised by B and not acted on unilaterally: `SpeechService.prefetch` as a shared cache path, `useOutdoorStore.beaconTarget` as the shared beacon slice, `turn_*_soon` canonical wording vs the 20 m trigger, B's extra files under `server/routes/` | A / B / D | Need acks in the shared channel (the `roadSide 'NONE'` cross-track flag is now settled in `haptics.ts`: NONE buzzes only with heading agreement) | Ack or reject each; most are already consumed by `composeApp` as-is |
 | G36 | Google Maps ToS on text-to-speech of Routes street names | B / team | Not checked | Read the clause; Mapbox Directions is the drop-in if the answer is no |
 | G37 | `CHECKOUT_NAV → DONE` from a real landmark read: `fixtures/perception/indoor-aisle-walk.jsonl` carries no CHECKOUT / REGISTERS / LANES sign, so the indoor controller never emits `CHECKOUT_REACHED`; the walking skeleton injects it DebugPanel-style after a 15 s wait and keeps a `test.failing` on the real path | C / D | Fixture gap, not a controller gap (the landmark class is covered in `src/indoor/*.test.ts`) | Add a checkout sign read to the pack (or a hard-cases pack); promote the `test.failing` in `src/walkingSkeleton.test.ts` |
-| G38 | `npx expo install --check` no longer passes: `expo-build-properties@57.0.20` (expected `~57.0.21`) and `expo-location@57.0.18` (expected `~57.0.19`) | A | Expo published new patch pins after the last check; nothing in the repo changed | `npx expo install --fix` before the first device build, then re-run typecheck + jest |
-| G39 | Reviewer issue #1 (empty `AUDIO_MANIFEST`) is the one review item no fixer closed | A | It is G9 by another name: needs `ELEVENLABS_*` keys, not code | See G9 |
+| G38 | ~~SDK patch pins~~ **Closed 2026-09-18 (`47ed2d1`)**: `expo install --fix` applied; `--check` clean; typecheck + 906 tests green | A | — | — |
+| G39 | ~~Reviewer issue #1 (empty `AUDIO_MANIFEST`)~~ **Closed with G9 (`d62a026`)** | A | — | — |
 
 Also found by the scan and left as-is on purpose: `src/ui/copy.ts` `WALKING_BETA_FALLBACK` (a
 display fallback; `App.tsx` passes B's real `WALKING_BETA_WARNING` via `betaNotice`);
@@ -146,7 +146,7 @@ npm run typecheck        # 0 errors
 npm test                 # 60 suites / 906 tests (incl. src/walkingSkeleton.test.ts, mocks/endToEnd.test.ts)
 npm run test:server      # 14 files / 140 tests (vitest, upstreams faked)
 npm run lint             # tsc + forbidden-deps grep + forbidden-phrase lint
-npx expo install --check # FAILS since 2026-09-18: two outdated patch pins (G38)
+npx expo install --check # clean since 47ed2d1 (G38 closed)
 bash modules/perception/tests/run.sh   # 94 synthetic Swift engine checks (macOS SDK, no ARKit)
 xcrun -sdk iphoneos swiftc -typecheck -target arm64-apple-ios17.0 -parse-as-library modules/perception/ios/Engine/*.swift   # 11 files, exit 0
 SKELETON_TRACE=1 npx jest src/walkingSkeleton.test.ts   # prints the mode/say/event timeline of one full mock trip
@@ -187,7 +187,7 @@ upstream.
 ### Live app against the proxy
 
 ```bash
-ELEVENLABS_API_KEY=… ELEVENLABS_VOICE_ID=… npm run gen:audio      # once; fills assets/audio (G9)
+npm run gen:audio      # only after editing phrases.ts (assets/audio is committed; G9 closed)
 EXPO_PUBLIC_PROXY_URL=http://<host>:8787 npx expo start --dev-client
 ```
 
