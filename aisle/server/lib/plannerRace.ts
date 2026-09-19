@@ -9,18 +9,43 @@ export interface PlanAttempt {
   status: 'pending' | 'valid' | 'invalid' | 'error' | 'timeout' | 'cancelled';
   elapsedMs: number;
   firstTokenMs: number | null;
+  /** Why an attempt failed, sanitized. Errors are otherwise indistinguishable in the log. */
+  error?: string;
+}
+
+export const PLANNER_SLOW_MS = 3000;
+export const PLANNER_MIN_SAMPLES = 5;
+/** Consecutive non-answers that trip the switch before a median exists. */
+export const PLANNER_TRIP_STREAK = 3;
+/** Nemotron always leads here: 03's "directional navigation" story is told with routeCompile. */
+export const PLANNER_PINNED_TO_NIM: readonly PlannerJob[] = ['routeCompile'];
+
+/**
+ * Upstream errors can echo the request; keep the shape, drop anything key-like, cap the length.
+ * The attempt list reaches `plan.eval.md`, which is committed.
+ */
+export function sanitizeAttemptError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  return raw.replace(/[A-Za-z0-9_-]{20,}/g, '…').replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 /** Five completed or deadline-limited samples; cancellations are not latency samples. */
 export function plannerPrimary(job: PlannerJob, log: RequestLog): 'nim' | 'anthropic' {
-  if (job !== 'parseIntent') return 'nim';
-  const samples = log.recent({ route: 'plan', key: job })
+  if (PLANNER_PINNED_TO_NIM.includes(job)) return 'nim';
+  const attempts = log.recent({ route: 'plan', key: job })
     .flatMap((line) => (line.extra?.attempts ?? []) as PlanAttempt[])
-    .filter((a) => a.provider === 'nim' && ['valid', 'invalid', 'timeout'].includes(a.status))
+    .filter((a) => a.provider === 'nim' && a.status !== 'pending' && a.status !== 'cancelled');
+  // The log is in-memory, so a restarted proxy has no median at all and the demo would spend
+  // five full deadlines rediscovering a dead upstream. Three answers in a row that never
+  // arrived (timeout or error) is already unambiguous.
+  const streak = attempts.slice(-PLANNER_TRIP_STREAK);
+  if (streak.length === PLANNER_TRIP_STREAK && streak.every((a) => a.status === 'timeout' || a.status === 'error')) return 'anthropic';
+  // An error carries no latency, so it informs the streak but never the median.
+  const samples = attempts.filter((a) => a.status !== 'error')
     .slice(-10).map((a) => a.elapsedMs).sort((a, b) => a - b);
   const middle = Math.floor(samples.length / 2);
   const median = samples.length % 2 ? samples[middle]! : (samples[middle - 1]! + samples[middle]!) / 2;
-  return samples.length >= 5 && median > 3000 ? 'anthropic' : 'nim';
+  return samples.length >= PLANNER_MIN_SAMPLES && median > PLANNER_SLOW_MS ? 'anthropic' : 'nim';
 }
 
 export function claudeHandle(handle: { result: Promise<{ text: string; model: string }>; abort(): void }, now: () => number): StreamHandle<PlanCompletion> {
@@ -56,7 +81,7 @@ export async function racePlanner<T>(opts: {
       });
       return { ...validated, completion: r };
     }).catch((error: unknown) => {
-      if (attempt.status === 'pending') Object.assign(attempt, { status: 'error', elapsedMs: now() - startAt });
+      if (attempt.status === 'pending') Object.assign(attempt, { status: 'error', elapsedMs: now() - startAt, error: sanitizeAttemptError(error) });
       throw error;
     });
     result.catch(() => undefined);

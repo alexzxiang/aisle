@@ -27,6 +27,13 @@ import { runPlannerJob, warmInputFor, type PlanDeps } from './plan';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'plan.eval.md');
 const KNOWN_ITEMS = ['eggs', 'milk', 'bread', 'butter', 'cheese', 'apples', 'bananas', 'rice', 'pasta', 'coffee'];
+/**
+ * Runs per job in §3. The log starts empty every run and the primary switch needs
+ * PLANNER_MIN_SAMPLES before it can fire, so at the default 5 the measurement ends just as the
+ * switch becomes possible and §3 only ever shows Nemotron-first latency. Raise it (PLAN_EVAL_N=12)
+ * to see the switch inside one run — it costs that many more calls per job on both providers.
+ */
+const PER_JOB_RUNS = Math.max(1, Number(process.env.PLAN_EVAL_N ?? 5) || 5);
 
 export const TASK_GOLDENS: Array<{ name: string; input: TaskPlanInput; landmark: RegExp; direction: RegExp }> = [
   { name: 'kitchen/fridge', input: { goal: 'find eggs in my fridge', context: 'home', facts: { detections: ['refrigerator'], ocr: [], scene: 'in a kitchen', description: 'Kitchen counter ahead, fridge on your left.' } }, landmark: /fridge|refrigerator/i, direction: /left/i },
@@ -255,7 +262,7 @@ async function main(): Promise<void> {
       const total: number[] = [];
       let fallbacks = 0;
       let leaked = 0;
-      const n = job === 'parseIntent' ? 0 : 5;
+      const n = job === 'parseIntent' ? 0 : PER_JOB_RUNS;
       for (let i = 0; i < n; i += 1) {
         const r = await runPlannerJob(job, warmInputFor(job) as never, deps);
         if (r.firstTokenMs !== null) first.push(r.firstTokenMs);
@@ -300,7 +307,19 @@ async function main(): Promise<void> {
       lines.push(`| ${job} | ${provider} | ${completed.length} | ${quantile(completed, 0.5) ?? 'n/a'} / ${quantile(completed, 0.95) ?? 'n/a'} | ${n('invalid')} | ${n('error')} | ${n('timeout')} | ${n('cancelled')} |`);
     }
   }
-  lines.push('', `Next parseIntent primary: ${plannerPrimary('parseIntent', log)}. Deadline-limited samples are lower bounds used for routing; cancellations are excluded from medians.`, '');
+  const reasons = new Map<string, number>();
+  for (const job of PLANNER_JOBS) {
+    for (const a of log.recent({ route: 'plan', key: job }).flatMap((r) => (r.extra?.attempts ?? []) as PlanAttempt[])) {
+      if (a.error) reasons.set(`${a.provider}: ${a.error}`, (reasons.get(`${a.provider}: ${a.error}`) ?? 0) + 1);
+    }
+  }
+  if (reasons.size > 0) {
+    lines.push('', 'Error reasons (sanitized, most frequent first):', '');
+    for (const [reason, count] of [...reasons].sort((a, b) => b[1] - a[1])) lines.push(`- ${count} × \`${reason}\``);
+  }
+  lines.push('', `Primary each job would start with next, given this run's samples (${PER_JOB_RUNS} runs per job in §3): ` +
+    `${PLANNER_JOBS.map((j) => `${j} → ${plannerPrimary(j, log)}`).join(', ')}. ` +
+    'routeCompile is pinned to Nemotron. Deadline-limited samples are lower bounds used for routing; cancellations are excluded from medians.', '');
   lines.push('');
   lines.push('## Failure we found');
   lines.push('');

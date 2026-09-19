@@ -3,7 +3,7 @@ import { templateFor } from '../../src/outdoor/plannerJobs';
 import { runPlannerJob, warmInputFor, type NimStarter } from '../routes/plan';
 import type { ClaudePlanStarter } from './claudePlan';
 import { createRequestLog } from './log';
-import { plannerPrimary } from './plannerRace';
+import { plannerPrimary, sanitizeAttemptError } from './plannerRace';
 
 const input = { transcript: 'I need eggs', mode: 'IDLE' as const, knownItems: ['eggs'] };
 const valid = JSON.stringify(templateFor('parseIntent', input));
@@ -81,6 +81,55 @@ describe('planner provider timing and preference', () => {
     const route = runPlannerJob('routeCompile', routeInput as never, { ...providers(100, 20, text, text), log });
     await vi.runAllTimersAsync();
     expect((await route).provider).toBe('nim');
+  });
+  it('lets every interactive job switch on its own samples, and pins only routeCompile', () => {
+    const log = silentLog();
+    const slow = (job: string) => log.write({ route: 'plan', key: job, totalMs: 4500, extra: { attempts: [{ provider: 'nim', status: 'timeout', elapsedMs: 4500 }] } });
+    for (const job of ['disambiguate', 'taskPlan', 'answer', 'crossingAnnounce', 'routeCompile'] as const) {
+      for (let i = 0; i < 5; i++) slow(job);
+    }
+    // Each job is judged on its own samples; routeCompile keeps Nemotron whatever they say.
+    expect(plannerPrimary('disambiguate', log)).toBe('anthropic');
+    expect(plannerPrimary('taskPlan', log)).toBe('anthropic');
+    expect(plannerPrimary('answer', log)).toBe('anthropic');
+    expect(plannerPrimary('crossingAnnounce', log)).toBe('anthropic');
+    expect(plannerPrimary('routeCompile', log)).toBe('nim');
+    // A job with no slow history of its own is unaffected by another job's.
+    expect(plannerPrimary('parseIntent', log)).toBe('nim');
+  });
+  it('trips to Haiku on three straight non-answers, before any median exists', () => {
+    const log = silentLog();
+    const attempt = (status: string, elapsedMs: number) =>
+      log.write({ route: 'plan', key: 'taskPlan', totalMs: elapsedMs, extra: { attempts: [{ provider: 'nim', status, elapsedMs }] } });
+    attempt('timeout', 8000);
+    attempt('error', 0);
+    expect(plannerPrimary('taskPlan', log)).toBe('nim');   // two is not a pattern
+    attempt('timeout', 8000);
+    expect(plannerPrimary('taskPlan', log)).toBe('anthropic');
+    // One good answer breaks the streak, and two slow samples are too few for the median rule.
+    attempt('valid', 900);
+    expect(plannerPrimary('taskPlan', log)).toBe('nim');
+    // The streak never overrides the routeCompile pin.
+    for (const s of ['timeout', 'timeout', 'timeout']) {
+      log.write({ route: 'plan', key: 'routeCompile', totalMs: 8000, extra: { attempts: [{ provider: 'nim', status: s, elapsedMs: 8000 }] } });
+    }
+    expect(plannerPrimary('routeCompile', log)).toBe('nim');
+  });
+  it('records why an attempt failed, without echoing anything key-shaped', async () => {
+    const log = silentLog();
+    const secret = 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789';
+    const result = runPlannerJob('parseIntent', input, {
+      nim: () => { throw new Error(`401 unauthorized for ${secret}`); },
+      claude: null,
+      log,
+    });
+    await vi.runAllTimersAsync();
+    await result;
+    const [attempt] = log.recent()[0]!.extra!.attempts as Array<{ status: string; error?: string }>;
+    expect(attempt!.status).toBe('error');
+    expect(attempt!.error).toContain('401 unauthorized');
+    expect(attempt!.error).not.toContain(secret);
+    expect(sanitizeAttemptError(new Error('x'.repeat(400)))).toHaveLength(1);
   });
   it('still tries Nemotron if Haiku-first fails, and handles synchronous starter errors', async () => {
     const log = silentLog();
