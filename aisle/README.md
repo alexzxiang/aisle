@@ -101,9 +101,28 @@ npx expo run:ios --device                 # or open ios/Aisle.xcworkspace in Xco
 ```
 
 The `Perception` pod is autolinked from `modules/perception` (check with
-`npx expo-modules-autolinking resolve -p ios`). CoreML models are picked up from `models/`
-by the podspec when present; a checkout without weights still builds and the engine
-reports the missing model.
+`npx expo-modules-autolinking resolve -p ios`). CoreML models are bundled from `models/` by
+`plugins/withCoreMLModels.js` on every `prebuild` (it copies them to `ios/models/` and adds
+them to the app target; Xcode compiles `.mlpackage` → `.mlmodelc`). A checkout without weights
+still builds and the engine reports the missing model.
+
+**Getting the model weights** (git-ignored, exported per machine — `models/LICENSES.md`):
+
+```bash
+npm run models:venv     # once: Python 3.12 venv with ultralytics + coremltools (numpy<2)
+npm run models:coco     # COCO YOLO11n → models/coco-yolo-nano.mlpackage (vehicles, people)
+npm run models:depth    # Apple's Depth Anything V2 Small → models/depth-anything-v2-small.mlpackage
+npx expo prebuild --platform ios   # re-run after adding a model so it is bundled
+```
+
+The pedestrian-signal model (`ped-signal-v1`) comes from the training track
+(`training/README.md`); until it exists the crossing beat runs on rungs 2–3 (03 §fallback).
+
+**Signing (first device build on a Mac):** Xcode → Settings → Accounts → add the team's
+Apple ID → Manage Certificates → *Apple Development*. Set `expo.ios.appleTeamId` in
+`app.json` to the 10-character Team ID so `prebuild` and EAS carry it; otherwise pick the
+team once in `ios/Aisle.xcworkspace` → Signing & Capabilities. On the phone: Developer Mode
+on, then trust the developer under Settings → General → VPN & Device Management.
 
 **EAS (internal distribution, for the teammate without a Mac):**
 
