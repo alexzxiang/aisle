@@ -91,6 +91,14 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
     session.delegate = self
   }
 
+  /// The one `ARSession` in the app, read-only, for `PerceptionPreviewView` to
+  /// hand to an `ARSCNView` (09 §8 "Preview view"). The engine keeps ownership:
+  /// it alone runs, pauses and reconfigures the session and stays its delegate.
+  /// A preview attached before `start()` renders black; while a profile with
+  /// `sessionRunning == false` (IDLE) has the session paused it freezes on the
+  /// last frame. Never expose a setter.
+  public var arSession: ARSession { session.session }
+
   // MARK: Lifecycle (any queue)
 
   public func start(profileName: String) throws {

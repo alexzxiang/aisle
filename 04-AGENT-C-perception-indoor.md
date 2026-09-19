@@ -84,7 +84,8 @@ labels, with no camera and no proxy; `ITEM_REQUESTED {item: 'caviar'}` yields an
 ## Task 1 — The native `PerceptionModule` (spec: `09-PERCEPTION-MODULE.md`)
 
 One Swift module (Expo Modules API) on ARKit world tracking, `gravityAndHeading`, headless
-(no preview view). Read 09 in full before writing Swift; this section is the summary of
+(the optional preview view in 09 §8 borrows the engine's session; the engine never creates a
+view). Read 09 in full before writing Swift; this section is the summary of
 what you are responsible for, not the spec.
 
 Responsibilities:

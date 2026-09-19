@@ -18,7 +18,7 @@ Pod::Spec.new do |s|
 
   s.dependency 'ExpoModulesCore'
 
-  s.frameworks = 'ARKit', 'Vision', 'CoreML', 'CoreImage', 'Accelerate', 'CoreVideo', 'ImageIO'
+  s.frameworks = 'ARKit', 'SceneKit', 'Vision', 'CoreML', 'CoreImage', 'Accelerate', 'CoreVideo', 'ImageIO'
 
   # The Expo wrapper plus the pure-Swift engine under Engine/.
   s.source_files = '**/*.{h,m,mm,swift}'

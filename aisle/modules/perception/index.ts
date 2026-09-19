@@ -10,7 +10,9 @@
  * The `PerceptionService` interface itself is implemented in
  * `src/perception/PerceptionService.ts`; App.tsx picks that or D's replayer.
  */
-import { NativeModule, requireOptionalNativeModule, type EventSubscription } from 'expo-modules-core';
+import type { ComponentType } from 'react';
+import type { StyleProp, ViewStyle } from 'react-native';
+import { NativeModule, requireNativeViewManager, requireOptionalNativeModule, type EventSubscription } from 'expo-modules-core';
 
 import type {
   DepthSummary,
@@ -135,6 +137,53 @@ export function requirePerceptionNative(): PerceptionNativeModule {
 /** Tests / the composition root can inject a fake without touching globals. */
 export function __setPerceptionNativeForTests(mod: PerceptionNativeModule | null | undefined): void {
   cached = mod;
+}
+
+// ---------------------------------------------------------------------------
+// Preview view (ios/PerceptionPreviewView.swift, 09 §8 "Preview view")
+// ---------------------------------------------------------------------------
+
+/** `View(PerceptionPreviewView.self)` in PerceptionModule.swift; `ViewName(...)` there. */
+export const NATIVE_PREVIEW_VIEW_NAME = 'PerceptionPreviewView';
+
+export interface PerceptionPreviewReadyEvent {
+  /** Always true: the ARSCNView now renders the engine's session. */
+  attached: boolean;
+  /** Whether that session had a frame at attach time; false ⇒ black until `start()`. */
+  running: boolean;
+}
+
+/** Props of the raw native view. `src/perception/CameraPreview.tsx` wraps it. */
+export interface PerceptionPreviewNativeProps {
+  style?: StyleProp<ViewStyle>;
+  /** Horizontal flip. Default false (the rear camera is not mirrored). */
+  mirror?: boolean;
+  onReady?: (e: { nativeEvent: PerceptionPreviewReadyEvent }) => void;
+  testID?: string;
+}
+
+let cachedView: ComponentType<PerceptionPreviewNativeProps> | null | undefined;
+
+/**
+ * Resolve the native preview component once, or `null` when the view manager
+ * is not linked (Expo Go, a JS-only build, Jest). The view borrows the
+ * engine's ARSession: black before `start()`, frozen on the last frame while
+ * the IDLE profile keeps the session paused (see the Swift header).
+ */
+export function getPerceptionPreviewView(): ComponentType<PerceptionPreviewNativeProps> | null {
+  if (cachedView === undefined) {
+    try {
+      cachedView = requireNativeViewManager<PerceptionPreviewNativeProps>(NATIVE_MODULE_NAME, NATIVE_PREVIEW_VIEW_NAME);
+    } catch {
+      cachedView = null;
+    }
+  }
+  return cachedView;
+}
+
+/** Tests inject a fake component (or `null` for the unavailable path). */
+export function __setPerceptionPreviewViewForTests(view: ComponentType<PerceptionPreviewNativeProps> | null | undefined): void {
+  cachedView = view;
 }
 
 // ---------------------------------------------------------------------------

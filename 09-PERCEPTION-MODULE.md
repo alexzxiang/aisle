@@ -22,8 +22,10 @@ together, and `expo-camera` cannot run beside either. Therefore:
 - Every frame consumer (COCO detector, signal model, depth, OCR, segmentation, JPEG
   snapshot for Claude) reads `ARFrame.capturedImage` inside this module.
 - JS never sees pixels except through `snapshotJPEG(maxWidth)` (§7).
-- The module runs headless: an `ARSession` with a delegate, no `ARSCNView`. The UI shows no
-  preview; the blind user does not need one and it saves GPU.
+- The module runs headless: an `ARSession` with a delegate. The engine never creates an
+  `ARSCNView`. The optional **preview view** (§8 "Preview view") is an `ARSCNView` that
+  *borrows* that same session for a sighted teammate or the judges; it is still one camera
+  session, and the blind user's flow never depends on it.
 
 What ARKit buys over a plain capture session: 6-DoF visual-inertial pose (centimetre-level
 relative drift, works indoors, no LiDAR needed on any A12+ iPhone), a true-north-aligned
@@ -301,6 +303,39 @@ the upright frame. Timestamps are `Date.now()`-comparable milliseconds, converte
 7. `EXPO_PUBLIC_MOCK=1`: `src/perception/PerceptionService.ts` swaps in D's replayer from
    `mocks/`; the native module is never called.
 
+### Preview view
+
+`modules/perception/ios/PerceptionPreviewView.swift` is an `ExpoView` hosting an `ARSCNView`
+whose `session` is `PerceptionEngine.arSession` — the engine's one `ARSession`, exposed
+read-only. There is no second capture session, no SceneKit content, lighting updates off;
+the view only renders the camera background. Registered in `PerceptionModule.swift` as
+`View(PerceptionPreviewView.self)` with `ViewName("PerceptionPreviewView")`, a `mirror`
+prop (horizontal flip, default off) and one event, `onReady { attached, running }`.
+
+Rules the view keeps, in this order:
+
+1. **Attaching never changes the session.** No configuration, no `run`, no `pause`, no
+   delegate or delegate-queue change. The engine stays the delegate; the view checks after
+   the attach and restores the delegate if ARKit touched it.
+2. **Black until `start()`.** The view attaches on its first props update (and, as a
+   fallback, when it enters a window, through the module registry). Before the engine's
+   `start(profile)` the session has no frames and the view is black; that is not an error.
+3. **Frozen in IDLE.** A profile with `sessionRunning == false` (IDLE) pauses the session
+   (§9), so the preview freezes on the last frame and resumes with the next non-IDLE
+   profile. The JS overlay drops its boxes after 1.5 s without detections for the same reason.
+4. **Detaching never touches the engine.** On deinit the `ARSCNView` is handed a throw-away
+   session so a dying view can neither release nor pause the engine's session.
+
+JS: `getPerceptionPreviewView()` in `modules/perception/index.ts` resolves the native
+component via `requireNativeViewManager('Perception', 'PerceptionPreviewView')` (or `null`
+when it is not linked); `src/perception/CameraPreview.tsx` wraps it with the detection
+overlay (`onDetections` boxes, kept classes only, colour per class, `car 0.81` labels,
+≤ 5 Hz, hidden from VoiceOver) and a placeholder ("Camera preview" plus the replayer's last
+`snapshotJPEG(512)` frame) for mock mode and unlinked builds. `isCameraPreviewAvailable()`
+is true when both the module and the view are linked. Pixels still leave the module only
+through `snapshotJPEG` (§7): the preview is rendered by ARKit into a native layer that JS
+never reads.
+
 ---
 
 ## 9. Battery and thermal
@@ -365,6 +400,7 @@ the phone is throttling — find out which before the next run.
 - [ ] OCR at 3 fps indoors, upper band, language correction off, `customWords` from the store map, blur-gated, raw text emitted (no Swift normalization)
 - [ ] Pose-derived lateral offset within ±0.1 m on a taped straight line; `bodyOffsetDeg` applied everywhere heading is compared
 - [ ] `snapshotJPEG` returns upright 512 / 640 / 1024 frames without blocking the loop; the curb crop keeps the horizon strip
+- [ ] Preview view borrows the engine's session (no second capture session), leaves configuration and delegate untouched, is black before `start()` and frozen in IDLE — verified on the demo phone with the detection overlay drawn over live video
 - [ ] Every event name, payload and rate limit matches 01 §7; the mock replayer consumes the module's own fixture format
 - [ ] Per-profile schedule enforced; `.serious` thermal state halves rates and is visible in DebugPanel
 - [ ] All `app.json` permission strings and `UIRequiredDeviceCapabilities: ["arkit"]` present before the first build — strings supplied by you, committed by A, prompts verified by you on the demo phone; models and dataset licences committed under `models/`

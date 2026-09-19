@@ -2,3 +2,4 @@
 export * from './profile';
 export * from './PerceptionService';
 export * from './semanticVision';
+export * from './CameraPreview';

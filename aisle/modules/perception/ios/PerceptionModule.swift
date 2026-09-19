@@ -2,7 +2,8 @@
 //  PerceptionModule.swift
 //  Aisle — PerceptionModule (Expo Modules API wrapper)
 //
-//  The ONLY file under modules/perception that imports ExpoModulesCore. It wires
+//  With PerceptionPreviewView.swift, one of the two files under modules/perception
+//  that import ExpoModulesCore. It wires
 //  the JS-facing surface in 01 §7 / 09 §6 to `PerceptionEngine` and does nothing
 //  else: no filtering, no geometry, no pixels. Keep it thin and obviously
 //  correct — it cannot be typechecked outside an Expo prebuild, and the engine
@@ -16,7 +17,8 @@ import ExpoModulesCore
 import Foundation
 
 public class PerceptionModule: Module, PerceptionEventSink {
-  private lazy var engine: PerceptionEngine = {
+  // Internal (not private): PerceptionPreviewView borrows `engine.arSession`.
+  lazy var engine: PerceptionEngine = {
     let e = PerceptionEngine()
     e.sink = self
     return e
@@ -98,6 +100,21 @@ public class PerceptionModule: Module, PerceptionEventSink {
 
     OnDestroy {
       self.engine.stop()
+    }
+
+    // MARK: Preview view (09 §8 "Preview view") — borrows the engine's session, never owns one
+
+    View(PerceptionPreviewView.self) {
+      ViewName("PerceptionPreviewView")
+      Events("onReady")
+
+      Prop("mirror") { (view: PerceptionPreviewView, mirror: Bool) in
+        view.mirror = mirror
+      }
+
+      OnViewDidUpdateProps { (view: PerceptionPreviewView) in
+        view.attach(session: self.engine.arSession)
+      }
     }
   }
 
