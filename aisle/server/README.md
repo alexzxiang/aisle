@@ -49,7 +49,30 @@ those mounts (`app.ts`).
 `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `GOOGLE_MAPS_API_KEY`) and the optional ones
 (`NVIDIA_API_KEY_FALLBACK`, `OPENROUTER_API_KEY`, `NVIDIA_MODEL` — copy the exact Nemotron id
 from the authenticated `GET /v1/models` on day 0, never from memory). `WARMUP_ON_START=0`
-skips the warm-up for offline development.
+skips the warm-up for offline development. `CAPTURE_FRAMES=1` records every vision still for
+the eval below; it is off by default.
+
+## Vision eval on real frames (`CAPTURE_FRAMES`)
+
+The proxy keeps no images — except when you start it with `CAPTURE_FRAMES=1`, which saves
+every vision call (the JPEG, the on-device facts, the question and Claude's answer) to
+`server/data/cache/frames/`. That covers the HTTP route and the WebSocket alike. The folder
+is git-ignored, and it should stay that way: a captured frame is a photo of someone's home.
+The proxy logs a warning at startup whenever capture is on.
+
+1. `CAPTURE_FRAMES=1 npm run dev`, then run the living-room test on the phone.
+2. `npx tsx routes/vision.eval.ts --label` writes `labels.json` beside the frames. For each
+   entry, open the JPEG and fill in the fields its `fill` lists: `target` as `[x, y, w, h]`
+   fractions from the top-left (or `null` when it is not in view), `setting`, `done`. The
+   skeleton leaves out Claude's answer on purpose, so the labels are not anchored to it.
+   Re-running `--label` adds new frames and never touches an entry you filled in.
+3. `npx tsx routes/vision.eval.ts` scores the answers the phone actually got (no API calls);
+   add `--rerun` to re-ask Haiku and Sonnet on the same frames and compare accuracy against
+   latency. `--dir <path>` points it at another frame set.
+
+A target box is a hit when its centre is within 0.1 of the label's on both axes, and "not in
+view" has to match too. Acceptance is ≥ 80 % target-box hits (TEAM-PLAN v2 C2). The report is
+written to `routes/vision.eval.md`; commit it only when it scores real labelled frames.
 
 ## The language rule (a safety control)
 

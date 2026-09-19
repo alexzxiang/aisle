@@ -42,8 +42,7 @@ export function modelFor(question: VisionRequest['question']): VisionModel {
 }
 
 /** Build the Messages params. Exported for the tests and the warm-up. */
-export function buildVisionParams(req: VisionRequest): Anthropic.MessageStreamParams {
-  const model = modelFor(req.question);
+export function buildVisionParams(req: VisionRequest, model: VisionModel = modelFor(req.question)): Anthropic.MessageStreamParams {
   const system = systemPromptFor(req);
   const content: Anthropic.ContentBlockParam[] = [];
   if (req.image) {
@@ -97,6 +96,8 @@ export interface AnthropicDeps {
   stream?: StreamFactory;
   now?: () => number;
   timeoutMs?: number;
+  /** The vision eval only: ask this model instead of modelFor(question), to compare them. */
+  model?: VisionModel;
 }
 
 export function sdkStreamFactory(apiKey: string, timeoutMs: number = VISION_TIMEOUT_MS): StreamFactory {
@@ -114,7 +115,7 @@ export class AnthropicConfigError extends Error {
 export async function runVision(req: VisionRequest, hooks: VisionHooks, deps: AnthropicDeps): Promise<VisionCallResult> {
   const now = deps.now ?? Date.now;
   const t0 = now();
-  const params = buildVisionParams(req);
+  const params = buildVisionParams(req, deps.model);
   const model = params.model;
   const timeoutMs = deps.timeoutMs ?? VISION_TIMEOUT_MS;
 
