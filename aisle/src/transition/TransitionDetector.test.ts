@@ -1,5 +1,5 @@
 import track from '../../fixtures/track.json';
-import type { GeoFix, TransitionSignal, VisionRequest, VisionResponse } from '../core/contracts';
+import type { GeoFix, TransitionSignal, VisionRequest, VisionResponse, AppMode } from '../core/contracts';
 import {
   TRANSITION_DEBOUNCE_MS,
   TransitionEvaluator,
@@ -207,4 +207,24 @@ describe('createTransitionDetector', () => {
     d.forceEnter();
     expect(fires).toHaveLength(2);
   });
+
+  it('forceEnter still fires after a fused fire that the store rejected (debounce is the only guard)', () => {
+    const { sensors } = makeSensors();
+    const fires: TransitionSignal[] = [];
+    let nowMs = 0;
+    let mode: AppMode = 'AT_CURB'; // the store rejected STORE_ENTERED while at the curb
+    const d = createTransitionDetector({ sensors, now: () => nowMs, getMode: () => mode });
+    d.onEnter((s) => fires.push(s));
+    d.start(DEST);
+    d.forceEnter(); // stands in for a fused fire at t=0
+    expect(fires).toHaveLength(1);
+    nowMs += TRANSITION_DEBOUNCE_MS + 1;
+    d.forceEnter(); // must NOT be dead: 01 §10 "always wire this up"
+    expect(fires).toHaveLength(2);
+    mode = 'TRANSITION';
+    nowMs += TRANSITION_DEBOUNCE_MS + 1;
+    d.forceEnter(); // manual override remains available even when indoors (debounce only)
+    expect(fires).toHaveLength(3);
+  });
+
 });

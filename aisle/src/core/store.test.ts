@@ -460,6 +460,14 @@ describe('post-review edges (01 §1)', () => {
     expect(store.getState().activeCrossingId).toBeNull();
     unbind();
   });
+  it("CROSSING_ABORTED while merely armed ('walked_past' in APPROACH_CROSSING) returns to OUTDOOR_NAV", () => {
+    const { store, bus, unbind } = bound('APPROACH_CROSSING');
+    store.setState({ activeCrossingId: 'x1' });
+    bus.emit({ type: 'CROSSING_ABORTED', crossingId: 'x1', reason: 'walked_past' });
+    expect(store.getState().mode).toBe('OUTDOOR_NAV');
+    expect(store.getState().activeCrossingId).toBeNull();
+    unbind();
+  });
   it('CROSSING_ABORTED mid-crossing returns to OUTDOOR_NAV, never AT_CURB', () => {
     const { store, bus, unbind } = bound('CROSSING');
     bus.emit({ type: 'CROSSING_ABORTED', crossingId: 'x1', reason: 'user' });

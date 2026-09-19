@@ -254,7 +254,15 @@ export function createTransitionDetector(deps: TransitionDetectorDeps): Transiti
     if (!evaluator || !started) return;
     const trace = evaluator.trace();
     deps.onTrace?.(trace);
-    if (fired || withinDebounce()) return;
+    if (withinDebounce()) return;
+    if (fired) {
+      // Re-arm: if the store rejected the earlier STORE_ENTERED (mode still not indoors once
+      // the debounce has elapsed), evaluate again; otherwise the handoff is done for good.
+      const m = deps.getMode?.();
+      const indoors = m === 'TRANSITION' || m === 'INDOOR_NAV' || m === 'AT_ITEM' || m === 'ITEM_PICKUP' || m === 'CHECKOUT_NAV' || m === 'DONE';
+      if (m === undefined || indoors) return;
+      fired = false;
+    }
     if (trace.confidence >= TRANSITION_FIRE_AT) {
       fire({ reason: 'FUSED', confidence: trace.confidence, signals: trace.signals, detectedAt: now() });
     }
@@ -342,10 +350,11 @@ export function createTransitionDetector(deps: TransitionDetectorDeps): Transiti
       };
     },
 
-    /** Manual override — always wired. A no-op inside the debounce window or after this start() fired. */
+    /** Manual override — always wired. A no-op only inside the 10 s debounce window. */
     forceEnter() {
+      // 01 §10: "always wire this up". Only the 10 s debounce may suppress it — never a
+      // previous fused fire that the store rejected (AT_CURB / CROSSING / APPROACH_CROSSING).
       if (withinDebounce()) return;
-      if (started && fired) return;
       const signals: TransitionSignals = { ...ZERO_SIGNALS };
       fire({ reason: 'MANUAL', confidence: 1, signals, detectedAt: now() });
     },

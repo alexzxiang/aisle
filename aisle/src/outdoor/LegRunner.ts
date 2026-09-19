@@ -26,7 +26,7 @@ import type {
 import type { AisleCrossingController } from '../crossing/CrossingController';
 import { buildRouteLine, crossingLengthM, projectOntoRoute, toCrossing, type RouteLine } from '../crossing/crossingData';
 import { type LatLng } from './geo';
-import { CROSSING_AHEAD_M, offlineNoticeRequest, prefetchPhrases, prefetchPortOf, replanRequest, variablePhrases } from './guidance';
+import { CROSSING_AHEAD_M, crossingAheadRequests, offlineNoticeRequest, prefetchPhrases, prefetchPortOf, replanRequest, variablePhrases } from './guidance';
 import { initialLegProgress, stepLegProgress, type LegProgressState } from './legs';
 import type { PlannerClient } from './planner';
 import { templateAnswer } from './plannerJobs';
@@ -187,6 +187,9 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
           distanceM: Math.max(0, toNearCurbM),
         });
         controller.arm(toCrossing(c));
+        // 03 Task 3: the compiled "Crossing ahead: <street>. Signalized." (+ "Push button
+        // likely.") is spoken exactly once per crossing, dedupe-keyed per crossingId.
+        for (const req of crossingAheadRequests(c, route?.script)) say(req);
       }
       break;
     }
@@ -319,7 +322,18 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
     }));
     unsubs.push(bus.on('FAR_CURB_REACHED', (e) => onCrossingReleased(e.crossingId)));
     unsubs.push(bus.on('CROSSING_ABORTED', (e) => onCrossingReleased(e.crossingId)));
-    unsubs.push(bus.on('STORE_ENTERED', () => stop()));
+    // Tear down only when A's store ACCEPTED the handoff (mode reached TRANSITION). A raw
+    // STORE_ENTERED fired while AT_CURB / CROSSING is rejected by the store (01 §1) and must
+    // not strand the user by disposing the crossing controller mid-crossing. Re-check on the
+    // next tick because the store applies the edge synchronously inside the same dispatch.
+    unsubs.push(bus.on('STORE_ENTERED', () => {
+      const check = (): void => {
+        const m = deps.getMode();
+        if (m === 'TRANSITION' || m === 'INDOOR_NAV') stop();
+      };
+      check();
+      if (running) setTimeout(check, 0);
+    }));
     tick = setInterval(() => {
       if (WALKING_MODES.has(deps.getMode())) applyTurn({ type: 'TICK', now: now() });
     }, TICK_MS);

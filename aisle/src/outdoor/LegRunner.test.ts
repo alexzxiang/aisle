@@ -47,8 +47,10 @@ function harness(opts: { fetchRoute?: RouteClient['fetchRoute'] } = {}) {
   bus.on('CROSSING_STARTED', () => { mode = 'CROSSING'; });
   bus.on('FAR_CURB_REACHED', () => { mode = 'OUTDOOR_NAV'; });
   bus.on('CROSSING_ABORTED', () => { mode = 'OUTDOOR_NAV'; });
-  bus.on('STORE_ENTERED', () => { mode = 'TRANSITION'; });
+  let modeLocked = false; // when true, emulate a store that REJECTS STORE_ENTERED (01 §1)
+  bus.on('STORE_ENTERED', () => { if (!modeLocked) mode = 'TRANSITION'; });
   const getMode = () => mode;
+  const lockMode = (locked: boolean) => { modeLocked = locked; };
   const controller = createCrossingController({ haptics, speech, sensors, perception, bus, outdoor, getMode });
   const transitionCalls: unknown[] = [];
   const transition: TransitionDetector = {
@@ -67,7 +69,7 @@ function harness(opts: { fetchRoute?: RouteClient['fetchRoute'] } = {}) {
   const events: string[] = [];
   bus.onAny((r) => events.push(r.event.type));
   const runner = createLegRunner({ haptics, speech, sensors, perception, bus, outdoor, routeClient, controller, transition, getMode, prefetchCapMs: 50 });
-  return { bus, haptics, speech, sensors, perception, outdoor, controller, transition, transitionCalls, fetched, events, runner, getMode };
+  return { bus, haptics, speech, sensors, perception, outdoor, controller, transition, transitionCalls, fetched, events, runner, getMode, lockMode };
 }
 
 const entrance = { lat: 40.4422747, lng: -79.9570206, radiusM: 35 };
@@ -259,5 +261,53 @@ describe('LegRunner', () => {
     await jest.advanceTimersByTimeAsync(200);
     expect(h.fetched).toHaveLength(2);
     expect(h.speech.said.filter((r) => r.cacheKey === 'offline_notice').every((r) => r.dedupeKey === 'offline')).toBe(true);
+  });
+});
+
+describe('reviewer must-fixes (seams with the store)', () => {
+  it('arming a crossing speaks the compiled announcement exactly once', async () => {
+    const h = harness();
+    const p = h.runner.start({ storeId: 'demo-store-01', entrance, destName: 'Demo Grocery', origin: START });
+    await jest.advanceTimersByTimeAsync(100);
+    await p;
+    const route = h.runner.getRoute()!;
+    const end0 = { lat: route.legs[0].endLat, lng: route.legs[0].endLng };
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    expect(h.events).toContain('CROSSING_AHEAD');
+    const announcements = h.speech.said.filter((r) => /Crossing ahead: South Bouquet Street\. Signalized\./.test(r.text));
+    expect(announcements).toHaveLength(1);
+    expect(announcements[0].dedupeKey).toBe('xing-x1-ahead');
+    // A second fix in range must not repeat it.
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    expect(h.speech.said.filter((r) => /Crossing ahead/.test(r.text))).toHaveLength(1);
+  });
+
+  it('a STORE_ENTERED the store rejects (mode stays AT_CURB) does not tear the runner down; an accepted one does', async () => {
+    const h = harness();
+    const p = h.runner.start({ storeId: 'demo-store-01', entrance, destName: 'Demo Grocery', origin: START });
+    await jest.advanceTimersByTimeAsync(100);
+    await p;
+    const route = h.runner.getRoute()!;
+    const end0 = { lat: route.legs[0].endLat, lng: route.legs[0].endLng };
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    const curb = route.crossings[0].nearCurb;
+    h.sensors.emitFix(fix(curb.lat, curb.lng, { speedMps: 0.1 }));
+    jest.advanceTimersByTime(2100);
+    h.sensors.emitFix(fix(curb.lat, curb.lng, { speedMps: 0.1 }));
+    expect(h.getMode()).toBe('AT_CURB');
+    expect(h.controller.getState()).not.toBe('IDLE');
+    // Rejected handoff: the mode machine keeps AT_CURB → the runner and controller stay alive.
+    h.lockMode(true);
+    h.bus.emit({ type: 'STORE_ENTERED', reason: 'FUSED', confidence: 0.7 });
+    jest.advanceTimersByTime(1);
+    expect(h.runner.getDebugState().running).toBe(true);
+    expect(h.runner.getDebugState().armedCrossingId).toBe('x1');
+    // Accepted handoff: the store reaches TRANSITION → the runner tears down.
+    h.lockMode(false);
+    h.bus.emit({ type: 'STORE_ENTERED', reason: 'MANUAL', confidence: 1 });
+    jest.advanceTimersByTime(1);
+    expect(h.runner.getDebugState().running).toBe(false);
   });
 });

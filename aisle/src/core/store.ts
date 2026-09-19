@@ -323,8 +323,10 @@ export function bindStoreToBus(store: AppStore, bus: AppEventBus, opts: BindOpti
   unsubs.push(bus.on('CROSSING_ABORTED', () => {
     // 01 §1 (post-review): user does not cross / walked past / re-plan → back to walking;
     // B re-arms the crossing with CROSSING_AHEAD → CURB_REACHED. CROSSING → AT_CURB is never legal.
+    // Also from APPROACH_CROSSING: B's controller emits 'walked_past' while merely ARMED
+    // (no 2 s curb dwell), and the APPROACH_CROSSING → OUTDOOR_NAV edge is already legal.
     const s = store.getState();
-    if ((s.mode === 'AT_CURB' || s.mode === 'CROSSING') && s.setMode('OUTDOOR_NAV')) {
+    if ((s.mode === 'APPROACH_CROSSING' || s.mode === 'AT_CURB' || s.mode === 'CROSSING') && s.setMode('OUTDOOR_NAV')) {
       store.setState({ activeCrossingId: null });
     }
   }));
