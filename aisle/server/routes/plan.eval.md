@@ -1,6 +1,6 @@
 # Nemotron Planner eval (Tier 2, "Beyond the Chatbot")
 
-Generated 2026-09-17T22:41:40.278Z by `server/routes/plan.eval.ts` — mode: **offline (templated fallback only; set NVIDIA_API_KEY to add the model column)**.
+Generated 2026-09-18T04:57:26.214Z by `server/routes/plan.eval.ts` — mode: **offline (templated fallback only; set NVIDIA_API_KEY to add the model column)**.
 
 Nemotron routes, classifies, judges and decides; it never chats and never sees a frame. Every job is schema-bound (`nvext.guided_json`), thinking off, streamed, behind a 1.5 s first-token deadline with a deterministic template so the walk never waits.
 
@@ -26,7 +26,7 @@ Failures (1): "how fart is it" → unknown (want how_far).
 
 ## 2. Leg wording A/B — raw Google text vs template vs model
 
-Blind "understood at walking pace" ratings (three teammates, 1–5) go in the last column by hand; the word counts are measured. Every spoken phrase must be ≤ 12 words with numbers as words.
+Blind "understood at walking pace" ratings (three teammates, 1–5) are filled into the last column by hand; the word counts are measured. Every spoken phrase must be ≤ 12 words with numbers as words.
 
 | # | Raw Google (words) | Template now / confirm (words) | Nemotron now / confirm (words) | Rating |
 |---|---|---|---|---|

@@ -12,15 +12,29 @@
  * track with a live-run recording; the replayer never changes (06 "chicken-and-egg").
  *
  * Run from the app root:  node fixtures/tools/generate.mjs
+ *                         node fixtures/tools/generate.mjs --index-only   (re-index recorded packs only)
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(here, '..');
 const perceptionDir = join(fixturesDir, 'perception');
 mkdirSync(perceptionDir, { recursive: true });
+
+// `--index-only`: rebuild perception/index.json from whatever .jsonl files are on disk
+// (recordings from the demo phone dropped over the synthetic packs) without touching
+// the packs or the track. Everything below is skipped.
+if (process.argv.includes('--index-only')) {
+  const onDisk = {};
+  for (const f of readdirSync(perceptionDir).filter((n) => n.endsWith('.jsonl')).sort()) {
+    onDisk[basename(f, '.jsonl')] = readFileSync(join(perceptionDir, f), 'utf8').replace(/\n+$/, '');
+  }
+  writeFileSync(join(perceptionDir, 'index.json'), JSON.stringify(onDisk) + '\n');
+  console.log(`index.json rebuilt from ${Object.keys(onDisk).length} packs: ${Object.keys(onDisk).join(', ')}`);
+  process.exit(0);
+}
 
 // ---------------------------------------------------------------------------
 // Deterministic pseudo-random (so regenerating gives byte-identical output)

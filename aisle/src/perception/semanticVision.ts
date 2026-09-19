@@ -21,11 +21,16 @@
  *     word filter, `speech` → say / playStream, `cameraRequest` / `userAction` →
  *     bus events + ≤ 6-word cached prompts (≤ 1 per 3 s, never while COURSE buzzes).
  *
- * WebSocket message protocol (client ↔ proxy, agreed with D; see cross_track_needs):
- *   → { ...VisionRequest }                                (one JSON text frame per ask)
- *   ← { type: 'speech', seq, streamId }                    (audio is streaming; play it)
- *   ← { type: 'result', seq, response: VisionResponse }    (apply the fields)
- *   ← { type: 'error',  seq, message }                     (treated as confidence 0)
+ * WebSocket protocol — D's `server/ws/frames.ts` (server/README.md "WebSocket protocol"):
+ *   → { type: 'vision', req: VisionRequest, priority: 'NAV' | 'INFO' }
+ *   → { type: 'warm', mode: AppMode }                      (re-warms the grammar pairs that mode uses)
+ *   → { type: 'ping' }                                     ← { type: 'pong' }
+ *   ← { type: 'hello', maxInFlight, audio }
+ *   ← { type: 'speech_start', streamId }                   (streamId = seq; audio follows; play it)
+ *   ← <binary: uint32 big-endian streamId + mp3 bytes>     (`onAudioChunk`)
+ *   ← { type: 'speech_end', streamId, firstAudioMs }
+ *   ← { type: 'result', res: VisionResponse | { confidence: 0, seq } }
+ *   ← { type: 'error', seq, code }                         (a `result` with confidence 0 follows for seq errors)
  */
 import type {
   AppMode,
@@ -94,7 +99,10 @@ export function freshnessWindowMs(question: VisionQuestion): number {
 // ---------------------------------------------------------------------------
 
 export interface VisionTransport {
-  ask(req: VisionRequest): Promise<VisionResponse>;
+  /** `opts.priority` rides along on the WebSocket envelope (the proxy's speech lane); HTTP ignores it. */
+  ask(req: VisionRequest, opts?: { priority?: 'NAV' | 'INFO' }): Promise<VisionResponse>;
+  /** Grammar warm-up for a mode where the transport has a cheap way to ask for it (WS `warm`). */
+  warm?(mode: AppMode): void;
 }
 
 /** `{ confidence: 0, seq }` — what the proxy returns on timeout and what every failure collapses to. */
@@ -187,6 +195,8 @@ export function createHttpVisionTransport(opts: HttpTransportOptions): VisionTra
 /** The subset of the WebSocket API the transport needs (injectable for tests). */
 export interface WsLike {
   readyState: number;
+  /** React Native and browsers accept 'arraybuffer'; set when present so audio frames arrive decodable. */
+  binaryType?: string;
   send(data: string): void;
   close(): void;
   onopen: ((ev: unknown) => void) | null;
@@ -196,6 +206,21 @@ export interface WsLike {
 }
 
 export const WS_OPEN = 1;
+export const STREAM_ID_BYTES = 4;
+
+/** Client → proxy messages (D's `frames.ts` `ClientMessage`). */
+export type WsClientMessage =
+  | { type: 'vision'; req: VisionRequest; priority: 'NAV' | 'INFO' }
+  | { type: 'warm'; mode: AppMode }
+  | { type: 'ping' };
+
+/** Binary frame: uint32 big-endian streamId followed by mp3 bytes. Pure; null for a short frame. */
+export function decodeAudioFrame(data: ArrayBuffer | Uint8Array): { streamId: number; audio: Uint8Array } | null {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (bytes.byteLength < STREAM_ID_BYTES) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return { streamId: view.getUint32(0, false), audio: bytes.subarray(STREAM_ID_BYTES) };
+}
 
 export interface WsTransportOptions {
   proxyWs: string;
@@ -203,8 +228,12 @@ export interface WsTransportOptions {
   WebSocketCtor?: new (url: string) => WsLike;
   /** Used while the socket is not open. */
   fallback?: VisionTransport;
-  /** Audio for `seq` is streaming under `streamId`; play it now (before the JSON lands). */
+  /** `speech_start`: audio for `seq` is about to stream under `streamId` (= seq); play it now, before the JSON lands. */
   onSpeechStream?: (seq: number, streamId: string) => void;
+  /** One mp3 chunk of a stream. The composition root hands these to whatever plays `streamId` (A's stream player). */
+  onAudioChunk?: (streamId: string, audio: Uint8Array) => void;
+  /** `speech_end`: no more audio for `streamId`. `firstAudioMs` is the proxy's measured first-audio latency. */
+  onSpeechEnd?: (streamId: string, firstAudioMs: number | null) => void;
   timeoutMs?: number;
   now?: () => number;
 }
@@ -213,12 +242,18 @@ export interface WsVisionTransport extends VisionTransport {
   open(): void;
   close(): void;
   isOpen(): boolean;
+  /** `{type: 'warm', mode}` when the socket is open; a no-op otherwise (the proxy warms itself at start). */
+  warm(mode: AppMode): void;
+  ping(): void;
+  /** From the proxy's `hello`; null until it arrives. */
+  serverInfo(): { maxInFlight: number; audio: boolean } | null;
 }
 
 export function createWsVisionTransport(opts: WsTransportOptions): WsVisionTransport {
   const timeoutMs = opts.timeoutMs ?? VISION_TIMEOUT_MS;
   const Ctor = opts.WebSocketCtor ?? (typeof WebSocket !== 'undefined' ? (WebSocket as unknown as new (url: string) => WsLike) : null);
   let ws: WsLike | null = null;
+  let hello: { maxInFlight: number; audio: boolean } | null = null;
   const pending = new Map<number, { resolve: (r: VisionResponse) => void; timer: ReturnType<typeof setTimeout> }>();
 
   const settle = (seq: number, r: VisionResponse): void => {
@@ -233,31 +268,64 @@ export function createWsVisionTransport(opts: WsTransportOptions): WsVisionTrans
     for (const seq of Array.from(pending.keys())) settle(seq, emptyVisionResponse(seq));
   };
 
-  const handle = (data: unknown): void => {
+  const handleText = (text: string): void => {
     let msg: unknown;
     try {
-      msg = typeof data === 'string' ? JSON.parse(data) : data;
+      msg = JSON.parse(text);
     } catch {
       return;
     }
-    if (!isRecord(msg) || typeof msg.seq !== 'number') return;
-    const seq = msg.seq;
+    if (!isRecord(msg) || typeof msg.type !== 'string') return;
     switch (msg.type) {
-      case 'speech':
-        if (typeof msg.streamId === 'string' || typeof msg.streamId === 'number') opts.onSpeechStream?.(seq, String(msg.streamId));
+      case 'hello':
+        hello = { maxInFlight: typeof msg.maxInFlight === 'number' ? msg.maxInFlight : MAX_IN_FLIGHT, audio: msg.audio === true };
         return;
-      case 'result':
-        settle(seq, coerceVisionResponse(msg.response, seq));
+      case 'speech_start':
+        if (typeof msg.streamId === 'number') opts.onSpeechStream?.(msg.streamId, String(msg.streamId));
         return;
+      case 'speech_end':
+        if (typeof msg.streamId === 'number') opts.onSpeechEnd?.(String(msg.streamId), typeof msg.firstAudioMs === 'number' ? msg.firstAudioMs : null);
+        return;
+      case 'result': {
+        const res = msg.res;
+        if (!isRecord(res) || typeof res.seq !== 'number') return;
+        settle(res.seq, coerceVisionResponse(res, res.seq));
+        return;
+      }
       case 'error':
-        settle(seq, emptyVisionResponse(seq));
+        // Seq-bound errors (stale_seq, too_many_in_flight, upstream) are followed by a `result`
+        // with confidence 0; settling here is idempotent. Socket-level errors carry seq null.
+        if (typeof msg.seq === 'number') settle(msg.seq, emptyVisionResponse(msg.seq));
         return;
       default:
-        return;
+        return;   // pong, unknown
     }
   };
 
+  const handle = (data: unknown): void => {
+    if (typeof data === 'string') {
+      handleText(data);
+      return;
+    }
+    if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
+      const frame = decodeAudioFrame(data);
+      if (frame) opts.onAudioChunk?.(String(frame.streamId), frame.audio);
+      return;
+    }
+    if (isRecord(data)) handleText(JSON.stringify(data));
+  };
+
   const isOpen = (): boolean => ws !== null && ws.readyState === WS_OPEN;
+
+  const sendMessage = (m: WsClientMessage): boolean => {
+    if (!isOpen()) return false;
+    try {
+      ws!.send(JSON.stringify(m));
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   return {
     open() {
@@ -268,9 +336,15 @@ export function createWsVisionTransport(opts: WsTransportOptions): WsVisionTrans
         ws = null;
         return;
       }
+      try {
+        ws.binaryType = 'arraybuffer';   // audio frames arrive as ArrayBuffer, not Blob
+      } catch {
+        // read-only on an exotic implementation; binary frames are then ignored
+      }
       ws.onmessage = (ev) => handle(ev.data);
       ws.onclose = () => {
         ws = null;
+        hello = null;
         failAll();
       };
       ws.onerror = () => {
@@ -280,6 +354,7 @@ export function createWsVisionTransport(opts: WsTransportOptions): WsVisionTrans
     close() {
       const s = ws;
       ws = null;
+      hello = null;
       failAll();
       try {
         s?.close();
@@ -288,16 +363,21 @@ export function createWsVisionTransport(opts: WsTransportOptions): WsVisionTrans
       }
     },
     isOpen,
-    ask(req) {
+    serverInfo: () => hello,
+    warm(mode) {
+      sendMessage({ type: 'warm', mode });
+    },
+    ping() {
+      sendMessage({ type: 'ping' });
+    },
+    ask(req, o) {
       if (!isOpen()) {
-        return opts.fallback ? opts.fallback.ask(req) : Promise.resolve(emptyVisionResponse(req.seq));
+        return opts.fallback ? opts.fallback.ask(req, o) : Promise.resolve(emptyVisionResponse(req.seq));
       }
       return new Promise<VisionResponse>((resolve) => {
         const timer = setTimeout(() => settle(req.seq, emptyVisionResponse(req.seq)), timeoutMs);
         pending.set(req.seq, { resolve, timer });
-        try {
-          ws!.send(JSON.stringify(req));
-        } catch {
+        if (!sendMessage({ type: 'vision', req, priority: o?.priority === 'INFO' ? 'INFO' : 'NAV' })) {
           settle(req.seq, emptyVisionResponse(req.seq));
         }
       });
@@ -451,9 +531,20 @@ export interface SemanticVisionStats {
 
 export interface SemanticVision {
   ask(question: VisionQuestion, opts?: AskOptions): Promise<AskOutcome>;
+  /**
+   * For a caller that builds its own `VisionRequest` (D's TransitionDetector asks
+   * `storefront` at its own ≤ 1 / 5 s pace): the shared, monotonic seq counter —
+   * the proxy's socket rejects a seq that does not increase.
+   */
+  nextSeq(): number;
+  /**
+   * The same transport and in-flight cap, as the `{ ask(req) }` shape D's detector
+   * takes. Nothing from this path is spoken here: the caller reads the fields.
+   */
+  asVisionAsk(): { ask(req: VisionRequest): Promise<VisionResponse> };
   /** The WS transport reports that audio for `seq` is streaming; play it through A's queue. */
   noteStream(seq: number, streamId: string): void;
-  /** Warm the proxy's grammar cache for a mode: a `free` request with no image and `userText: 'warm'`. */
+  /** Warm the proxy's grammar cache for a mode: the WS `warm` message, or over HTTP a `free` request with no image and `userText: 'warm'`. */
   warm(mode?: AppMode): Promise<void>;
   getFacts(): VisionFacts;
   getStats(): SemanticVisionStats;
@@ -482,7 +573,8 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
     facts.signalState = e.state;
   }));
 
-  let seq = 0;
+  let seq = 0;            // last seq handed out (ask() and nextSeq())
+  let lastSentSeq = 0;    // last seq that went to the transport; the socket rejects a lower one
   let inFlight = 0;
   let lastAppliedSeq = 0;
   let lastPromptAt = -Infinity;
@@ -571,6 +663,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
 
       seq += 1;
       const n = seq;
+      lastSentSeq = n;
       const priority: SpeechPriority = o.priority ?? (question === 'free' ? 'INFO' : 'NAV');
       const meta = { at: t0, question, priority, silent: o.silent === true };
       requestedAt.set(n, meta);
@@ -581,7 +674,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
 
       let res: VisionResponse;
       try {
-        res = coerceVisionResponse(await transport.ask(await buildRequest(question, o, n)), n);
+        res = coerceVisionResponse(await transport.ask(await buildRequest(question, o, n), { priority: priority === 'INFO' ? 'INFO' : 'NAV' }), n);
       } catch {
         inFlight -= 1;
         stats.inFlight = inFlight;
@@ -613,6 +706,36 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       return { status: 'applied', seq: n, response: res, streamed: wasStreamed, latencyMs };
     },
 
+    nextSeq() {
+      seq += 1;
+      return seq;
+    },
+
+    asVisionAsk() {
+      return {
+        ask: async (req: VisionRequest): Promise<VisionResponse> => {
+          if (inFlight >= MAX_IN_FLIGHT) return emptyVisionResponse(req.seq);
+          // A caller that did not take its seq from `nextSeq()` must still not go backwards.
+          const n = req.seq > lastSentSeq ? req.seq : ++seq;
+          seq = Math.max(seq, n);
+          lastSentSeq = n;
+          const sent: VisionRequest = n === req.seq ? req : { ...req, seq: n };
+          inFlight += 1;
+          stats.calls += 1;
+          stats.inFlight = inFlight;
+          try {
+            return coerceVisionResponse(await transport.ask(sent, { priority: 'INFO' }), n);
+          } catch {
+            stats.errors += 1;
+            return emptyVisionResponse(n);
+          } finally {
+            inFlight -= 1;
+            stats.inFlight = inFlight;
+          }
+        },
+      };
+    },
+
     noteStream(n, streamId) {
       const meta = requestedAt.get(n);
       if (!meta) return;                              // unknown or already settled: never play a stale stream
@@ -624,14 +747,16 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
     },
 
     async warm(mode) {
+      const m = mode ?? store.getState().mode;
+      if (typeof transport.warm === 'function') {
+        // D's socket has a dedicated `warm` message; no seq is spent and no model is called.
+        transport.warm(m);
+        return;
+      }
+      // HTTP: the 04 Task 12 convention — a `free` request with no image and `userText: 'warm'`.
       const n = ++seq;
-      const req: VisionRequest = {
-        seq: n,
-        question: 'free',
-        mode: mode ?? store.getState().mode,
-        facts: { detections: [], ocr: [] },
-        userText: 'warm',
-      };
+      lastSentSeq = n;
+      const req: VisionRequest = { seq: n, question: 'free', mode: m, facts: { detections: [], ocr: [] }, userText: 'warm' };
       try {
         await transport.ask(req);
       } catch {

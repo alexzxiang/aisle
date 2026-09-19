@@ -10,6 +10,7 @@ import {
   createHttpVisionTransport,
   createSemanticVision,
   createWsVisionTransport,
+  decodeAudioFrame,
   emptyVisionResponse,
   gateVerdict,
   sanitizeSpeech,
@@ -280,19 +281,53 @@ describe('createSemanticVision policy', () => {
     expect(h.sv.getStats().inFlight).toBe(0);
     expect(h.speech.said).toEqual([]);
   });
-  it('warm sends a free request with userText "warm" and no image', async () => {
+  it('warm over HTTP sends a free request with userText "warm" and no image; over a transport with warm() it uses that', async () => {
     const transport = scripted((req) => okResponse(req.seq));
     const h = harness(transport);
     await h.sv.warm('INDOOR_NAV');
     expect(transport.requests[0]).toMatchObject({ question: 'free', userText: 'warm', mode: 'INDOOR_NAV' });
     expect(transport.requests[0]!.image).toBeUndefined();
+
+    const warmed: string[] = [];
+    const withWarm: VisionTransport = { ask: transport.ask, warm: (m) => { warmed.push(m); } };
+    const h2 = harness(withWarm);
+    await h2.sv.warm('AT_CURB');
+    expect(warmed).toEqual(['AT_CURB']);
+    expect(transport.requests).toHaveLength(1);   // no model call spent on the warm-up
+  });
+
+  it('asVisionAsk shares the seq counter, transport and in-flight cap with ask(), and never speaks', async () => {
+    const transport = scripted((req) => okResponse(req.seq, { speech: 'Doors ahead.', storefront: { visible: true, confidence: 0.9 } }));
+    const h = harness(transport);
+    await h.sv.ask('aisle_disambiguate');                         // seq 1
+    const raw = h.sv.asVisionAsk();
+    const mine = h.sv.nextSeq();                                  // seq 2
+    const res = await raw.ask({ seq: mine, question: 'storefront', mode: 'OUTDOOR_NAV', facts: { detections: [], ocr: [] } });
+    expect(res.seq).toBe(2);
+    expect(res.storefront.visible).toBe(true);
+    // a stale caller-chosen seq is re-stamped forward, never sent backwards
+    const res2 = await raw.ask({ seq: 1, question: 'storefront', mode: 'OUTDOOR_NAV', facts: { detections: [], ocr: [] } });
+    expect(res2.seq).toBe(3);
+    expect(transport.requests.map((r) => r.seq)).toEqual([1, 2, 3]);
+    expect(h.sv.nextSeq()).toBe(4);
+    expect(h.speech.said.map((r) => r.text)).toEqual(['Doors ahead.']);   // only ask() speaks; the raw path is silent
+    expect(h.sv.getStats().calls).toBe(3);
+  });
+
+  it('passes the speech priority to the transport (NAV by default, INFO for free)', async () => {
+    const priorities: Array<string | undefined> = [];
+    const transport: VisionTransport = { ask: async (req, o) => { priorities.push(o?.priority); return okResponse(req.seq); } };
+    const h = harness(transport);
+    await h.sv.ask('aisle_disambiguate');
+    await h.sv.ask('free', { userText: 'what is ahead' });
+    expect(priorities).toEqual(['NAV', 'INFO']);
   });
 });
 
-describe('streaming over the WebSocket transport', () => {
+describe('streaming over the WebSocket transport (D\'s frames protocol)', () => {
   function fakeSocket() {
     const sent: string[] = [];
-    const ws: WsLike & { sent: string[]; open(): void; receive(msg: unknown): void } = {
+    const ws: WsLike & { sent: string[]; open(): void; receive(msg: unknown): void; receiveBinary(buf: ArrayBuffer): void } = {
       readyState: 0,
       sent,
       send: (d) => { sent.push(d); },
@@ -301,52 +336,103 @@ describe('streaming over the WebSocket transport', () => {
       onmessage: null,
       onclose: null,
       onerror: null,
-      open() { ws.readyState = 1; ws.onopen?.({}); },
+      open() { ws.readyState = 1; ws.onopen?.({}); ws.onmessage?.({ data: JSON.stringify({ type: 'hello', maxInFlight: 3, audio: true }) }); },
       receive(msg) { ws.onmessage?.({ data: JSON.stringify(msg) }); },
+      receiveBinary(buf) { ws.onmessage?.({ data: buf }); },
     };
     return ws;
   }
 
-  it('plays the stream as soon as speech closes, then applies the JSON without speaking twice', async () => {
+  function audioFrame(streamId: number, bytes: number[]): ArrayBuffer {
+    const buf = new ArrayBuffer(4 + bytes.length);
+    new DataView(buf).setUint32(0, streamId, false);
+    new Uint8Array(buf, 4).set(bytes);
+    return buf;
+  }
+
+  it('decodeAudioFrame reads the uint32 big-endian streamId prefix', () => {
+    const f = decodeAudioFrame(audioFrame(4242, [1, 2, 3]))!;
+    expect(f.streamId).toBe(4242);
+    expect(Array.from(f.audio)).toEqual([1, 2, 3]);
+    expect(decodeAudioFrame(new Uint8Array(2))).toBeNull();
+  });
+
+  it('sends {type: vision, req, priority}; plays the stream on speech_start, routes audio frames, then applies the JSON without speaking twice', async () => {
     const sock = fakeSocket();
     let sv: ReturnType<typeof createSemanticVision> | null = null;
+    const chunks: Array<{ streamId: string; n: number }> = [];
+    const ends: Array<{ streamId: string; firstAudioMs: number | null }> = [];
     const transport = createWsVisionTransport({
       proxyWs: 'ws://p/ws',
       WebSocketCtor: function Ctor() { return sock; } as unknown as new (url: string) => WsLike,
       onSpeechStream: (seq, id) => sv?.noteStream(seq, id),
+      onAudioChunk: (streamId, audio) => chunks.push({ streamId, n: audio.byteLength }),
+      onSpeechEnd: (streamId, firstAudioMs) => ends.push({ streamId, firstAudioMs }),
     });
     transport.open();
     sock.open();
+    expect(sock.binaryType).toBe('arraybuffer');
+    expect(transport.serverInfo()).toEqual({ maxInFlight: 3, audio: true });
     const h = harness(transport);
     sv = h.sv;
     const p = h.sv.ask('aisle_disambiguate');
     await Promise.resolve();
     await Promise.resolve();
     expect(sock.sent).toHaveLength(1);
-    const req = JSON.parse(sock.sent[0]!) as VisionRequest;
-    sock.receive({ type: 'speech', seq: req.seq, streamId: String(req.seq) });
+    const env = JSON.parse(sock.sent[0]!) as { type: string; req: VisionRequest; priority: string };
+    expect(env.type).toBe('vision');
+    expect(env.priority).toBe('NAV');
+    const req = env.req;
+    expect(req.question).toBe('aisle_disambiguate');
+    sock.receive({ type: 'speech_start', streamId: req.seq });
     expect(h.speech.streams).toEqual([{ streamId: '1', priority: 'NAV' }]);
-    sock.receive({ type: 'result', seq: req.seq, response: okResponse(req.seq, { speech: 'Aisle three, dairy.', aisle: { matchedAisleId: 'a3', matchedLandmarkId: null, confidence: 0.9 } }) });
+    sock.receiveBinary(audioFrame(req.seq, [9, 9]));
+    sock.receiveBinary(audioFrame(req.seq, [9]));
+    sock.receive({ type: 'speech_end', streamId: req.seq, firstAudioMs: 410 });
+    expect(chunks).toEqual([{ streamId: '1', n: 2 }, { streamId: '1', n: 1 }]);
+    expect(ends).toEqual([{ streamId: '1', firstAudioMs: 410 }]);
+    sock.receive({ type: 'result', res: okResponse(req.seq, { speech: 'Aisle three, dairy.', aisle: { matchedAisleId: 'a3', matchedLandmarkId: null, confidence: 0.9 } }) });
     const out = await p;
     expect(out.status).toBe('applied');
     expect(out.streamed).toBe(true);
     expect(h.speech.said).toEqual([]); // already heard via the stream
     expect(out.response?.aisle.matchedAisleId).toBe('a3');
   });
-  it('an error frame or a closed socket resolves to confidence 0; unknown seqs are ignored', async () => {
+
+  it('warm sends {type: warm, mode} and ping sends {type: ping}; both are no-ops while closed', () => {
+    const sock = fakeSocket();
+    const transport = createWsVisionTransport({ proxyWs: 'ws://p/ws', WebSocketCtor: function Ctor() { return sock; } as unknown as new (url: string) => WsLike });
+    transport.warm('INDOOR_NAV');
+    expect(sock.sent).toEqual([]);
+    transport.open();
+    sock.open();
+    transport.warm('INDOOR_NAV');
+    transport.ping();
+    expect(sock.sent.map((m) => JSON.parse(m) as unknown)).toEqual([{ type: 'warm', mode: 'INDOOR_NAV' }, { type: 'ping' }]);
+    sock.receive({ type: 'pong' });   // ignored
+  });
+
+  it('an error frame, a {confidence: 0} result or a closed socket resolves to confidence 0; unknown seqs are ignored', async () => {
     const sock = fakeSocket();
     const transport = createWsVisionTransport({ proxyWs: 'ws://p/ws', WebSocketCtor: function Ctor() { return sock; } as unknown as new (url: string) => WsLike });
     transport.open();
     sock.open();
     const p = transport.ask({ seq: 5, question: 'free', mode: 'IDLE', facts: { detections: [], ocr: [] } });
-    sock.receive({ type: 'result', seq: 99, response: okResponse(99) });
-    sock.receive({ type: 'error', seq: 5, message: 'upstream' });
+    sock.receive({ type: 'result', res: okResponse(99) });
+    sock.receive({ type: 'error', seq: 5, code: 'upstream' });
     expect((await p).confidence).toBe(0);
+    const p1 = transport.ask({ seq: 4, question: 'free', mode: 'IDLE', facts: { detections: [], ocr: [] } });
+    sock.receive({ type: 'error', seq: 4, code: 'stale_seq' });
+    sock.receive({ type: 'result', res: { confidence: 0, seq: 4 } });   // the follow-up result is idempotent
+    expect(await p1).toMatchObject({ confidence: 0, seq: 4 });
     const p2 = transport.ask({ seq: 6, question: 'free', mode: 'IDLE', facts: { detections: [], ocr: [] } });
+    sock.receive({ type: 'error', seq: null, code: 'bad_json' });   // socket-level: settles nothing
     sock.close();
     expect((await p2).seq).toBe(6);
     expect(transport.isOpen()).toBe(false);
+    expect(transport.serverInfo()).toBeNull();
   });
+
   it('falls back to the HTTP transport while the socket is not open', async () => {
     const fallback = scripted((req) => okResponse(req.seq, { speech: 'Fallback.' }));
     const transport = createWsVisionTransport({ proxyWs: 'ws://p/ws', WebSocketCtor: undefined, fallback });
@@ -354,6 +440,7 @@ describe('streaming over the WebSocket transport', () => {
     expect(res.speech).toBe('Fallback.');
     expect(fallback.requests).toHaveLength(1);
   });
+
   it('noteStream ignores seqs that are unknown, stale, or silent', () => {
     const transport = scripted((req) => okResponse(req.seq));
     const h = harness(transport);

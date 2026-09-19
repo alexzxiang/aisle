@@ -9,7 +9,7 @@
  */
 import type { PlannerJob, PlannerResult } from '../src/core/contracts';
 import type { NetworkGate } from './network';
-import { MockNetworkError, type PlannerClient, type PlannerInputMap, type PlannerOutputMap } from './types';
+import { MockNetworkError, type PlannerClient, type PlannerJobInput, type PlannerJobOutput } from './types';
 
 export interface PlanFixtureEntry {
   seq?: number | '*';
@@ -43,15 +43,15 @@ export function pickPlanEntry(file: PlanFixtureFile | undefined, input: unknown,
   );
 }
 
-export function emptyOutput<J extends PlannerJob>(job: J): PlannerOutputMap[J] {
-  const out: PlannerOutputMap = {
+export function emptyOutput<J extends PlannerJob>(job: J): PlannerJobOutput<J> {
+  const out: { [K in PlannerJob]: PlannerJobOutput<K> } = {
     routeCompile: { legs: [], crossingAnnouncements: [] },
     parseIntent: { intent: 'unknown', item: null, reply: 'Say the item again.' },
     disambiguate: { aisleId: null, confidence: 0, askBack: 'Say the item again.' },
     crossingAnnounce: { nodeId: null, signalized: null, pushButtonLikely: false, text: 'Crossing ahead.' },
     answer: { reply: '' },
   };
-  return out[job];
+  return out[job] as PlannerJobOutput<J>;
 }
 
 export interface MockPlannerOptions {
@@ -80,7 +80,7 @@ export function createMockPlanner(opts: MockPlannerOptions): MockPlanner {
 
   return {
     callCount: (job) => counts.get(job) ?? 0,
-    async run<J extends PlannerJob>(job: J, input: PlannerInputMap[J]): Promise<PlannerResult<PlannerOutputMap[J]>> {
+    async run<J extends PlannerJob>(job: J, input: PlannerJobInput<J>): Promise<PlannerResult<PlannerJobOutput<J>>> {
       const n = (counts.get(job) ?? 0) + 1;
       counts.set(job, n);
       if (opts.network && !opts.network.isOnline()) throw new MockNetworkError(`plan/${job}`);
@@ -91,7 +91,7 @@ export function createMockPlanner(opts: MockPlannerOptions): MockPlanner {
       }
       const delay = entry.delayMs ?? Math.min(entry.result.latencyMs, 1500);
       await wait(delay);
-      return { ...entry.result, job, output: entry.result.output as PlannerOutputMap[J] };
+      return { ...entry.result, job, output: entry.result.output as PlannerJobOutput<J> };
     },
   };
 }

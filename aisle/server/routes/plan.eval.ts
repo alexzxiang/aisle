@@ -203,7 +203,7 @@ async function main(): Promise<void> {
   // 2. Wording A/B
   lines.push('## 2. Leg wording A/B — raw Google text vs template vs model');
   lines.push('');
-  lines.push('Blind "understood at walking pace" ratings (three teammates, 1–5) go in the last column by hand; the word counts are measured. Every spoken phrase must be ≤ 12 words with numbers as words.');
+  lines.push('Blind "understood at walking pace" ratings (three teammates, 1–5) are filled into the last column by hand; the word counts are measured. Every spoken phrase must be ≤ 12 words with numbers as words.');
   lines.push('');
   const template = templateRouteCompile({ steps: GOOGLE_STEPS, crossings: [] });
   let modelLegs: typeof template.legs | null = null;

@@ -437,15 +437,42 @@ public struct SnapshotPayload: PerceptionPayload, Equatable {
 /// One line of `fixtures/perception/*.jsonl`, in the shape agreed with D
 /// (05 Part 1): `{"t": 1234, "event": "onSignalState", "payload": {...}}`.
 /// `t` is milliseconds from fixture start.
+///
+/// `payload` is the **01 §7 callback shape**, not the bridge envelope: D's
+/// replayer (`mocks/perception.ts`) dispatches each line's payload straight to
+/// the `PerceptionService` callback, so `onOcrText` / `onDetections` lines carry
+/// a bare array and `onTrackingState` a bare string. `PerceptionEngine`
+/// unwraps the `{items}` / `{state}` envelopes before recording — the export
+/// must be consumable by the replayer unchanged (09 §11).
 public struct DebugExportLine: Codable, Equatable {
   public var t: Double
   public var event: String
-  public var payload: [String: JSONValue]
+  public var payload: JSONValue
 
-  public init(t: Double, event: String, payload: [String: JSONValue]) {
+  public init(t: Double, event: String, payload: JSONValue) {
     self.t = t
     self.event = event
     self.payload = payload
+  }
+
+  /// The bridge sends `{items: [...]}` for the array events and `{state: "..."}`
+  /// for tracking state (Expo events are dictionaries); the jsonl export records
+  /// the 01 §7 callback shape instead, which is what D's replayer dispatches.
+  public static func payload(for event: PerceptionEventName, wire payload: [String: Any]) -> JSONValue {
+    switch event {
+    case .ocrText, .detections:
+      if let items = payload["items"] as? [Any] {
+        return .array(items.map { JSONValue.from($0) })
+      }
+      return .array([])
+    case .trackingState:
+      if let state = payload["state"] as? String {
+        return .string(state)
+      }
+      return .null
+    default:
+      return .object(payload.mapValues { JSONValue.from($0) })
+    }
   }
 }
 

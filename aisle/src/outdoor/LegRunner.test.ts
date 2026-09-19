@@ -3,6 +3,7 @@ import { createEventBus } from '../core/bus';
 import { createCrossingController } from '../crossing/CrossingController';
 import { destinationPoint, interpolate, type LatLng } from './geo';
 import { createLegRunner } from './LegRunner';
+import { RouteClientError, type RouteClient } from './routeClient';
 import { createOutdoorStore } from './store';
 import { createFakeHaptics, createFakePerception, createFakeSensors, createFakeSpeech, fix } from './testing';
 import type { RouteCrossing, RouteLeg, RouteResponse } from './types';
@@ -33,7 +34,7 @@ function buildRoute(): RouteResponse {
   };
 }
 
-function harness() {
+function harness(opts: { fetchRoute?: RouteClient['fetchRoute'] } = {}) {
   const bus = createEventBus();
   const haptics = createFakeHaptics();
   const speech = createFakeSpeech();
@@ -57,7 +58,12 @@ function harness() {
     forceEnter: () => {},
   };
   const fetched: unknown[] = [];
-  const routeClient = { async fetchRoute(req: unknown) { fetched.push(req); return buildRoute(); } };
+  const routeClient: RouteClient = {
+    async fetchRoute(req) {
+      fetched.push(req);
+      return opts.fetchRoute ? opts.fetchRoute(req) : buildRoute();
+    },
+  };
   const events: string[] = [];
   bus.onAny((r) => events.push(r.event.type));
   const runner = createLegRunner({ haptics, speech, sensors, perception, bus, outdoor, routeClient, controller, transition, getMode, prefetchCapMs: 50 });
@@ -191,5 +197,67 @@ describe('LegRunner', () => {
     h.sensors.emitFix(fix(p.lat, p.lng));
     expect(await h.runner.answer('how_far')).toBe('About two hundred feet to the turn.');
     expect(await h.runner.answer('where_am_i')).toBe('On Forbes Avenue, about two hundred feet from South Bouquet Street.');
+  });
+
+  /** Three stationary fixes 40 m off leg 0 (and far from leg 1): the off-route rule. */
+  function wanderOff(h: ReturnType<typeof harness>, alongM = 60, legBearing = 240) {
+    const onLeg = destinationPoint(START, legBearing, alongM);
+    const off = destinationPoint(onLeg, legBearing + 90, 40);
+    for (let i = 0; i < 3; i += 1) h.sensors.emitFix(fix(off.lat, off.lng, { speedMps: 0.2 }));
+    return off;
+  }
+
+  it('re-plans on the off-route rule: says Re-routing, fetches from the current fix, emits ROUTE_READY again', async () => {
+    const h = harness();
+    await h.runner.loadRoute(buildRoute(), { storeId: 's', entrance, destName: 'd', origin: START });
+    expect(h.fetched).toHaveLength(0);
+    const off = wanderOff(h);
+    await jest.advanceTimersByTimeAsync(200);
+    expect(h.fetched).toHaveLength(1);
+    expect(h.fetched[0]).toMatchObject({ origin: { lat: off.lat, lng: off.lng }, dest: entrance, storeId: 's' });
+    expect(h.speech.texts()).toContain('Re-routing.');
+    expect(h.events.filter((e) => e === 'ROUTE_READY')).toHaveLength(2);
+    expect(h.runner.getDebugState().replans).toBe(1);
+    expect(h.outdoor.getState().replans).toBe(1);
+    expect(h.runner.getDebugState().legIndex).toBe(0);
+    expect(h.outdoor.getState().offline).toBe(false);
+  });
+
+  it('a re-plan whose new route drops the armed crossing aborts the controller with reason replan', async () => {
+    const h = harness({ fetchRoute: async () => ({ ...buildRoute(), crossings: [] }) });
+    await h.runner.loadRoute(buildRoute(), { storeId: 's', entrance, destName: 'd', origin: START });
+    const route = h.runner.getRoute()!;
+    const end0 = { lat: route.legs[0].endLat, lng: route.legs[0].endLng };
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    h.sensors.emitFix(fix(end0.lat, end0.lng));
+    expect(h.controller.getState()).toBe('ARMED');
+    expect(h.getMode()).toBe('APPROACH_CROSSING');
+    // Wander 40 m off leg 1, 10 m into it (short of the crossing line, so not "walked past").
+    const onLeg = destinationPoint(end0, 330, 10);
+    const off = destinationPoint(onLeg, 60, 40);
+    for (let i = 0; i < 3; i += 1) h.sensors.emitFix(fix(off.lat, off.lng, { speedMps: 0.2 }));
+    await jest.advanceTimersByTimeAsync(200);
+    const aborted = h.bus.history().find((r) => r.event.type === 'CROSSING_ABORTED')?.event as { reason?: string } | undefined;
+    expect(aborted?.reason).toBe('replan');
+    expect(h.getMode()).toBe('OUTDOOR_NAV');
+    expect(h.runner.getDebugState().armedCrossingId).toBeNull();
+    expect(h.runner.getRoute()!.crossings).toHaveLength(0);
+  });
+
+  it('a re-plan that cannot reach the proxy keeps the old route and says offline_notice once', async () => {
+    const h = harness({ fetchRoute: async () => { throw new RouteClientError('route: timeout', 'timeout'); } });
+    await h.runner.loadRoute(buildRoute(), { storeId: 's', entrance, destName: 'd', origin: START });
+    wanderOff(h);
+    await jest.advanceTimersByTimeAsync(200);
+    expect(h.fetched).toHaveLength(1);
+    expect(h.speech.keys()).toContain('offline_notice');
+    expect(h.outdoor.getState().offline).toBe(true);
+    expect(h.runner.getRoute()!.legs).toHaveLength(3);
+    expect(h.events.filter((e) => e === 'ROUTE_READY')).toHaveLength(1);
+    // A second off-route run tries again; the notice carries a dedupeKey so A drops the repeat.
+    wanderOff(h, 90);
+    await jest.advanceTimersByTimeAsync(200);
+    expect(h.fetched).toHaveLength(2);
+    expect(h.speech.said.filter((r) => r.cacheKey === 'offline_notice').every((r) => r.dedupeKey === 'offline')).toBe(true);
   });
 });

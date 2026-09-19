@@ -417,7 +417,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
     if let frameTime {
       lastFrameToEventMs = max(0, (ProcessInfo.processInfo.systemUptime - frameTime) * 1000)
     }
-    debugExport?.record(event: event, payload: payload)
+    debugExport?.record(event: event, payload: DebugExportLine.payload(for: event, wire: payload))
     sink?.perceptionEngine(self, emit: event, payload: payload)
   }
 
@@ -604,12 +604,10 @@ public final class DebugExportRecorder {
     encoder.outputFormatting = [.sortedKeys]
   }
 
-  public func record(event: PerceptionEventName, payload: [String: Any]) {
+  public func record(event: PerceptionEventName, payload: JSONValue) {
     let now = ProcessInfo.processInfo.systemUptime * 1000
     if startedAt == nil { startedAt = now }
-    let line = DebugExportLine(
-      t: now - (startedAt ?? now), event: event.rawValue,
-      payload: payload.mapValues { JSONValue.from($0) })
+    let line = DebugExportLine(t: now - (startedAt ?? now), event: event.rawValue, payload: payload)
     guard var data = try? encoder.encode(line) else { return }
     data.append(0x0A)
     handle.write(data)

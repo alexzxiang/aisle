@@ -26,11 +26,11 @@ import type {
 import type { AisleCrossingController } from '../crossing/CrossingController';
 import { buildRouteLine, crossingLengthM, projectOntoRoute, toCrossing, type RouteLine } from '../crossing/crossingData';
 import { type LatLng } from './geo';
-import { CROSSING_AHEAD_M, prefetchPhrases, prefetchPortOf, replanRequest, variablePhrases } from './guidance';
+import { CROSSING_AHEAD_M, offlineNoticeRequest, prefetchPhrases, prefetchPortOf, replanRequest, variablePhrases } from './guidance';
 import { initialLegProgress, stepLegProgress, type LegProgressState } from './legs';
 import type { PlannerClient } from './planner';
 import { templateAnswer } from './plannerJobs';
-import type { RouteClient, RouteRequest } from './routeClient';
+import { RouteClientError, type RouteClient, type RouteRequest } from './routeClient';
 import { beaconTargetFor, type OutdoorStore } from './store';
 import { initialTurnFlow, stepTurnFlow, type TurnAction, type TurnFlowState } from './turnFlow';
 import type { RouteResponse } from './types';
@@ -263,14 +263,20 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
       say(replanRequest(reply));
       const fresh = await deps.routeClient.fetchRoute({ origin: { lat: fix.lat, lng: fix.lng }, dest: request.entrance, storeId: request.storeId });
       if (!running) return;
+      outdoor.getState().setOffline(false);
       const armedStillThere = armedCrossingId !== null && fresh.crossings.some((c) => c.crossingId === armedCrossingId);
       if (armedCrossingId !== null && !armedStillThere) {
         controller.abort('replan');
         armedCrossingId = null;
       }
       await installRoute(fresh, request, 'REPLANNED');
-    } catch {
-      // Keep the old route; the next off-route run tries again.
+    } catch (e) {
+      // Keep the old route (cached audio keeps playing); the next off-route run tries again.
+      // A network / timeout failure is the one connectivity signal B owns: say `offline_notice` once.
+      if (e instanceof RouteClientError && (e.kind === 'network' || e.kind === 'timeout')) {
+        outdoor.getState().setOffline(true);
+        say(offlineNoticeRequest());
+      }
     } finally {
       replanning = false;
     }

@@ -38,6 +38,13 @@ export interface TrackMeta {
   synthetic?: boolean;
   entrance: { lat: number; lng: number; radiusM: number };
   door: { t: number };
+  /** The accuracy step after the door (iOS holds 5–10 m, then snaps to ~65 m). */
+  accuracySnap?: { t: number; accuracyM: number };
+  /** One urban-canyon fix that must not advance a leg. */
+  canyonJump?: { t: number; accuracyM: number; offLineM: number };
+  /** Compass tier-2 stretch (dead zone 18°). */
+  compassAccuracy2?: { fromT: number; toT: number };
+  curb?: { arriveT: number; dwellS: number; alignedFromT: number };
   crossing: Crossing;
   legs?: Array<{ index: number; from: { lat: number; lng: number }; to: { lat: number; lng: number }; bearingDeg: number; distanceM: number; roadSide: 'LEFT' | 'RIGHT' | 'NONE' }>;
   [k: string]: unknown;

@@ -1,0 +1,13 @@
+# training/ — Colab (free T4) or a local Python 3.10+ venv. Pin what matters; ultralytics
+# moves fast and the CoreML export flags in export_coreml.py were written against 8.3.x.
+ultralytics>=8.3,<9
+torch>=2.2
+torchvision>=0.17
+coremltools>=8.0        # conversion only; CoreML prediction needs a Mac (Agent C)
+opencv-python-headless>=4.9
+numpy>=1.26
+pandas>=2.1
+pyyaml>=6.0
+anthropic>=0.40         # vlm_label.py first pass (labelling, not runtime)
+albumentations>=1.4     # optional: RandomRain / RandomSunFlare (README §4)
+# ffmpeg is a system binary (apt-get install ffmpeg / brew install ffmpeg), not a pip package.

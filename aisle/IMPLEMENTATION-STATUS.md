@@ -1,0 +1,286 @@
+# Aisle — Implementation Status
+
+Written 2026-09-18 (evening before hacking opens) from the four track reports, the integration
+report, and a fresh scan and test run of this checkout. It is meant to be blunt. Read it before
+the phase-0 go/no-go in `../11-PHASE-0-CHECKLIST.md` §9.
+
+**One-paragraph summary.** Every subsystem in `00-PROJECT-BRIEF.md` exists as code, typechecks,
+and passes its tests (58 Jest suites / 851 tests; 14 vitest files / 137 tests; the phrase and
+dependency lints are clean). None of it has ever run on a phone, against a real API, at the venue,
+or with a trained model. The Swift `PerceptionModule` has never been compiled by Xcode. There are
+zero model weights, zero cached ElevenLabs phrases, zero API keys, zero real recordings, and the
+store and crossing fixtures carry invented coordinates. The proxy is not hosted anywhere. What
+the team has is a complete, well-tested **mock-mode** application and a complete but **unproven**
+live path. Everything committed after `5387267` is still uncommitted in the working tree.
+
+Status words used below: **Implemented** = real code path, tested, nothing known missing in the
+code; **Partial** = real code path with a named hole; **Stub** = interface and scaffolding, no
+working behaviour; **Not started** = nothing usable. "Implemented" never means "verified on a
+device" — see §5.
+
+---
+
+## 1. Keystone features (from `00-PROJECT-BRIEF.md`)
+
+| # | Feature | Status | Where | What remains |
+|---|---|---|---|---|
+| 1 | Contracts, event bus, state machine, service registry, composition root | Implemented | `src/core/contracts.ts`, `bus.ts`, `store.ts`, `services.ts`, `composeApp.ts`, `trip.ts`, `App.tsx` | Nothing in code. `App.tsx` itself has no Jest test (it imports expo backends); the graph is covered by `composeApp.test.ts` with fakes. |
+| 2 | Outdoor navigation (Routes fetch, legs, turns, re-plan, beacon target) | Implemented | `src/outdoor/*`, `server/routes/route.ts`, `server/routes/crossings.ts`, `server/data/` | Never fetched a live route: no `GOOGLE_MAPS_API_KEY`; the Forbes/Bouquet `computeRoutes` fixture is **hand-authored from the documented shape, not captured**. Overpass never called live. Google Maps ToS question on speaking street names unresolved (Mapbox is the drop-in). |
+| 3 | Signalized crossing (align, read signal, ticker, far-curb beacon, onset rule) | Partial | `src/crossing/CrossingController.ts`, `crossingLogic.ts`, `src/core/audio.ts` | Controller logic is complete and tested on synthetic events. Rung 1 (on-device signal model) **does not exist** — no `ped-signal-v1.mlpackage`. Today the ladder starts at rung 2 (Sonnet curb crop, itself never called live) and realistically at rung 3/4 (alignment + map awareness + `setManualSignal`). Near/far curb positions and bearing unverified at any real crossing. |
+| 4 | Unsignalized crossing (scan left/right, worst-of report) | Partial | `src/crossing/CrossingController.ts`, `crossingLogic.ts` | Same dependency: the detector that feeds `SCAN_RESULT` has no weights and has never run. Claude side of the scan never called live. |
+| 5 | Vehicle warnings (looming tracker → STOP + phrase) | Partial | `modules/perception/ios/Engine/VehicleTracker.swift`, `src/perception/PerceptionService.ts` (`bindPerceptionToApp`), `src/crossing/VehicleAlert.ts` | Tracker is written and passes 94 synthetic checks on macOS; never compiled for iOS, never run on footage; COCO weights absent. `VehicleAlert` (B) is deliberately **not constructed** because it would double every STOP — B must strip play/say from it. Frame → haptic < 150 ms unmeasured. False-alarm budget unmeasured. |
+| 6 | PerceptionModule (ARKit, Vision OCR, CoreML registry, thermal, snapshot, JS bridge) | Partial | `modules/perception/ios/**`, `modules/perception/index.ts`, `expo-module.config.json`, `Perception.podspec` | Engine files typecheck with `swiftc -typecheck` against the iPhoneOS SDK; `PerceptionModule.swift` (the Expo wrapper) has **never been compiled** — this Mac has the iOS 26.5 SDK headers but no installed iOS platform, so `xcodebuild` exits 70. Autolinking and `pod install` succeed (Perception pod linked after two fixes: deployment target 17.0, relative podspec resource paths). Whether CocoaPods compiles a resource `.mlpackage` to `.mlmodelc` is unconfirmed. Horizon-row sign convention, depth thresholds, OCR box scale are uncalibrated guesses. |
+| 7 | CoreML models (COCO nano, ped-signal-v1, Depth Anything V2 small, optional walkable-seg) | Not started | `models/README.md`, `manifest.json`, `LICENSES.md` only | **No weights of any kind.** Without them every model-driven stream (`onDetections`, `onVehicleApproaching`, `onSignalState` from the model, `onDepth`, `onObstacleAhead`) is silent; only ARKit pose and Vision OCR would work. Depth Anything CoreML build not located; licence unverified. |
+| 8 | Indoor OCR matcher, navigator, centring, obstacles, checkout, item pickup | Implemented | `src/indoor/*` | Pure JS is complete and tested against all 04 edge cases. Depends on Vision OCR from the uncompiled module; never read a real sign. Claude `aisle_disambiguate` path never called live. |
+| 9 | Transition (store-entry handoff, five-signal fusion, forceEnter, announcement) | Implemented | `src/transition/TransitionDetector.ts`, `announce.ts`, `src/core/trip.ts` | Tuned and tested only on the synthetic `fixtures/track.json` entry profile. Never fired on a real door. |
+| 10 | Speech: two-tier ElevenLabs (cached phrases + live/streamed) with expo-speech fallback | Partial | `src/core/speech.ts`, `speechBackend.ts`, `phrases.ts`, `scripts/generate-audio.ts`, `assets/audio/manifest.ts`, `server/routes/tts.ts`, `server/lib/elevenlabs.ts` | `AUDIO_MANIFEST` is **empty**: every phrase, including the disclaimer, speaks via `expo-speech` today. Tier-1 streamed speech is **disabled** (`STREAMED_SPEECH_RELAY_AVAILABLE = false`): A's player fetches `GET /api/tts/stream/<id>`, D's proxy only relays audio as binary WebSocket frames — the two halves do not meet. Live TTS first-audio < 400 ms and cached < 50 ms unmeasured. |
+| 11 | Voice input (push-to-talk, on-device STT, Scribe fallback, keyboard) | Implemented | `src/core/voice.ts`, `src/ui/TalkButton.tsx`, `server/routes/stt.ts` | Never exercised with a microphone. No live partial transcript (no `onPartial`). Volume-button PTT cut (no API). Keyboard path is planner-free by design. |
+| 12 | Nemotron planner jobs (routeCompile, parseIntent, disambiguate, crossingAnnounce, answer) + eval | Partial | `src/outdoor/plannerJobs.ts`, `planner.ts`, `server/routes/plan.ts`, `plan.eval.ts`, `plan.eval.md`, `server/lib/nim.ts`, `deadline.ts` | Code is complete with validators and deterministic templates. **Never called NIM.** Model id `nvidia/nemotron-3.5-lightning-30b-a3b` is a guess to be read from `/v1/models`; `nvext.guided_json` acceptance unverified. `plan.eval.md` is a **template-only run** (model column `n/a`, human rating column empty). The sponsor-track "evidence" currently proves the fallback works, not Nemotron. |
+| 13 | Claude semantic vision (Tier 1: storefront, aisle disambiguation, scan stills, curb crop, hand guidance) | Partial | `src/perception/semanticVision.ts`, `server/routes/vision.ts`, `server/ws/visionSocket.ts`, `server/lib/anthropic.ts`, `server/schemas/vision.ts`, `server/prompts/vision.ts` | HTTP path wired and used; WS path built and tested against fakes but never opened by the app (see #10). Never called Anthropic; structured-output schema, Haiku 4.5 / Sonnet 5 ids, thinking-disabled param unverified live. p95 < 3 s unmeasured. |
+| 14 | Haptics (COURSE/TURN/STOP/CONFIRM) and audio channels (beacon, ticker, session) | Implemented | `src/core/haptics.ts`, `audio.ts`, `assets/audio/beacon_*.wav`, `tick.wav`, `scripts/generate-tones.ts` | Never felt on a phone. Haptics-while-ARKit-runs and haptics-with-`allowsRecording` (phase-0 T4) unverified. Bluetooth latency unmeasured. Optional Core Haptics module not built (phase-2 polish). |
+| 15 | Onboarding + spoken disclaimer + settings | Implemented | `src/ui/OnboardingScreen.tsx`, `onboardingSteps.ts`, `SettingsSheet.tsx`, `src/core/prefs.ts` | Verified only through `react-test-renderer`; no VoiceOver pass; iOS has no live-region equivalent so hero changes are not announced (by design, speech is the channel — confirm no double-speech on device). |
+| 16 | DebugPanel, mocks, fixtures, jump-to-mode, manual overrides | Partial | `src/ui/DebugPanel.tsx`, `IntegrationControls.tsx`, `mocks/**`, `fixtures/**` | Mocks and panel are complete. **Every fixture is synthetic** (`fixtures/README.md`: "State today: everything is SYNTHETIC"); `stores/demo-store-01.json` and `crossings/demo.json` are hand-written placeholders; frames are three identical placeholder JPEGs. Missing on the panel: battery (needs `expo-battery`), `/api/health` dots, proxy-URL override / LAN toggle, socket state, runtime replay toggle. A DebugPanel jump to `APPROACH_CROSSING` flickers through `OUTDOOR_NAV` once. |
+| 17 | Proxy (`/api/vision`, `/ws`, `/api/plan`, `/api/tts`, `/api/stt`, `/api/route`, `/api/health`) | Implemented | `server/**` | Code complete, 137 tests against faked upstreams, `.env.example` for the five keys. **Not deployed anywhere**, no keys, no real upstream call ever made, WS vision → first audio ≤ 1.5 s p50 unmeasured. No `GET /api/tts/stream/:id` (see #10). OpenRouter failover key not in the locked key list. |
+| 18 | CV training track (data, labelling, YOLO training, CoreML export, gate scoring, report) | Stub | `training/**` | Five scripts compile and print `--help`; `score_gate.py` verified on synthetic data. **No video, no frames, no labels, no dataset survey, no run, no export**; `eval/ped-signal-v1-report.md` is all `TBD`; `LICENSES.md` dataset rows unfilled. |
+| 19 | Builds (dev build on the demo phone, EAS internal distribution) | Partial | `app.json`, `eas.json`, `ios/` (generated) | `expo prebuild --clean` + `pod install` succeed with Perception linked. `xcodebuild` **fails on this Mac** (no iOS platform component installed). No `expo run:ios --device` has ever completed. No EAS build has been requested; no device UDIDs registered. |
+
+Tally: 8 Implemented, 9 Partial, 1 Stub, 1 Not started.
+
+---
+
+## 2. Not implemented, and why
+
+Consolidated from the five track reports plus a scan of the tree for `TODO`, `FIXME`, `not
+implemented`, `stub`, `placeholder`, `[verify]` and `synthetic`. The scan found no `TODO`/`FIXME`
+markers in source; the gaps are declared in headers, READMEs and fixture metadata instead.
+Grouped by what unblocks them.
+
+### 2a. Blocked on Xcode / a provisioned Mac / the demo phone
+
+| # | Gap | Owner | Why it is open | What finishes it |
+|---|---|---|---|---|
+| G1 | Xcode compile of the generated project; first compile of `PerceptionModule.swift` and the Engine under the iOS toolchain | A (builds), C (fixes) | This Mac's Xcode 26.6 has SDK headers but no iOS platform or simulator runtimes; `xcodebuild` exits 70 ("iOS 26.5 is not installed" / "Found no destinations") | `xcodebuild -downloadPlatform iOS` (multi-GB) or another Mac; then `npx expo prebuild --platform ios && npx expo run:ios --device` |
+| G2 | On-device perception verification: ARKit video format, detector ≥ 15 fps, depth ≥ 10 fps, OCR 3 fps, frame → haptic < 150 ms, thermal `.serious` downshift, NEAR/MID/FAR wall-walk calibration, 0.5 m taped-line drift, horizon-row sign convention, Vision ROI mapping, Depth Anything output format, snapshot bytes | C | No phone, no build, no weights | G1 + G14, then a DebugPanel session reading `getStats()` and `nativeLog()`; flip `Geometry.swift` horizon sign if mirrored; scale `ObstacleEstimator` / `OcrReader` constants |
+| G3 | `.mlpackage` inside a CocoaPods resource bundle: does Xcode compile it to `.mlmodelc`? | C | Needs a pod install with weights present | One `pod install` + build with any `.mlpackage` in `models/`; `ModelRegistry` already looks up both extensions |
+| G4 | On-device audio/haptics: cached phrase < 50 ms, chunked Tier-1 MP3 playback in AVPlayer, live TTS first audio < 400 ms, haptics firing while ARKit runs and with `allowsRecording: false`, Bluetooth latency | A | Backends exercised only through injected fakes | Phase-0 T4/T5 on the demo phone; if chunked MP3 without Content-Length stalls, D buffers server-side |
+| G5 | Visual and VoiceOver verification of every screen; iOS hero announcement policy; `accessibilityRole='alert'` behaviour on the error line | A | Verified with `react-test-renderer` only | `expo run:ios --device` + the phase-2 VoiceOver pass (06 "If you finish early" #2) |
+| G6 | Frame → haptic < 150 ms on recorded curb footage (the +6 h gate) | B / C | `VehicleAlert.lastHandlerMs` measures only the JS side; native `frameToEventMs` needs the module on a phone | G1 + G14 + S5 footage |
+| G7 | EAS internal-distribution build for the Windows user's phone (phase-0 T3) | A / D | Never requested; no UDIDs registered | `eas device:create`, `eas build --profile development --platform ios`; budget the free-plan queue |
+| G8 | Offline replay proven (airplane mode keeps the bundle alive; no reload) | D | Needs an installed build | Phase-0 C4 on the spike |
+
+### 2b. Blocked on API keys / hosting / network
+
+| # | Gap | Owner | Why it is open | What finishes it |
+|---|---|---|---|---|
+| G9 | Cached ElevenLabs phrases: `assets/audio/<key>.mp3`, populated `manifest.ts` | A | No `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`; the generator refuses to fake audio | Audition and pick a voice (07 §2), then `ELEVENLABS_API_KEY=… ELEVENLABS_VOICE_ID=… npm run gen:audio`; commit the mp3s, `manifest.ts`, `manifest.json`. Until then the disclaimer and everything else is `expo-speech`. |
+| G10 | Live Google Routes call and a captured demo-route fixture | B | No `GOOGLE_MAPS_API_KEY`; current `computeRoutes-forbes-bouquet.json` is hand-authored | Key in `server/.env`, then `npx tsx data/record-demo-route.ts` from `server/` after the venue walk; check `routes.warnings` carries the walking-beta text |
+| G11 | Live Overpass query proven on the Oakland bbox (`sources.overpass === 'live'`) | B | No network calls made | One live `/api/route` |
+| G12 | Nemotron live: exact model id from `GET /v1/models`, `nvext.guided_json` acceptance, `max_completion_tokens` honoured, thinking off, TTFT; the model column of `plan.eval.md` | B / D | No `NVIDIA_API_KEY` (and NIM key approval can take days — 11 A1) | Key(s) in `server/.env`; `GET /api/health` (`modelSeen`); `NVIDIA_API_KEY=… npx tsx routes/plan.eval.ts`; set `NVIDIA_MODEL` if the id differs |
+| G13 | Anthropic live: structured outputs (`output_config.format`), Haiku 4.5 and Sonnet 5 ids, thinking-disabled on Sonnet, image round trip, tier/spend cap | D | No `ANTHROPIC_API_KEY` | Key; `WARMUP_ON_START=1` and `GET /api/health/warm` all green before anything is demoed |
+| G14 | Proxy hosted in us-east; WS vision → first audio ≤ 1.5 s p50 from the phone; stale-seq-never-spoken verified live | D | No host account, no keys, no device | Node host with WebSocket support in us-east, the five keys in its secret store, `EXPO_PUBLIC_PROXY_URL` / `_WS` on the phone, one real `storefront` round trip |
+| G15 | OpenRouter failover key | Team | Not in the locked five-key list (05 Part 2 flagged it) | Decision + `OPENROUTER_API_KEY`; without it there is no same-model failover, only templates |
+| G16 | ElevenLabs concurrency: semaphore assumes 4 (free plan) | D / A | Creator perk not confirmed on the key-holding account | Redeem the perk (11 A3), raise `server/lib/semaphore.ts` to 10 |
+| G17 | `training/vlm_label.py` calls Anthropic directly, not through the proxy | D | The proxy's vision route is bound to the byte-stable `VisionResponse` schema; labelling uses a different one | Acceptable as-is with `ANTHROPIC_API_KEY` in the labelling environment only; add `/api/label` if the team objects |
+
+### 2c. Blocked on the venue walk and capture sessions
+
+| # | Gap | Owner | Why it is open | What finishes it |
+|---|---|---|---|---|
+| G18 | Real fixture recordings: `perception/*.jsonl`, `track.json`, `frames/<seq>.jpg`, `video/crossing-*.mp4`, `video/route.mp4`, `labels/crossing-*.json` | D | Everything is generated by `fixtures/tools/generate.mjs`; frames are three identical placeholder JPEGs | Demo phone + C's module debug export (09 §10) + venue sessions (11 S5, S6); then `node fixtures/tools/generate.mjs --index-only && npm test` |
+| G19 | `fixtures/stores/demo-store-01.json`: real entrance pin (30 s GPS average ≤ 10 m), verbatim `signText`, `sideWhenAscending` walked both ways, `packageHint`; `fixtures/crossings/demo.json`: real OSM nodes and curbs | D (file), human lead + C (walk) | Coordinates are the synthetic track's; "Demo Grocery" is invented; `pinnedBy: "venue-walk"` is aspirational | 11 S1–S4; hand-edit the two files; `setKnownSigns` vocabulary follows |
+| G20 | Near/far curb positions and crossing bearing checked at the demo crossing | B | `crossingData.ts` derives curbs from footway endpoints or ±6 m from the cluster centre | Venue walk; widen `CURB_FALLBACK_OFFSET_M` for a four-lane road if needed |
+| G21 | Mock route served by D along the replay track (`fixtures/route/demo.json`) | D / B | `server/data/fixtures/route-demo.json` is at Forbes/Bouquet, ~1 km from the synthetic track, so it would put the runner off-route; integration derives the route from `track.json` meta instead (`src/core/fixtureRoute.ts`) | Record a route along the same track the sensor replayer plays; `fixtureRoute.ts` then goes away |
+| G22 | Leg-wording A/B blind ratings in `plan.eval.md` | B (human raters) | Word counts filled; Rating column empty | Three teammates rate at walking pace |
+| G23 | Rehearsals R1–R3, failure drills, hotspot/LAN round trip, backup phone in replay mode, `forceEnter` and `setManualSignal` used live | D / all | Human and venue tasks; tooling exists | Phase 2–3 with the wired build |
+
+### 2d. Blocked on model weights and training data
+
+| # | Gap | Owner | Why it is open | What finishes it |
+|---|---|---|---|---|
+| G24 | Weights under `models/`: `coco-yolo-nano(-416)`, `ped-signal-v1`, `depth-anything-v2-small`, optional `walkable-seg`, plus per-model manifests | D → C | Weights arrive as D's PR; nothing has been downloaded, exported or converted | Export COCO nano via `training/export_coreml.py`; train and export the signal model (G25); locate Depth Anything (G26); C merges and rebuilds |
+| G25 | Signal model v1: dataset survey + licences (V3), local frame capture and labelling (D1), leave-one-crossing-out run, export, device eval CSV, report numbers; the +14 h gate (false-WALK precision > 95 %, recall > 80 %, parallel confusion < 2 %) | D (train), C (run) | No video captured, so no frames, so no run; `eval/ped-signal-v1-report.md` is all `TBD` | 11 S5 → `extract_frames.py` → `vlm_label.py` + hand correction → Colab `train_yolo.py --run v1 --heldout <id>` → `export_coreml.py` → PR to `models/` → C device replay → `score_gate.py states` |
+| G26 | Depth Anything V2 small CoreML build located, licence recorded | D / C | 10 §8 `[verify]` item; not resolvable offline | Find Apple's/HF's conversion, record repo + commit + licence in `training/LICENSES.md`, deliver via the `models/` PR; else a two-hour coremltools attempt; else drop depth (no `OBSTACLE_AHEAD`) |
+| G27 | Mock `snapshotJPEG` returns the fixture frame's real size instead of re-encoding to the requested width | D | No native image library in the app | Provide 512/640/1024 stills keyed by `seq` in `fixtures/frames` |
+
+### 2e. Cross-track contract work (code changes someone still has to make)
+
+| # | Gap | Owner | Why it is open | What finishes it |
+|---|---|---|---|---|
+| G28 | Tier-1 streamed speech: A's `SpeechService.playStream(id)` fetches `GET /api/tts/stream/<id>`; D's proxy relays audio only as binary WS frames | D **or** A | Two tracks built two halves of one feature against different assumptions; wiring `speech_start → noteStream` today would silence Claude's `speech` field, so the WS is never opened and Tier 1 runs over HTTP (speech spoken via `say()` with the 1.5 s live budget) | Either D adds `GET /api/tts/stream/:streamId` (buffer per seq) or A adds a chunk-sink player fed by `onAudioChunk` / `onSpeechEnd`; then flip `STREAMED_SPEECH_RELAY_AVAILABLE` in `src/core/composeApp.ts` and open the socket on `TRANSITION` |
+| G29 | `VehicleAlert` (B) plays STOP + phrase on the same bus events C's reflex already handles synchronously | B | Constructing it would double every STOP, so `composeApp` does not construct it | B strips play/say (counters + cut-line toggle only); integration then wires it for `getStats()` |
+| G30 | DebugPanel: battery %, `/api/health` dots, proxy-URL override / LAN toggle, socket state, runtime replay-mode toggle (05 Part 5) | A | Out of the composition pass; `expo-battery` not in `package.json` (adding deps was outside the UI task); mock is a bundle-time flag | Add `expo-battery`; a small health poller; persist a proxy URL in `prefs.ts`; a per-session mock swap if the runtime toggle is wanted |
+| G31 | Live partial transcript while holding the talk button | A | `voice.ts` keeps recogniser results internal; `TalkButton` already accepts an optional `onPartial` port | Expose `onPartial(cb)` on `VoiceInput` |
+| G32 | Pre-commit hook / CI step running `npm run lint:phrases && npm run lint:deps` | Orchestrator | Git root is the parent repo; no hook manager; repo-level decision | Add the hook or CI step |
+| G33 | Markdown lint of `06-INTEGRATION-AND-DEMO.md` flags quoted judge questions containing a forbidden word | Human | They are quotes of judges, not app text | Decide whether docs are in scope of the lint; no code change |
+| G34 | Optional Core Haptics module (continuous STOP, intensity-modulated COURSE); volume-button push-to-talk | A | Phase-2 polish behind a flag / no hardware-button API in SDK 57 | Only if the +6 h gate is met; otherwise cut |
+| G35 | Contract flags raised by B and not acted on unilaterally: `SpeechService.prefetch` as a shared cache path, `useOutdoorStore.beaconTarget` as the shared beacon slice, CROSSING cross-track buzz with `roadSide 'NONE'`, `turn_*_soon` canonical wording vs the 20 m trigger, B's extra files under `server/routes/` | A / B / D | Need acks in the shared channel | Ack or reject each; most are already consumed by `composeApp` as-is |
+| G36 | Google Maps ToS on text-to-speech of Routes street names | B / team | Not checked | Read the clause; Mapbox Directions is the drop-in if the answer is no |
+
+Also found by the scan and left as-is on purpose: `src/ui/copy.ts` `WALKING_BETA_FALLBACK` (a
+display fallback; `App.tsx` passes B's real `WALKING_BETA_WARNING` via `betaNotice`);
+`models/README.md` / `manifest.json` `[verify]` on Depth Anything input size and licence (G26);
+`server/lib/semaphore.ts` `[verify]` on concurrency (G16).
+
+---
+
+## 3. How to run what exists today
+
+There is no installed build anywhere yet. The commands below are what the README says and what
+integration proved up to the point where the Mac lacked an iOS platform.
+
+### Checks that pass right now (no keys, no device)
+
+```bash
+cd /Users/alexxiang/steelhacks/aisle
+npm install
+npm run typecheck        # 0 errors
+npm test                 # 58 suites / 851 tests
+npm run test:server      # 14 files / 137 tests (vitest, upstreams faked)
+npm run lint             # tsc + forbidden-deps grep + forbidden-phrase lint
+npx expo install --check # "Dependencies are up to date" (SDK 57 pins hold)
+bash modules/perception/tests/run.sh   # 94 synthetic Swift engine checks (macOS SDK, no ARKit)
+```
+
+### Mock mode on a development build (the demo backup; needs a provisioned Mac + iPhone)
+
+```bash
+npx expo prebuild --platform ios --clean   # succeeds here; Perception pod links
+npx expo run:ios --device                   # BLOCKED on this Mac (G1); works on a Mac with the iOS platform installed
+npm run start:mock                          # EXPO_PUBLIC_MOCK=1 expo start --dev-client
+```
+
+On the phone: type "eggs" or hold the talk button; long-press the mode word (1.5 s) for the
+DebugPanel: jump to any mode, scrub the replay track, FORCE ENTER STORE, manual signal state,
+scan-result override, network on/off, beacon/ticker mute. Sensors, perception, Tier-1 vision and
+the planner replay from `fixtures/`; the route is derived from `fixtures/track.json`; speech and
+haptics are real. Without a proxy, variable phrases (street names, aisle arrival) wait the 1.5 s
+live budget and then speak through `expo-speech`; prefetch before `ROUTE_READY` is capped at 2.5 s.
+
+Mock mode has only ever been exercised through the Jest harness (`src/core/composeApp.test.ts`,
+`mocks/replayers.test.ts`). No human has seen it on a screen.
+
+### Proxy
+
+```bash
+cd server && cp .env.example .env    # ANTHROPIC_API_KEY, NVIDIA_API_KEY, ELEVENLABS_API_KEY,
+                                     # ELEVENLABS_VOICE_ID, GOOGLE_MAPS_API_KEY; OPENROUTER_API_KEY optional
+npm install && npm run dev           # 0.0.0.0:8787; GET /api/health shows each upstream
+```
+
+`WARMUP_ON_START=0` runs it offline. With no keys every upstream reports down and the routes
+answer with their fallbacks (`{confidence: 0}` vision, templated plan, 503 on tts/stt, recorded
+fixture on `/api/route` when the endpoints match). Nothing in `server/` has ever talked to a real
+upstream.
+
+### Live app against the proxy
+
+```bash
+ELEVENLABS_API_KEY=… ELEVENLABS_VOICE_ID=… npm run gen:audio      # once; fills assets/audio (G9)
+EXPO_PUBLIC_PROXY_URL=http://<host>:8787 npx expo start --dev-client
+```
+
+`EXPO_PUBLIC_*` is inlined at bundle time; restart Metro after changing it.
+
+---
+
+## 4. Phase-0 items still open (`../11-PHASE-0-CHECKLIST.md`)
+
+Every checkbox in the document is unticked. What the repository can and cannot vouch for:
+
+**Verifiable from the repo as done or partly done**
+
+- T4 permission strings: all six `NS*UsageDescription` keys and `UIRequiredDeviceCapabilities: ["arkit"]` are in `app.json` (`expo config --type introspect` confirms). Not verified as prompting once and granted on a phone.
+- T5 / V4 SDK pin: `expo ~57.0.23`, `expo-av` absent, `expo-audio ~57.0.5`, `expo-speech-recognition ^57.1.0`, `react-native 0.86.3`; `npx expo install --check` clean. The two-player constant-power pan is implemented (`src/core/audio.ts`) but never heard through headphones.
+- A8 open data: WPRDC signalized-intersections CSV (783 rows) is committed as `server/data/wprdc-signals.json` with licence. Overpass fixture is recorded for the Oakland bbox but no live query has run from this code.
+- D3 fixtures staged: staged as **synthetic**, not as raw venue material.
+- D4 licences: `models/LICENSES.md` and `training/LICENSES.md` exist; dataset rows are empty pending V3.
+- N7 cut order: recorded in `00`/`06`; not re-confirmed by the team.
+
+**Open, blocking for the full plan (11 §9)**
+
+- R0 / N8: organiser answer on pre-written code, model weights and a hosted empty server — not recorded. Every artifact in this repo is app code under the strict reading.
+- T1: Xcode able to build to a physical iPhone on at least two Macs — the one Mac tried cannot (no iOS platform installed).
+- T2: throwaway spike with the module scaffold, an ARKit session and one CoreML model running on the demo phone, with fps and build times — not done.
+- T3: EAS internal build installed on the Windows user's phone — not done.
+- T4 device half, T5 device half — not done.
+- A2 Anthropic, A3 ElevenLabs (Creator perk, voice chosen), A4 Google Routes (project, billing, key restriction), A5 Apple Developer (team, UDIDs, bundle id signs) — no evidence of any account or key.
+- S1–S3 store chosen, manager asked, sign strings, entrance pinned — not done; fixtures are invented.
+- S4–S5 crossing chosen from WPRDC, video captured and labelled — not done.
+- P1–P3 demo phone named and configured, mount and headphones — not done.
+- C1 proxy host in us-east answering from the phone; C2 hotspot path — not done.
+- N1–N3 Swift owner, human per checkbox, demo roles — the names table in 11 §8 is empty.
+
+**Open, degradable (fallback must be written into the run-of-show before the clock)**
+
+- A1 NVIDIA NIM key + authenticated `/v1/models` + one guided-JSON call + OpenRouter key — not done (templates exist).
+- V1 Depth Anything CoreML on the phone (ms per frame) — not done (drop depth if it fails).
+- V2 walkable-seg export — not done (optional; off by default in `ModelRegistry`).
+- V3 pedestrian-signal dataset survey + licences — not done.
+- V5 ARKit geo-tracking availability — not checked (informational).
+- A6 Expo/EAS team account, A7 Colab T4 + one-epoch export loading in Xcode — not done.
+- D1–D2 local frames labelled, signal model v1 on the phone with held-out numbers — not done; **rung 2/3 is the plan of record today by default**.
+- C3 route cell coverage, C4 offline replay on the spike — not done.
+- N4–N6 store/crossing chosen and clock re-timed, YOLO experience, blind tester — not recorded.
+- P4 VoiceOver pass planned — not done.
+- The "Numbers to record in phase 0" table (video format, fps, depth ms, OCR ms, build times, battery, thermal, model P/R, Nemotron TTFT, Claude e2e, hotspot RTT) — every cell empty.
+
+Under 11 §9's rule, two or more blocking NO-GOs in §1 or §4 make fixture replay for perception
+and the outdoor leg the plan of record with only the store live. As of this file, §1 and §4 are
+entirely NO-GO.
+
+---
+
+## 5. Test and build status (integrator's report, re-run on this checkout)
+
+| Check | Integrator reported | Re-run 2026-09-18 for this file |
+|---|---|---|
+| `npm run typecheck` (app) | clean | 0 errors |
+| `npm test` (Jest, jest-expo) | 58 suites / 851 tests | 58 / 851 pass, 2.6 s |
+| `npm test` in `server/` (vitest) | 14 files / 137 tests | 14 / 137 pass |
+| `tsc --noEmit` in `server/` | clean | clean |
+| `npm run lint:phrases` | ok | ok (phrase table, string literals, fixtures) |
+| `npm run lint:deps` | ok | ok |
+| `npx expo install --check` | — | "Dependencies are up to date" |
+| Swift engine `swiftc -typecheck` (iphoneos, arm64, iOS 17) | exit 0 (C) | not re-run |
+| `modules/perception/tests/run.sh` (macOS harness) | 94 / 94 (C) | not re-run |
+| `PerceptionModule.swift` compile | **never** | — |
+| `npx expo-modules-autolinking resolve -p ios` | lists `perception` | — |
+| `npx expo prebuild --platform ios --clean` | succeeded (3rd run, 100 pods incl. Perception) | — |
+| `xcodebuild … -sdk iphoneos` | **exit 70** ("iOS 26.5 is not installed"; no destinations) | — |
+| `npx expo run:ios --device` | never completed | — |
+| EAS build | never requested | — |
+| `python3 -m py_compile training/*.py` + `--help` | pass (D) | not re-run |
+
+Caveats on the numbers:
+
+- All 851 + 137 tests run against fakes, injected fetches, scripted sensor sources and synthetic
+  fixtures. They prove internal consistency, not that a single external assumption (Expo API
+  behaviour on device, Anthropic/NIM/ElevenLabs/Google response shapes, ARKit/Vision/CoreML
+  behaviour, MP3 streaming in AVPlayer) holds.
+- The Nemotron eval (`server/routes/plan.eval.md`) reports 98.3 % intent accuracy **for the
+  deterministic template**, not for Nemotron. One failure found ("how fart is it" → unknown).
+- `scripts/lint-phrases.test.ts` lints the whole tree, so any track adding a forbidden word to a
+  string literal fails `npm test` for everyone — intended.
+- Two cross-directory edits were made during integration and must be acknowledged by their
+  owners: `modules/perception/ios/Perception.podspec` (C; resource paths made relative so
+  `pod install` passes) and `app.json` (A-owned; `expo-build-properties` deployment target 17.0,
+  without which autolinking silently skipped the Perception pod).
+- `git status` shows 20 modified and 21 untracked files since the WIP checkpoint commit
+  `5387267`; `fixtures/tools/generate.mjs` is a pre-existing uncommitted D change. Nothing in
+  this status is committed until the orchestrator commits.
+
+---
+
+## 6. What to do first (in the order it unblocks the most)
+
+1. Install the iOS platform on a Mac (or use one that has it) and get `npx expo run:ios --device`
+   through once. Until then the Swift module is unverified text and no other device item can move.
+2. Get keys and generate the phrase cache (G9). A demo whose disclaimer is spoken by `expo-speech`
+   undercuts the ElevenLabs track before the first beat.
+3. Decide G28 (streamed Tier-1 speech) in one message: it is a one-file change on either side.
+4. Venue walk with the demo phone: entrance pin, sign strings, crossing choice, crossing and curb
+   video (G18–G20). Every fixture and the whole training track are waiting on it.
+5. Host the proxy (G14) and run `/api/health/warm` against real upstreams once, early, so the
+   Anthropic tier settles and the Nemotron model id is known before the AMA.
+6. Accept now that rung 1 of the crossing ladder (on-device signal model) is an upside, not a
+   dependency, and write the run-of-show for rung 2/3.

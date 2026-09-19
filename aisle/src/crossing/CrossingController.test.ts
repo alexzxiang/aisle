@@ -149,6 +149,20 @@ describe('READING: the signal phrase rules', () => {
     expect(h.controller.getDebugState().ladderRung).toBe(3);
   });
 
+  it('a rung-2 read that returns after the 3 s freshness window is dropped, never spoken', async () => {
+    const h = await toReading(harness());
+    const original = h.vision.ask.bind(h.vision);
+    h.vision.ask = async (req) => {
+      await new Promise<void>((r) => setTimeout(r, 3500));   // slower than the freshness window
+      return original(req);
+    };
+    h.vision.respondWith(() => ({ signal: { state: 'DONT_WALK', confidence: 0.9 }, confidence: 0.9 }));
+    await jest.advanceTimersByTimeAsync(25_000);
+    expect(h.vision.requests.length).toBeGreaterThan(0);
+    expect(h.speech.keys()).toEqual(['cant_see_signal']);
+    expect(h.controller.getDebugState().curbCropInFlight).toBeLessThanOrEqual(3);
+  });
+
   it('a low-confidence curb crop stays silent', async () => {
     const h = await toReading(harness());
     h.vision.respondWith(() => ({ signal: { state: 'WALK', confidence: 0.3 }, confidence: 0.3 }));

@@ -61,7 +61,7 @@ describe('mock SensorService on fixtures/track.json', () => {
 
   it('reproduces the entry profile: min distance < 15 m at the door, then an accuracy step to ~65 m with compass accuracy 1', () => {
     const door = fx.track.meta!.door.t;
-    const snapT = (fx.track.meta as { accuracySnap: { t: number } }).accuracySnap.t;
+    const snapT = fx.track.meta!.accuracySnap!.t;
     const at = (t: number) => fx.track.samples.find((x) => x.t === t)!;
     expect(at(door).accuracyM).toBeLessThan(12);
     expect(at(snapT).accuracyM).toBeGreaterThanOrEqual(60);
@@ -70,10 +70,10 @@ describe('mock SensorService on fixtures/track.json', () => {
   });
 
   it('has the urban-canyon jump and the compass-accuracy-2 stretch', () => {
-    const meta = fx.track.meta as { canyonJump: { t: number; accuracyM: number }; compassAccuracy2: { fromT: number; toT: number } };
-    const jump = fx.track.samples.find((x) => x.t === meta.canyonJump.t)!;
+    const meta = fx.track.meta!;
+    const jump = fx.track.samples.find((x) => x.t === meta.canyonJump!.t)!;
     expect(jump.accuracyM).toBeGreaterThanOrEqual(35);
-    const mid = fx.track.samples.find((x) => x.t === Math.round((meta.compassAccuracy2.fromT + meta.compassAccuracy2.toT) / 2))!;
+    const mid = fx.track.samples.find((x) => x.t === Math.round((meta.compassAccuracy2!.fromT + meta.compassAccuracy2!.toT) / 2))!;
     expect(mid.heading.accuracy).toBe(2);
   });
 
@@ -174,6 +174,7 @@ describe('mock PerceptionService on fixtures/perception/*.jsonl', () => {
     const states: Array<{ t: number; state: SignalState; fresh: boolean }> = [];
     let now = 0;
     p.onSignalState((e) => states.push({ t: now, state: e.state, fresh: e.fresh }));
+    advance(0); // the t=0 line lands at now=0, not after the first second
     for (let i = 0; i < 40; i += 1) { now += 1000; advance(1000); }
     const seq = states.map((s) => s.state).filter((s, i, a) => i === 0 || s !== a[i - 1]);
     expect(seq).toEqual(['UNKNOWN', 'DONT_WALK', 'WALK', 'COUNTDOWN', 'DONT_WALK']);

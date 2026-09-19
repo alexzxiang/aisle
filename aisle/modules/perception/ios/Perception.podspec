@@ -29,7 +29,9 @@ Pod::Spec.new do |s|
   # Xcode compiles each .mlpackage to .mlmodelc when it is a resource of the pod.
   models_dir = File.expand_path('../../../models', __dir__)
   model_globs = Dir.glob(File.join(models_dir, '*.{mlpackage,mlmodelc}')) + Dir.glob(File.join(models_dir, '*.json'))
-  s.resources = model_globs unless model_globs.empty?
+  # CocoaPods validates file patterns as relative (no leading slash): express each match
+  # relative to this podspec's directory rather than as the absolute path Dir.glob returns.
+  s.resources = model_globs.map { |p| File.join('../../../models', File.basename(p)) } unless model_globs.empty?
 
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',

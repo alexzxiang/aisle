@@ -1,0 +1,11 @@
+# Raw video and extracted frames live on the team drive, never in git (10 §3.2).
+raw/
+frames/
+crops/
+labels_vlm/
+labels/
+public/
+*.mp4
+*.mov
+*.jpg
+*.png

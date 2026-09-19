@@ -1,11 +1,11 @@
 /**
  * Store map (01 §6) — the format Agent C owns; D produces the fixtures.
  *
- * `StoreMap` in contracts.ts predates the `spokenLabel` field 01 §6 added to
- * aisles and landmarks (everything spoken comes from `spokenLabel`, written as
- * words). Until contracts.ts catches up (flagged in cross_track_needs) this file
- * declares the 01 §6 shape as `AisleStoreMap`, a structural superset of
- * `StoreMap`, and validates fixtures against it (04 Task 0 step 1).
+ * `AisleStoreMap` is `StoreMap` (01 §6, verbatim in contracts.ts) with the
+ * aisle / landmark / item element types named so `src/indoor/` can pass them
+ * around; everything spoken comes from `spokenLabel`, written as words. The
+ * validator below is 04 Task 0 step 1 plus the 01 §6 rule that a digit in a
+ * `spokenLabel` is a fixture bug.
  */
 import type { Side, StoreMap } from '../core/contracts';
 

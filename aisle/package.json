@@ -30,15 +30,21 @@
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "lint:phrases": "tsx scripts/lint-phrases.ts",
     "lint:deps": "node -e \"const p=require('./package.json');const bad=['expo-av','expo-camera','react-native-vision-camera'].filter(k=>p.dependencies[k]||(p.devDependencies||{})[k]);if(bad.length){console.error('forbidden deps:',bad);process.exit(1)}\"",
     "gen:audio": "tsx scripts/generate-audio.ts",
-    "gen:tones": "tsx scripts/generate-tones.ts"
+    "gen:tones": "tsx scripts/generate-tones.ts",
+    "proxy": "npm --prefix server run dev",
+    "test:server": "npm --prefix server test",
+    "test:all": "npm test && npm run test:server",
+    "lint": "npm run typecheck && npm run lint:deps && npm run lint:phrases",
+    "start:mock": "EXPO_PUBLIC_MOCK=1 expo start --dev-client",
+    "ios:device": "expo run:ios --device"
   },
   "private": true,
   "jest": {
