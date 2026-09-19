@@ -522,6 +522,14 @@
       "bytes": 21777,
       "estimatedMs": 2722,
       "generatedAt": "2026-09-18T16:26:05.163Z"
+    },
+    "route_unavailable": {
+      "key": "route_unavailable",
+      "file": "route_unavailable.mp3",
+      "textSha1": "180e3750dacb001f88ab12de90e9418716e80bd0",
+      "bytes": 18016,
+      "estimatedMs": 2252,
+      "generatedAt": "2026-09-19T00:53:20.649Z"
     }
   }
 }

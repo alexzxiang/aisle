@@ -211,7 +211,15 @@ export async function buildRoute(q: RouteQuery, deps: RouteDeps = {}): Promise<R
       memory.set(key, { at: now(), value: disk });
       return { ...disk, sources: { ...disk.sources, cache: 'disk' } };
     }
-    throw e;
+    // Google failed (API disabled, 403, 5xx, network, timeout) and nothing is cached: a
+    // recorded route that starts and ends near this query stands in, honestly labelled —
+    // the demo must survive a Google outage. Otherwise the error propagates (never a guess).
+    const fixture = await (deps.routeFixture ?? loadRouteFixture)();
+    if (fixture && fixtureMatches(fixture, origin, dest)) {
+      google = { raw: fixture, source: 'fixture' };
+    } else {
+      throw e;
+    }
   }
 
   const parsed = parseComputeRoutes(google.raw);

@@ -186,6 +186,18 @@ describe('wireTrip', () => {
     trip.dispose();
   });
 
+  it('a server-side route failure (proxy 502: Google disabled) says route_unavailable once and ends the session', async () => {
+    const h = harness({ startImpl: async () => { throw new RouteClientError('route: http 502', 'http', 502); } });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'ITEM_REQUESTED', item: 'eggs', source: 'keyboard' });
+    h.fireTarget(resolved);
+    await flush();
+    expect(h.said.map((r) => r.cacheKey)).toEqual(['route_unavailable']);
+    expect(trip.isActive()).toBe(false);
+    expect(h.deps.store.getState().mode).toBe('IDLE');
+    trip.dispose();
+  });
+
   it('abort tears the session down, and a route that finishes installing afterwards is stopped again', async () => {
     let finish: () => void = () => undefined;
     const h = harness({ startImpl: () => new Promise((r) => { finish = () => r({}); }) });

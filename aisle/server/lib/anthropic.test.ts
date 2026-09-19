@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MODELS } from '../config';
 import { VISION_RESPONSE_SCHEMA } from '../schemas/vision';
 import { fakeClaude, sampleRequest, visionBody } from '../test/fakes';
-import { buildVisionParams, modelFor, runVision } from './anthropic';
+import { buildVisionParams, modelFor, runVision, visionTimeoutFor, VISION_TIMEOUT_MS, VISION_TIMEOUT_SLACK_MS } from './anthropic';
 
 describe('buildVisionParams', () => {
   it('routes curb_crop to Sonnet 5 with thinking disabled and a cache_control breakpoint on the system prompt', () => {
@@ -100,5 +100,13 @@ describe('runVision', () => {
 
   it('throws a config error when no key and no stream are given', async () => {
     await expect(runVision(sampleRequest(), {}, { apiKey: null })).rejects.toThrow(/ANTHROPIC_API_KEY/);
+  });
+});
+
+describe('visionTimeoutFor', () => {
+  it('keeps the hot-path cap for the curb crop and allows slack elsewhere', () => {
+    expect(visionTimeoutFor('curb_crop')).toBe(VISION_TIMEOUT_MS);
+    for (const q of ['storefront', 'aisle_disambiguate', 'hand_guidance', 'free']) expect(visionTimeoutFor(q)).toBe(VISION_TIMEOUT_SLACK_MS);
+    expect(VISION_TIMEOUT_SLACK_MS).toBeGreaterThan(VISION_TIMEOUT_MS);
   });
 });

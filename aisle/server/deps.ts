@@ -5,7 +5,7 @@
  */
 import type { VisionRequest } from '../src/core/contracts';
 import { type ProxyConfig, loadConfig, missingKeys } from './config';
-import { type AnthropicDeps, type VisionCallResult, type VisionHooks, buildVisionParams, runVision } from './lib/anthropic';
+import { type AnthropicDeps, type VisionCallResult, type VisionHooks, buildVisionParams, runVision, visionTimeoutFor } from './lib/anthropic';
 import { emptyVisionRequest } from './lib/visionRequest';
 import {
   type SttOptions,
@@ -102,7 +102,7 @@ export async function createDefaultDeps(opts: CreateDepsOptions = {}): Promise<A
     latency,
     slots: elevenLabsSlots,
     counters: http429,
-    vision: (req, hooks) => runVision(req, hooks, anthropicDeps),
+    vision: (req, hooks) => runVision(req, hooks, { ...anthropicDeps, timeoutMs: visionTimeoutFor(req.question) }),
     tts: {
       flash: (text, o) => ttsFlash(text, eleven, o),
       stream: (text, o) => ttsFlashStream(text, eleven, o),

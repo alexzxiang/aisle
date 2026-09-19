@@ -131,6 +131,19 @@ describe('buildRoute on the recorded Forbes / Bouquet route', () => {
     expect(r.legs.every((l) => l.roadSide === 'NONE')).toBe(true);
   });
 
+  it('Google failing (403: API disabled) → the recorded route stands in when both ends match', async () => {
+    const d = deps({}, { googleStatus: 403 });
+    const r = await buildRoute(query, d);
+    expect(r.sources.google).toBe('fixture');
+    expect(d.calls.some((c) => c.url.includes('routes.googleapis.com'))).toBe(true); // Google was tried first
+    expect(r.legs.length).toBeGreaterThan(0);
+  });
+
+  it('Google failing with no matching recorded route → 502, never a guess', async () => {
+    const d = deps({ routeFixture: async () => null }, { googleStatus: 403 });
+    await expect(buildRoute(query, d)).rejects.toMatchObject({ status: 502 });
+  });
+
   it('no Google key: the recorded route stands in when both ends match, else 503', async () => {
     const d = deps({ config: testConfig({ googleMapsApiKey: null, nvidiaApiKey: null, openRouterApiKey: null }) });
     const r = await buildRoute(query, d);

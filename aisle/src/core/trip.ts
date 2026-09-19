@@ -187,6 +187,9 @@ export function wireTrip(deps: TripDeps): Trip {
       report('route', e);
       if (e instanceof RouteClientError && (e.kind === 'network' || e.kind === 'timeout')) {
         deps.speech.say({ text: PHRASES.offline_notice, cacheKey: 'offline_notice', priority: 'NAV', dedupeKey: 'offline', cooldownMs: 60_000 });
+      } else if (e instanceof RouteClientError) {
+        // The proxy answered but had no route (Google disabled / 5xx / bad shape): never silence.
+        deps.speech.say({ text: PHRASES.route_unavailable, cacheKey: 'route_unavailable', priority: 'NAV', dedupeKey: 'route_unavailable', cooldownMs: 15_000 });
       }
       endSession();
     }
