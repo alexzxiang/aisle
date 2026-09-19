@@ -58,6 +58,12 @@ final class PerceptionPreviewView: ExpoView {
     sceneView.rendersMotionBlur = false
     sceneView.antialiasingMode = .none
     sceneView.preferredFramesPerSecond = 30           // 09 §2: the session never runs faster
+    // Round 6c: the view is usually attached BEFORE the engine runs the session (CoreML compiles
+    // for ~4 s on a fresh install). An ARSCNView attached to a not-yet-running session never
+    // started its render loop (isPlaying stayed false, the box stayed black). Render continuously
+    // and pull `currentFrame` every tick, whatever the session's state was at attach time.
+    sceneView.rendersContinuously = true
+    sceneView.isPlaying = true
     sceneView.isUserInteractionEnabled = false
     sceneView.isAccessibilityElement = false
     sceneView.backgroundColor = .black
@@ -77,6 +83,28 @@ final class PerceptionPreviewView: ExpoView {
     super.layoutSubviews()
     sceneView.bounds = CGRect(origin: .zero, size: bounds.size)
     sceneView.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    if bounds.size != lastLoggedSize {
+      lastLoggedSize = bounds.size
+      NSLog("[Perception] preview: layout %.0fx%.0f attached=%d window=%d",
+            bounds.width, bounds.height, attachedSession != nil ? 1 : 0, window != nil ? 1 : 0)
+    }
+  }
+
+  private var lastLoggedSize: CGSize = .zero
+
+  /// Diagnostic (round 6c "black box"): three seconds after attaching, say whether frames reach the view.
+  private func scheduleHealthLog() {
+    for delay in [3.0, 10.0, 20.0, 40.0] {
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        guard let self else { return }
+        let frame = self.sceneView.session.currentFrame
+        let same = self.attachedSession === self.sceneView.session ? 1 : 0
+        NSLog("[Perception] preview: health t+%.0fs frame=%d sameSession=%d size=%.0fx%.0f hidden=%d alpha=%.2f window=%d paused=%d tracking=%@",
+              delay, frame != nil ? 1 : 0, same, self.sceneView.bounds.width, self.sceneView.bounds.height,
+              self.isHidden ? 1 : 0, Double(self.alpha), self.window != nil ? 1 : 0, self.sceneView.isPlaying ? 0 : 1,
+              frame.map { "\($0.camera.trackingState)" } ?? "none")
+      }
+    }
   }
 
   override func didMoveToWindow() {
@@ -111,7 +139,32 @@ final class PerceptionPreviewView: ExpoView {
       NSLog("[Perception] preview: ARSCNView replaced the delegate queue; restored")
     }
     attachedSession = session
+    sceneView.isPlaying = true
+    NSLog("[Perception] preview: attached running=%d delegateKept=%d", session.currentFrame != nil ? 1 : 0, session.delegate === delegateBefore ? 1 : 0)
     onReady(["attached": true, "running": session.currentFrame != nil])
+    scheduleHealthLog()
+    kickWhenSessionRuns(session)
+  }
+
+  /// A session attached before it ran: once frames flow, re-bind so the view picks the feed up.
+  private func kickWhenSessionRuns(_ session: ARSession) {
+    var attempts = 0
+    func poll() {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        guard let self, self.attachedSession === session else { return }
+        attempts += 1
+        if session.currentFrame != nil {
+          if !self.sceneView.isPlaying {
+            self.sceneView.session = session
+            self.sceneView.isPlaying = true
+            NSLog("[Perception] preview: session started after attach; render loop kicked")
+          }
+          return
+        }
+        if attempts < 120 { poll() }   // up to a minute: a cold CoreML compile can take that long
+      }
+    }
+    poll()
   }
 
   private func applyMirror() {

@@ -230,6 +230,7 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
     session.run(config, options: [.resetTracking, .removeExistingAnchors])
     isRunning = true
     isInterrupted = false
+    NSLog("[Perception] session run: %@", chosenFormat)
   }
 
   /// `resetTracking` only: keeps anchors, used by the NOT_AVAILABLE watchdog and
