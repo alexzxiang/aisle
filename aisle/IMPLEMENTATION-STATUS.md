@@ -1,17 +1,21 @@
 # Aisle — Implementation Status
 
 Written 2026-09-18 (evening before hacking opens) from the four track reports, the integration
-report, and a fresh scan and test run of this checkout. It is meant to be blunt. Read it before
-the phase-0 go/no-go in `../11-PHASE-0-CHECKLIST.md` §9.
+report, and a fresh scan and test run of this checkout; refreshed the same day after the reviewer
+round (commits `2d8dc4b` … `577fe25`, see §7). It is meant to be blunt. Read it before the
+phase-0 go/no-go in `../11-PHASE-0-CHECKLIST.md` §9.
 
 **One-paragraph summary.** Every subsystem in `00-PROJECT-BRIEF.md` exists as code, typechecks,
-and passes its tests (58 Jest suites / 851 tests; 14 vitest files / 137 tests; the phrase and
-dependency lints are clean). None of it has ever run on a phone, against a real API, at the venue,
-or with a trained model. The Swift `PerceptionModule` has never been compiled by Xcode. There are
+and passes its tests (60 Jest suites / 906 tests; 14 vitest files / 140 tests; the phrase and
+dependency lints pass; the Swift engine typechecks against the iPhoneOS SDK). A walking-skeleton
+test now drives the whole 01 §1 mode sequence, IDLE to DONE, through `composeApp` on D's replayers
+— under Jest fake timers, on synthetic fixtures, not on a phone. None of it has ever run on a
+phone, against a real API, at the venue, or with a trained model. The Swift `PerceptionModule` has never been compiled by Xcode. There are
 zero model weights, zero cached ElevenLabs phrases, zero API keys, zero real recordings, and the
 store and crossing fixtures carry invented coordinates. The proxy is not hosted anywhere. What
 the team has is a complete, well-tested **mock-mode** application and a complete but **unproven**
-live path. Everything committed after `5387267` is still uncommitted in the working tree.
+live path. The working tree is committed (HEAD `577fe25`); 19 of the reviewer's 20 issues are
+closed in code, the 20th (empty phrase cache, G9/G39) needs keys, not code.
 
 Status words used below: **Implemented** = real code path, tested, nothing known missing in the
 code; **Partial** = real code path with a named hole; **Stub** = interface and scaffolding, no
@@ -26,21 +30,21 @@ device" — see §5.
 |---|---|---|---|---|
 | 1 | Contracts, event bus, state machine, service registry, composition root | Implemented | `src/core/contracts.ts`, `bus.ts`, `store.ts`, `services.ts`, `composeApp.ts`, `trip.ts`, `App.tsx` | Nothing in code. `App.tsx` itself has no Jest test (it imports expo backends); the graph is covered by `composeApp.test.ts` with fakes. |
 | 2 | Outdoor navigation (Routes fetch, legs, turns, re-plan, beacon target) | Implemented | `src/outdoor/*`, `server/routes/route.ts`, `server/routes/crossings.ts`, `server/data/` | Never fetched a live route: no `GOOGLE_MAPS_API_KEY`; the Forbes/Bouquet `computeRoutes` fixture is **hand-authored from the documented shape, not captured**. Overpass never called live. Google Maps ToS question on speaking street names unresolved (Mapbox is the drop-in). |
-| 3 | Signalized crossing (align, read signal, ticker, far-curb beacon, onset rule) | Partial | `src/crossing/CrossingController.ts`, `crossingLogic.ts`, `src/core/audio.ts` | Controller logic is complete and tested on synthetic events. Rung 1 (on-device signal model) **does not exist** — no `ped-signal-v1.mlpackage`. Today the ladder starts at rung 2 (Sonnet curb crop, itself never called live) and realistically at rung 3/4 (alignment + map awareness + `setManualSignal`). Near/far curb positions and bearing unverified at any real crossing. |
-| 4 | Unsignalized crossing (scan left/right, worst-of report) | Partial | `src/crossing/CrossingController.ts`, `crossingLogic.ts` | Same dependency: the detector that feeds `SCAN_RESULT` has no weights and has never run. Claude side of the scan never called live. |
+| 3 | Signalized crossing (align, read signal, ticker, far-curb beacon, onset rule) | Partial | `src/crossing/CrossingController.ts`, `crossingLogic.ts`, `src/core/audio.ts` | Controller logic is complete and tested on synthetic events; since the review the crossing start is pose-first (> 1.5 m along the bearing with NORMAL tracking; ≥ 4 steps only as the no-pose fallback, suppressed during a scan window and when heading is > 45° off), and curb → far curb runs end to end in Jest (`src/walkingSkeleton.test.ts`, `mocks/endToEnd.test.ts`) on synthetic 10 Hz poses. Rung 1 (on-device signal model) **does not exist** — no `ped-signal-v1.mlpackage`. Today the ladder starts at rung 2 (Sonnet curb crop, itself never called live) and realistically at rung 3/4 (alignment + map awareness + `setManualSignal`). Near/far curb positions and bearing unverified at any real crossing. |
+| 4 | Unsignalized crossing (scan left/right, worst-of report) | Partial | `src/crossing/CrossingController.ts`, `crossingLogic.ts` | Same dependency: the detector that feeds `SCAN_RESULT` has no weights and has never run. Claude side of the scan never called live. The scan window now races snapshot + Claude against the 3 s freshness budget; the report is paced 1.5 s per line and flushed on step-off, but it stays at CRITICAL (class `scan`, the one non-hazard class A's policy admits) — reviewer #8 asked for it off CRITICAL, B kept it because NAV is newest-wins and would drop the middle line. Never heard at a real crossing. |
 | 5 | Vehicle warnings (looming tracker → STOP + phrase) | Partial | `modules/perception/ios/Engine/VehicleTracker.swift`, `src/perception/PerceptionService.ts` (`bindPerceptionToApp`), `src/crossing/VehicleAlert.ts` | Tracker is written and passes 94 synthetic checks on macOS; never compiled for iOS, never run on footage; COCO weights absent. `VehicleAlert` (B) is deliberately **not constructed** because it would double every STOP — B must strip play/say from it. Frame → haptic < 150 ms unmeasured. False-alarm budget unmeasured. |
 | 6 | PerceptionModule (ARKit, Vision OCR, CoreML registry, thermal, snapshot, JS bridge) | Partial | `modules/perception/ios/**`, `modules/perception/index.ts`, `expo-module.config.json`, `Perception.podspec` | Engine files typecheck with `swiftc -typecheck` against the iPhoneOS SDK; `PerceptionModule.swift` (the Expo wrapper) has **never been compiled** — this Mac has the iOS 26.5 SDK headers but no installed iOS platform, so `xcodebuild` exits 70. Autolinking and `pod install` succeed (Perception pod linked after two fixes: deployment target 17.0, relative podspec resource paths). Whether CocoaPods compiles a resource `.mlpackage` to `.mlmodelc` is unconfirmed. Horizon-row sign convention, depth thresholds, OCR box scale are uncalibrated guesses. |
 | 7 | CoreML models (COCO nano, ped-signal-v1, Depth Anything V2 small, optional walkable-seg) | Not started | `models/README.md`, `manifest.json`, `LICENSES.md` only | **No weights of any kind.** Without them every model-driven stream (`onDetections`, `onVehicleApproaching`, `onSignalState` from the model, `onDepth`, `onObstacleAhead`) is silent; only ARKit pose and Vision OCR would work. Depth Anything CoreML build not located; licence unverified. |
 | 8 | Indoor OCR matcher, navigator, centring, obstacles, checkout, item pickup | Implemented | `src/indoor/*` | Pure JS is complete and tested against all 04 edge cases. Depends on Vision OCR from the uncompiled module; never read a real sign. Claude `aisle_disambiguate` path never called live. |
 | 9 | Transition (store-entry handoff, five-signal fusion, forceEnter, announcement) | Implemented | `src/transition/TransitionDetector.ts`, `announce.ts`, `src/core/trip.ts` | Tuned and tested only on the synthetic `fixtures/track.json` entry profile. Never fired on a real door. |
-| 10 | Speech: two-tier ElevenLabs (cached phrases + live/streamed) with expo-speech fallback | Partial | `src/core/speech.ts`, `speechBackend.ts`, `phrases.ts`, `scripts/generate-audio.ts`, `assets/audio/manifest.ts`, `server/routes/tts.ts`, `server/lib/elevenlabs.ts` | `AUDIO_MANIFEST` is **empty**: every phrase, including the disclaimer, speaks via `expo-speech` today. Tier-1 streamed speech is **disabled** (`STREAMED_SPEECH_RELAY_AVAILABLE = false`): A's player fetches `GET /api/tts/stream/<id>`, D's proxy only relays audio as binary WebSocket frames — the two halves do not meet. Live TTS first-audio < 400 ms and cached < 50 ms unmeasured. |
-| 11 | Voice input (push-to-talk, on-device STT, Scribe fallback, keyboard) | Implemented | `src/core/voice.ts`, `src/ui/TalkButton.tsx`, `server/routes/stt.ts` | Never exercised with a microphone. No live partial transcript (no `onPartial`). Volume-button PTT cut (no API). Keyboard path is planner-free by design. |
+| 10 | Speech: two-tier ElevenLabs (cached phrases + live/streamed) with expo-speech fallback | Partial | `src/core/speech.ts`, `speechBackend.ts`, `phrases.ts`, `scripts/generate-audio.ts`, `assets/audio/manifest.ts`, `server/routes/tts.ts`, `server/lib/elevenlabs.ts` | `AUDIO_MANIFEST` is **empty**: every phrase, including the disclaimer, speaks via `expo-speech` today. Tier-1 streamed speech is **disabled** (`STREAMED_SPEECH_RELAY_AVAILABLE = false`): A's player fetches `GET /api/tts/stream/<id>`, D's proxy only relays audio as binary WebSocket frames — the two halves do not meet. Live TTS first-audio < 400 ms and cached < 50 ms unmeasured. Since the review `say()` with a phrase-table key speaks `PHRASES[key]` (mismatched caller text throws in dev, is replaced and reported in prod), CRITICAL bypasses the mode table only for `always` / `vehicle` / `obstacle` / `scan`, cooldowns arm only on an accepted enqueue, and the disclaimer has one owner (`OnboardingScreen`). None of that puts an mp3 in the bundle. |
+| 11 | Voice input (push-to-talk, on-device STT, Scribe fallback, keyboard) | Implemented | `src/core/voice.ts`, `src/ui/TalkButton.tsx`, `server/routes/stt.ts` | Never exercised with a microphone. Push-to-talk clips are now persisted only when Scribe upload is configured and deleted after use (was: every clip kept forever). No live partial transcript (no `onPartial`). Volume-button PTT cut (no API). Keyboard path is planner-free by design. |
 | 12 | Nemotron planner jobs (routeCompile, parseIntent, disambiguate, crossingAnnounce, answer) + eval | Partial | `src/outdoor/plannerJobs.ts`, `planner.ts`, `server/routes/plan.ts`, `plan.eval.ts`, `plan.eval.md`, `server/lib/nim.ts`, `deadline.ts` | Code is complete with validators and deterministic templates. **Never called NIM.** Model id `nvidia/nemotron-3.5-lightning-30b-a3b` is a guess to be read from `/v1/models`; `nvext.guided_json` acceptance unverified. `plan.eval.md` is a **template-only run** (model column `n/a`, human rating column empty). The sponsor-track "evidence" currently proves the fallback works, not Nemotron. |
 | 13 | Claude semantic vision (Tier 1: storefront, aisle disambiguation, scan stills, curb crop, hand guidance) | Partial | `src/perception/semanticVision.ts`, `server/routes/vision.ts`, `server/ws/visionSocket.ts`, `server/lib/anthropic.ts`, `server/schemas/vision.ts`, `server/prompts/vision.ts` | HTTP path wired and used; WS path built and tested against fakes but never opened by the app (see #10). Never called Anthropic; structured-output schema, Haiku 4.5 / Sonnet 5 ids, thinking-disabled param unverified live. p95 < 3 s unmeasured. |
-| 14 | Haptics (COURSE/TURN/STOP/CONFIRM) and audio channels (beacon, ticker, session) | Implemented | `src/core/haptics.ts`, `audio.ts`, `assets/audio/beacon_*.wav`, `tick.wav`, `scripts/generate-tones.ts` | Never felt on a phone. Haptics-while-ARKit-runs and haptics-with-`allowsRecording` (phase-0 T4) unverified. Bluetooth latency unmeasured. Optional Core Haptics module not built (phase-2 polish). |
-| 15 | Onboarding + spoken disclaimer + settings | Implemented | `src/ui/OnboardingScreen.tsx`, `onboardingSteps.ts`, `SettingsSheet.tsx`, `src/core/prefs.ts` | Verified only through `react-test-renderer`; no VoiceOver pass; iOS has no live-region equivalent so hero changes are not announced (by design, speech is the channel — confirm no double-speech on device). |
-| 16 | DebugPanel, mocks, fixtures, jump-to-mode, manual overrides | Partial | `src/ui/DebugPanel.tsx`, `IntegrationControls.tsx`, `mocks/**`, `fixtures/**` | Mocks and panel are complete. **Every fixture is synthetic** (`fixtures/README.md`: "State today: everything is SYNTHETIC"); `stores/demo-store-01.json` and `crossings/demo.json` are hand-written placeholders; frames are three identical placeholder JPEGs. Missing on the panel: battery (needs `expo-battery`), `/api/health` dots, proxy-URL override / LAN toggle, socket state, runtime replay toggle. A DebugPanel jump to `APPROACH_CROSSING` flickers through `OUTDOOR_NAV` once. |
-| 17 | Proxy (`/api/vision`, `/ws`, `/api/plan`, `/api/tts`, `/api/stt`, `/api/route`, `/api/health`) | Implemented | `server/**` | Code complete, 137 tests against faked upstreams, `.env.example` for the five keys. **Not deployed anywhere**, no keys, no real upstream call ever made, WS vision → first audio ≤ 1.5 s p50 unmeasured. No `GET /api/tts/stream/:id` (see #10). OpenRouter failover key not in the locked key list. |
+| 14 | Haptics (COURSE/TURN/STOP/CONFIRM) and audio channels (beacon, ticker, session) | Implemented | `src/core/haptics.ts`, `audio.ts`, `assets/audio/beacon_*.wav`, `tick.wav`, `scripts/generate-tones.ts` | Never felt on a phone. Roadward COURSE buzz now needs ≥ 5° of heading toward the road, drift is capped at 30°, and only perception (`pose` / `curb`) cross-track counts — GPS/DR cross-track is zeroed in `sensors.courseErrorFor`; tuned on paper against 01 §2's fatigue rule, never against a wrist. Haptics-while-ARKit-runs and haptics-with-`allowsRecording` (phase-0 T4) unverified. Bluetooth latency unmeasured. Optional Core Haptics module not built (phase-2 polish). |
+| 15 | Onboarding + spoken disclaimer + settings | Implemented | `src/ui/OnboardingScreen.tsx`, `onboardingSteps.ts`, `SettingsSheet.tsx`, `src/core/prefs.ts` | Verified only through `react-test-renderer`; no VoiceOver pass. Since the review every step speaks only `onboarding_*` / `disclaimer` keys (the whole tutorial becomes cacheable once G9 lands), the talk button is tap-to-toggle under a screen reader, and the iOS hero announcement rule is decided (`src/ui/DESIGN.md` rule 9: `announceForAccessibility` only when app speech did not carry the hero change within 1.5 s). None of it has been heard through VoiceOver; the double-speech check on device is still open. |
+| 16 | DebugPanel, mocks, fixtures, jump-to-mode, manual overrides | Partial | `src/ui/DebugPanel.tsx`, `IntegrationControls.tsx`, `mocks/**`, `fixtures/**` | Mocks and panel are complete; since the review the perception packs are keyed by `AppMode` (curb pack arms on the AT_CURB edge), `curb-walk-onset` carries 10 Hz poses and a vehicle beat, steps emit on change, and `mocks/endToEnd.test.ts` drives OUTDOOR_NAV → CROSSING through `composeApp`. **Every fixture is synthetic** (`fixtures/README.md`: "State today: everything is SYNTHETIC"); `stores/demo-store-01.json` and `crossings/demo.json` are hand-written placeholders; frames are three identical placeholder JPEGs; `indoor-aisle-walk` has no CHECKOUT sign (G37). Missing on the panel: battery (needs `expo-battery`), `/api/health` dots, proxy-URL override / LAN toggle, socket state, runtime replay toggle. A DebugPanel jump to `APPROACH_CROSSING` flickers through `OUTDOOR_NAV` once. |
+| 17 | Proxy (`/api/vision`, `/ws`, `/api/plan`, `/api/tts`, `/api/stt`, `/api/route`, `/api/health`) | Implemented | `server/**` | Code complete, 140 tests against faked upstreams (the speech lane now blanks any string with a digit, mirroring the client lock), `.env.example` for the five keys. **Not deployed anywhere**, no keys, no real upstream call ever made, WS vision → first audio ≤ 1.5 s p50 unmeasured. No `GET /api/tts/stream/:id` (see #10). OpenRouter failover key not in the locked key list. |
 | 18 | CV training track (data, labelling, YOLO training, CoreML export, gate scoring, report) | Stub | `training/**` | Five scripts compile and print `--help`; `score_gate.py` verified on synthetic data. **No video, no frames, no labels, no dataset survey, no run, no export**; `eval/ped-signal-v1-report.md` is all `TBD`; `LICENSES.md` dataset rows unfilled. |
 | 19 | Builds (dev build on the demo phone, EAS internal distribution) | Partial | `app.json`, `eas.json`, `ios/` (generated) | `expo prebuild --clean` + `pod install` succeed with Perception linked. `xcodebuild` **fails on this Mac** (no iOS platform component installed). No `expo run:ios --device` has ever completed. No EAS build has been requested; no device UDIDs registered. |
 
@@ -51,8 +55,10 @@ Tally: 8 Implemented, 9 Partial, 1 Stub, 1 Not started.
 ## 2. Not implemented, and why
 
 Consolidated from the five track reports plus a scan of the tree for `TODO`, `FIXME`, `not
-implemented`, `stub`, `placeholder`, `[verify]` and `synthetic`. The scan found no `TODO`/`FIXME`
-markers in source; the gaps are declared in headers, READMEs and fixture metadata instead.
+implemented`, `stub`, `placeholder`, `[verify]` and `synthetic`. The scan (re-run after the review
+commits) found no `TODO`/`FIXME` markers in source, and the only `test.failing` / `skip` in the
+tree is the walking skeleton's G37; the gaps are declared in headers, READMEs and fixture metadata
+instead.
 Grouped by what unblocks them.
 
 ### 2a. Blocked on Xcode / a provisioned Mac / the demo phone
@@ -63,7 +69,7 @@ Grouped by what unblocks them.
 | G2 | On-device perception verification: ARKit video format, detector ≥ 15 fps, depth ≥ 10 fps, OCR 3 fps, frame → haptic < 150 ms, thermal `.serious` downshift, NEAR/MID/FAR wall-walk calibration, 0.5 m taped-line drift, horizon-row sign convention, Vision ROI mapping, Depth Anything output format, snapshot bytes | C | No phone, no build, no weights | G1 + G14, then a DebugPanel session reading `getStats()` and `nativeLog()`; flip `Geometry.swift` horizon sign if mirrored; scale `ObstacleEstimator` / `OcrReader` constants |
 | G3 | `.mlpackage` inside a CocoaPods resource bundle: does Xcode compile it to `.mlmodelc`? | C | Needs a pod install with weights present | One `pod install` + build with any `.mlpackage` in `models/`; `ModelRegistry` already looks up both extensions |
 | G4 | On-device audio/haptics: cached phrase < 50 ms, chunked Tier-1 MP3 playback in AVPlayer, live TTS first audio < 400 ms, haptics firing while ARKit runs and with `allowsRecording: false`, Bluetooth latency | A | Backends exercised only through injected fakes | Phase-0 T4/T5 on the demo phone; if chunked MP3 without Content-Length stalls, D buffers server-side |
-| G5 | Visual and VoiceOver verification of every screen; iOS hero announcement policy; `accessibilityRole='alert'` behaviour on the error line | A | Verified with `react-test-renderer` only | `expo run:ios --device` + the phase-2 VoiceOver pass (06 "If you finish early" #2) |
+| G5 | Visual and VoiceOver verification of every screen; the iOS hero announcement rule (`DESIGN.md` rule 9) and the tap-to-toggle talk button under VoiceOver; `accessibilityRole='alert'` behaviour on the error line | A | Verified with `react-test-renderer` and an `AccessibilityInfo` fake only; the policy is decided in code, not heard | `expo run:ios --device` + the phase-2 VoiceOver pass (06 "If you finish early" #2) |
 | G6 | Frame → haptic < 150 ms on recorded curb footage (the +6 h gate) | B / C | `VehicleAlert.lastHandlerMs` measures only the JS side; native `frameToEventMs` needs the module on a phone | G1 + G14 + S5 footage |
 | G7 | EAS internal-distribution build for the Windows user's phone (phase-0 T3) | A / D | Never requested; no UDIDs registered | `eas device:create`, `eas build --profile development --platform ios`; budget the free-plan queue |
 | G8 | Offline replay proven (airplane mode keeps the bundle alive; no reload) | D | Needs an installed build | Phase-0 C4 on the spike |
@@ -113,8 +119,11 @@ Grouped by what unblocks them.
 | G32 | Pre-commit hook / CI step running `npm run lint:phrases && npm run lint:deps` | Orchestrator | Git root is the parent repo; no hook manager; repo-level decision | Add the hook or CI step |
 | G33 | Markdown lint of `06-INTEGRATION-AND-DEMO.md` flags quoted judge questions containing a forbidden word | Human | They are quotes of judges, not app text | Decide whether docs are in scope of the lint; no code change |
 | G34 | Optional Core Haptics module (continuous STOP, intensity-modulated COURSE); volume-button push-to-talk | A | Phase-2 polish behind a flag / no hardware-button API in SDK 57 | Only if the +6 h gate is met; otherwise cut |
-| G35 | Contract flags raised by B and not acted on unilaterally: `SpeechService.prefetch` as a shared cache path, `useOutdoorStore.beaconTarget` as the shared beacon slice, CROSSING cross-track buzz with `roadSide 'NONE'`, `turn_*_soon` canonical wording vs the 20 m trigger, B's extra files under `server/routes/` | A / B / D | Need acks in the shared channel | Ack or reject each; most are already consumed by `composeApp` as-is |
+| G35 | Contract flags raised by B and not acted on unilaterally: `SpeechService.prefetch` as a shared cache path, `useOutdoorStore.beaconTarget` as the shared beacon slice, `turn_*_soon` canonical wording vs the 20 m trigger, B's extra files under `server/routes/` | A / B / D | Need acks in the shared channel (the `roadSide 'NONE'` cross-track flag is now settled in `haptics.ts`: NONE buzzes only with heading agreement) | Ack or reject each; most are already consumed by `composeApp` as-is |
 | G36 | Google Maps ToS on text-to-speech of Routes street names | B / team | Not checked | Read the clause; Mapbox Directions is the drop-in if the answer is no |
+| G37 | `CHECKOUT_NAV → DONE` from a real landmark read: `fixtures/perception/indoor-aisle-walk.jsonl` carries no CHECKOUT / REGISTERS / LANES sign, so the indoor controller never emits `CHECKOUT_REACHED`; the walking skeleton injects it DebugPanel-style after a 15 s wait and keeps a `test.failing` on the real path | C / D | Fixture gap, not a controller gap (the landmark class is covered in `src/indoor/*.test.ts`) | Add a checkout sign read to the pack (or a hard-cases pack); promote the `test.failing` in `src/walkingSkeleton.test.ts` |
+| G38 | `npx expo install --check` no longer passes: `expo-build-properties@57.0.20` (expected `~57.0.21`) and `expo-location@57.0.18` (expected `~57.0.19`) | A | Expo published new patch pins after the last check; nothing in the repo changed | `npx expo install --fix` before the first device build, then re-run typecheck + jest |
+| G39 | Reviewer issue #1 (empty `AUDIO_MANIFEST`) is the one review item no fixer closed | A | It is G9 by another name: needs `ELEVENLABS_*` keys, not code | See G9 |
 
 Also found by the scan and left as-is on purpose: `src/ui/copy.ts` `WALKING_BETA_FALLBACK` (a
 display fallback; `App.tsx` passes B's real `WALKING_BETA_WARNING` via `betaNotice`);
@@ -134,11 +143,13 @@ integration proved up to the point where the Mac lacked an iOS platform.
 cd /Users/alexxiang/steelhacks/aisle
 npm install
 npm run typecheck        # 0 errors
-npm test                 # 58 suites / 851 tests
-npm run test:server      # 14 files / 137 tests (vitest, upstreams faked)
+npm test                 # 60 suites / 906 tests (incl. src/walkingSkeleton.test.ts, mocks/endToEnd.test.ts)
+npm run test:server      # 14 files / 140 tests (vitest, upstreams faked)
 npm run lint             # tsc + forbidden-deps grep + forbidden-phrase lint
-npx expo install --check # "Dependencies are up to date" (SDK 57 pins hold)
+npx expo install --check # FAILS since 2026-09-18: two outdated patch pins (G38)
 bash modules/perception/tests/run.sh   # 94 synthetic Swift engine checks (macOS SDK, no ARKit)
+xcrun -sdk iphoneos swiftc -typecheck -target arm64-apple-ios17.0 -parse-as-library modules/perception/ios/Engine/*.swift   # 11 files, exit 0
+SKELETON_TRACE=1 npx jest src/walkingSkeleton.test.ts   # prints the mode/say/event timeline of one full mock trip
 ```
 
 ### Mock mode on a development build (the demo backup; needs a provisioned Mac + iPhone)
@@ -157,7 +168,8 @@ haptics are real. Without a proxy, variable phrases (street names, aisle arrival
 live budget and then speak through `expo-speech`; prefetch before `ROUTE_READY` is capped at 2.5 s.
 
 Mock mode has only ever been exercised through the Jest harness (`src/core/composeApp.test.ts`,
-`mocks/replayers.test.ts`). No human has seen it on a screen.
+`mocks/replayers.test.ts`, `mocks/endToEnd.test.ts`, `src/walkingSkeleton.test.ts`). No human has
+seen it on a screen.
 
 ### Proxy
 
@@ -235,14 +247,14 @@ entirely NO-GO.
 | Check | Integrator reported | Re-run 2026-09-18 for this file |
 |---|---|---|
 | `npm run typecheck` (app) | clean | 0 errors |
-| `npm test` (Jest, jest-expo) | 58 suites / 851 tests | 58 / 851 pass, 2.6 s |
-| `npm test` in `server/` (vitest) | 14 files / 137 tests | 14 / 137 pass |
+| `npm test` (Jest, jest-expo) | 58 suites / 851 tests | 60 / 906 pass, 2.6 s (after the review round; see §7) |
+| `npm test` in `server/` (vitest) | 14 files / 137 tests | 14 / 140 pass |
 | `tsc --noEmit` in `server/` | clean | clean |
 | `npm run lint:phrases` | ok | ok (phrase table, string literals, fixtures) |
 | `npm run lint:deps` | ok | ok |
-| `npx expo install --check` | — | "Dependencies are up to date" |
-| Swift engine `swiftc -typecheck` (iphoneos, arm64, iOS 17) | exit 0 (C) | not re-run |
-| `modules/perception/tests/run.sh` (macOS harness) | 94 / 94 (C) | not re-run |
+| `npx expo install --check` | — | was "up to date"; on the §7 re-run **two outdated pins** (G38) |
+| Swift engine `swiftc -typecheck` (iphoneos, arm64, iOS 17) | exit 0 (C) | exit 0, 11 files, no diagnostics |
+| `modules/perception/tests/run.sh` (macOS harness) | 94 / 94 (C) | 94 / 94 |
 | `PerceptionModule.swift` compile | **never** | — |
 | `npx expo-modules-autolinking resolve -p ios` | lists `perception` | — |
 | `npx expo prebuild --platform ios --clean` | succeeded (3rd run, 100 pods incl. Perception) | — |
@@ -253,7 +265,7 @@ entirely NO-GO.
 
 Caveats on the numbers:
 
-- All 851 + 137 tests run against fakes, injected fetches, scripted sensor sources and synthetic
+- All 906 + 140 tests run against fakes, injected fetches, scripted sensor sources and synthetic
   fixtures. They prove internal consistency, not that a single external assumption (Expo API
   behaviour on device, Anthropic/NIM/ElevenLabs/Google response shapes, ARKit/Vision/CoreML
   behaviour, MP3 streaming in AVPlayer) holds.
@@ -265,9 +277,9 @@ Caveats on the numbers:
   owners: `modules/perception/ios/Perception.podspec` (C; resource paths made relative so
   `pod install` passes) and `app.json` (A-owned; `expo-build-properties` deployment target 17.0,
   without which autolinking silently skipped the Perception pod).
-- `git status` shows 20 modified and 21 untracked files since the WIP checkpoint commit
-  `5387267`; `fixtures/tools/generate.mjs` is a pre-existing uncommitted D change. Nothing in
-  this status is committed until the orchestrator commits.
+- The working tree is committed: `git status` is empty at `577fe25`. Each fixer committed only
+  its own track's files; the attribution trailer differs between commits (two names), which is
+  cosmetic.
 
 ---
 
@@ -284,3 +296,66 @@ Caveats on the numbers:
    Anthropic tier settles and the Nemotron model id is known before the AMA.
 6. Accept now that rung 1 of the crossing ladder (on-device signal model) is an upside, not a
    dependency, and write the run-of-show for rung 2/3.
+7. `npx expo install --fix` (G38) before the first `expo run:ios`, and when mock mode misbehaves
+   on the phone run `SKELETON_TRACE=1 npx jest src/walkingSkeleton.test.ts` first — it is the only
+   record of what the mock trip is supposed to do second by second.
+
+---
+
+## 7. Verification (2026-09-18, after the reviewer round)
+
+Run by the verifier on a clean tree at `577fe25` from `/Users/alexxiang/steelhacks/aisle`.
+Everything below is the gate output as printed, trimmed to the result lines.
+
+| Gate | Command | Result |
+|---|---|---|
+| App typecheck | `npm run typecheck` (`tsc --noEmit`) | exit 0, no output |
+| Jest | `npx jest` | `Test Suites: 60 passed, 60 total` / `Tests: 906 passed, 906 total` / `Time: 2.592 s` |
+| Phrase lint | `npm run lint:phrases` | `lint-phrases: ok (phrase table, string literals, fixtures)` |
+| Dependency lint | `npm run lint:deps` | exit 0, no output |
+| Server tests | `cd server && npm test` (vitest 5.0.1) | `Test Files 14 passed (14)` / `Tests 140 passed (140)` / `Duration 692ms` |
+| Server typecheck | `cd server && npx tsc --noEmit` | exit 0, no output |
+| Swift engine typecheck | `xcrun -sdk iphoneos swiftc -typecheck -target arm64-apple-ios17.0 -parse-as-library modules/perception/ios/Engine/*.swift` | 11 files, exit 0, no diagnostics |
+| Swift macOS harness | `bash modules/perception/tests/run.sh` | `94 passed, 0 failed` |
+| SDK pins | `npx expo install --check` | **fails**: `expo-build-properties@57.0.20 - expected version: ~57.0.21`, `expo-location@57.0.18 - expected version: ~57.0.19` (G38; not one of the named gates, left for A) |
+| `PerceptionModule.swift` / `xcodebuild` / device build | — | still never compiled (G1); unchanged by this round |
+
+**Walking skeleton** (`npx jest src/walkingSkeleton.test.ts --verbose`): 12 / 12 pass. Ten
+assertions on the main run (mode sequence IDLE → OUTDOOR_NAV → APPROACH_CROSSING → AT_CURB →
+CROSSING → OUTDOOR_NAV → TRANSITION → INDOOR_NAV → AT_ITEM → CHECKOUT_NAV → DONE with zero
+illegal transitions; one ROUTE_READY / four legs / one crossing / no re-plan; CROSSING_AHEAD ≤ 25 m,
+CURB_REACHED from the 2 s stop, CROSSING_STARTED after the step-off, FAR_CURB_REACHED and
+"Far curb."; "Walk signal on." at the curb after DONT_WALK; VEHICLE_APPROACHING → STOP haptic in
+the same tick then the CRITICAL phrase; one fused STORE_ENTERED inside the 5–15 s post-door window
+and TRANSITION within the 3 s cap; TARGET_AISLE_REACHED {a3, RIGHT} and "Aisle three. Eggs on your
+right."; every utterance ≤ 12 words, digits as words, no forbidden term, at `say()` and at the
+backend; zero `fetch` / `WebSocket`), one on the stale-WALK run ("Walk already on. Wait for next.",
+never "Walk signal on."), and one bookkeeping check that the only inputs beyond ITEM_REQUESTED were
+the user's "next" at the item and the checkout injection.
+
+**Known-gap list carried by the skeleton** (`test.failing`, so it counts as a pass until the code
+catches up):
+
+1. G37 — `indoor-aisle-walk` has no CHECKOUT sign, so CHECKOUT_NAV → DONE needs an injected
+   `CHECKOUT_REACHED` instead of the navigator's landmark match. Owner C / D.
+
+Two gaps the skeleton opened earlier in the session (curb stillness never accruing; the leg gap at
+the crossing forcing a spurious re-plan) closed with D's `482e215` and were promoted to hard
+assertions; they are no longer in the list. The skeleton depends on D's mode-keyed packs and the
+retimed `track.json` — against the pre-`482e215` mocks it stalled at the near curb.
+
+**Reviewer issues** (`review-issues.json`, 20 items): 19 closed in code — A #2, #3, #4, #5, #6, #7,
+#10, #18, #19 (`b092dec`, `ff2e9e6`, `6b0535e`), B #8, #15, #16, #20 (`1070ce8`), C #9 (`2d8dc4b`),
+D #17 (`482e215`), and #11, #12, #13, #14 already in `e38261a` (re-verified in the tree:
+`store.ts` handles CROSSING_ABORTED through one bus handler, `LegRunner` gates STORE_ENTERED on the
+store's mode, `TransitionDetector.forceEnter` respects only the debounce, the approach announcement
+is spoken). #1 (empty `AUDIO_MANIFEST`) is open as G9 / G39 and cannot close without ElevenLabs
+keys. One reviewer fix was deliberately not applied as written: #18's cross-track source flag was
+gated in `sensors.courseErrorFor` instead of on `CourseError`, because 01 §2 freezes that type.
+One was applied differently from the reviewer's first choice: #8 keeps the scan report at CRITICAL
+(paced and flushed) rather than moving it to NAV; A's CRITICAL class list admits `scan` for it.
+
+**What this round did not change.** No phone, no key, no venue, no weights, no Xcode compile of
+the module, no hosted proxy. The 906 + 140 tests still prove internal consistency between four
+agents' code and their own fakes. The status words in §1 are unchanged: 8 Implemented, 9 Partial,
+1 Stub, 1 Not started.
