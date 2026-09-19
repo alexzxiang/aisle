@@ -1,169 +1,164 @@
-# Aisle — team plan for the last stretch (4 people, no merge fights, no integrator)
+# Aisle — team plan v2 (2026-09-19 evening): make it actually guide
 
-Written 2026-09-19. The app builds, installs, talks, and the camera runs from launch.
-What's weak is what the user feels: it doesn't reliably know where it is, it doesn't
-find the eggs, it talks too little, and it sees a narrow slice of the room. This plan
-splits that into four streams that touch **disjoint files**, plus the rules that keep
-`main` green without anyone playing integrator (CI does that: `.github/workflows/ci.yml`
-runs the same gates you run locally on every PR).
+v1 got the machinery running: camera from launch, 51 object classes on-device, Apple's
+scene classifier, scene memory, routes in 6–8 s, hand loop, hold-to-talk. The living-room
+test still fails, and the reasons are specific:
 
-## The four streams and who owns which files
+1. **The AI does not turn what the camera sees into an instruction.** The detector reports
+   `fridge ahead (close)`; the words that come out are "Bear left." That is because every
+   spoken step comes from a language model reading a still, and nothing on the phone turns
+   a detected target into "Fridge ahead, five steps. Walk forward." deterministically.
+2. **Hand guidance has no hand.** COCO has no hand class, so the loop asks Claude for both the
+   hand and the target every two seconds. Apple ships an on-device hand-pose detector
+   (`VNDetectHumanHandPoseRequest`, 15 fps). We do not use it.
+3. **Speech-to-text hears the app talking.** The mic opens while the voice is still speaking,
+   nothing pauses it, and anything the parser does not recognise becomes "Say the item
+   again." — so questions ("is the fridge open?", "how far is it?") get a non-answer.
+4. **The street walk has never been verified** and the screen shows a small camera with a
+   transcript nobody blind needs.
 
-| Stream | Owner | Owns (edit freely) | Never edits |
+Four streams, four owners, disjoint files. Same rules as v1 (bottom of this file). CI is
+the integrator.
+
+| Stream | Owner | Owns | Goal in one line |
 |---|---|---|---|
-| **A — Eyes & the model** | Alex (Mac, Xcode, the training data) | `modules/perception/**` (Swift + `index.ts`), `src/perception/**`, `plugins/withCoreMLModels.js`, `models/**`, `training/**` | `src/core/**`, `src/ui/**`, `server/**` |
-| **B — Voice & behaviour** (what it says, when) | Mac or Windows: pure TS + Jest | `src/core/situate.ts`, `guidedTask.ts`, `describer.ts`, `prompts.ts`, `voice.ts`, `phrases.ts`, `assets/audio/**` (+ their tests) | `server/**`, `src/perception/**`, `src/ui/**` |
-| **C — Brain** (proxy, prompts, planners, places) | Windows-friendly: Node + vitest | `server/**`, `src/outdoor/plannerJobs.ts` (job prompts/schemas/templates), `fixtures/plan/**` | `src/core/**` except `plannerJobs.ts`, `src/ui/**`, native |
-| **D — Screens & the walk** (UI, UX, routes, haptics) | Mac + own iPhone | `src/ui/**`, `src/outdoor/**` (except `plannerJobs.ts`), `src/crossing/**`, `src/core/haptics.ts`, `src/core/audio.ts`, `server/routes/route.ts` + `server/data/**` (the route recorder), `README.md` | `src/perception/**`, `server/**` except the two route files |
+| **A — Perception → instructions** | Alex | `modules/perception/**`, `src/perception/**`, `src/core/sceneMemory.ts`, `src/core/guide.ts` (new), `models/**`, `training/**` | The phone itself says "fridge ahead, five steps" and "hand left" from what it sees, at 15 fps, no model round trip |
+| **B — Hearing & dialogue** | Poon | `src/core/voice.ts`, `situate.ts`, `guidedTask.ts`, `handGuide.ts`, `describer.ts`, `phrases.ts`, `assets/audio/**` | It hears the person (not itself), understands questions, and every step it speaks has a direction and a distance |
+| **C — Brain** | ahlqn | `server/**`, `src/outdoor/plannerJobs.ts`, `fixtures/plan/**`, `fixtures/vision/**` | Claude returns *positions* (boxes), not prose; an eval on real phone frames says how often it is right |
+| **D — Screen & street** | Tyler | `src/ui/**`, `src/outdoor/**` (except plannerJobs), `src/crossing/**`, `src/core/haptics.ts`, `README.md`, `DEMO-SCRIPT.md` | Camera-first screen; the route is provably right and the walk is field-tested |
 
-Everyone has an iPhone; the three Mac users each build to their own phone (Xcode, ⌘R on the
-Aisle scheme, or `npx expo run:ios --device`). The Windows teammate takes B or C — both run
-fully under Node.
+Shared files (`contracts.ts`, `store.ts`, `composeApp.ts`, `App.tsx`, `server/schemas/vision.ts`,
+`server/prompts/vision.ts`): tiny separate PRs, both sides of a contract in one, announced in chat.
 
-**Shared files — nobody owns them, everybody may touch them, one rule:** `App.tsx`,
-`src/core/composeApp.ts`, `src/core/contracts.ts`, `src/core/store.ts`,
-`server/schemas/vision.ts`, `server/prompts/vision.ts`. A change there is its own tiny
-PR (only those files, both sides of a contract in one PR), posted in the group chat with
-"shared file"; the first teammate to see it reviews and merges within the hour; everyone
-rebases. Never bundle a shared-file change into a feature PR.
+## A — Perception → instructions (Alex)
 
-## What each stream does, in priority order
+The design change: **guidance is computed on the phone from geometry; the language model
+only names things.** Two new deterministic sources feed one new module, `src/core/guide.ts`:
 
-### A — Eyes & the model (Alex): see more, see it bigger, recognise signals on-device
-Root causes found on 09-19: the ARKit format policy picked the smallest 30 fps format, which
-on the demo phone is 16:9 — that crops the sensor's top and bottom (floor and shelf), the
-"narrow horizontal band". And every still sent to Claude was 384×512: too small to tell an
-egg carton from a milk carton. Both are fixed in code but **need a rebuild**
-(`VideoFormatPolicy` now prefers ultra-wide → 4:3 → 30 fps; `SnapshotEncoder` accepts 768).
+1. **Target-relative walking instruction.** Given the goal word ("fridge"), the detector's
+   box for that class (or scene memory's bearing when it left the frame) and the depth-grid
+   nearness / box height, emit one of: `"Fridge ahead, about N steps. Walk forward."`,
+   `"Fridge to your right. Turn right a little."`, `"Fridge behind you. Turn around."`,
+   `"Turn slowly to the left so I can see the fridge."` (memory says it was left),
+   `"I have not seen the fridge yet. Turn slowly."` Steps from height: a fridge box
+   filling 80 % of the frame height is ~1 step, 40 % is ~3, 20 % is ~6 (calibrate on the
+   phone with a tape measure — 20 minutes, write the table into the code). Speak on change
+   or every 4 s; the LLM's `task_step` speech becomes a fallback for targets the detector has
+   no class for (eggs).
+2. **Hand pose on-device.** `VNDetectHumanHandPoseRequest` in the engine (new stage `hand`,
+   10 fps, only while a hand loop runs) → `onHandPose { indexTip, wrist, confidence }` in
+   normalized frame coords. The hand guide then steers with math: hand tip vs target box
+   (the target box comes from the detector for detectable things, from Claude's new
+   `target.box` — Stream C — for eggs/milk), thresholds in frame fractions:
+   `dx > 0.08 → "Left." / "Right."`, `dy > 0.08 → "Higher." / "Lower."`, both inside →
+   `"Reach forward."`, depth says the hand is at the target's plane → `"Grab it."`
+   Ten words a second are too many: one word per 700 ms, only when it changes.
+3. **Ultra-wide.** ARKit reports `1920x1440@30 wide` on the iPhone 16 (no ultra-wide format).
+   Add an `AVCaptureSession` on `.builtInUltraWideCamera` used **indoors only** (AWARE /
+   GUIDED_TASK profiles) for detector + stills; ARKit for OUTDOOR/crossing where pose drives
+   the haptics. It is a mode switch (~1 s); the preview follows whichever runs.
+4. **Session export for the others.** `startDebugExport` already writes events; add the
+   stills the phone sent (already JPEG in memory) with their facts to the same file, so B and
+   C can replay a living-room run offline. One switch in the DebugPanel; files land in the
+   app's Documents and come off with Finder.
+5. Later: the pedestrian-signal model (venv is ready: `training/.venv`).
 
-1. Rebuild, then read the DebugPanel's `videoFormat=` line. Note the exact format and lens
-   (`… ultrawide` / `… wide`). If ARKit offers no ultra-wide format on the iPhone 16, add an
-   `AVCaptureSession` on `.builtInUltraWideCamera` for **snapshots only** (ARKit keeps
-   pose / depth / preview). Success = a 768-px still with ~110° FOV from `snapshotJPEG`.
-2. Snapshot latency on-device: `snapshotJPEG(768)` ≤ 80 ms (JPEG 0.7 and one reused
-   `CIContext` if not). Preview: no crop in the portrait panel; aspect-fit if the format
-   ends up 16:9 after all.
-3. **The pedestrian-signal model** (the on-device path the crossing flow was designed for;
-   today the curb reading is Claude, which got DON'T WALK / COUNTDOWN right at 0.85 on real
-   photos, in ~3 s). Data: the public PTL / ImVisible set plus phone captures of
-   Pittsburgh signals in `training/`; YOLO11n at 320, classes `ped_walk`, `ped_hand`,
-   `ped_countdown` (`models/manifest.json` already names the file and classes); export to
-   CoreML; `training/score_gate.py` decides if it ships. Log precision/recall per class in
-   the PR. The COCO detector's `traffic light` class can crop the region first.
-4. Thermal: a 30-minute soak with the camera up in IDLE. If the phone goes `serious`,
-   drop the IDLE schedule (detector 5 fps, no depth) in `ModelRegistry.swift`.
+Acceptance (the living-room test, phone in hand): stand 4 m from the fridge facing 45° away
+→ within 3 s: "Fridge ahead to your right. Turn right a little." → face it: "Fridge ahead,
+about five steps. Walk forward." → at the door: "Fridge close. Reach for the handle."
+Hand test: open fridge, eggs on a shelf, hand out → "Higher." … "Left." … "Grab it." within
+20 s, no more than one word per second.
 
-Test: on device, the kitchen test below and a real curb. Unit: `npx jest src/perception`.
+## B — Hearing & dialogue (Poon)
 
-### B — Voice & behaviour: make it talk like a guide
-The loops exist (`situate.ts` narrates and asks "You seem to be …, is that right?";
-`guidedTask.ts` plans steps and confirms them with the camera). Tune them until the kitchen
-test passes with a blindfold on.
+1. **Stop talking when the mic opens.** `voice.begin()` must `speech.clearQueue()` and stop
+   the current utterance before the recogniser starts, and hold new speech until `end()`.
+   Today the app narrates into its own microphone; that alone explains half the bad
+   transcripts. Add a short earcon (a cached "listening" tick) so the person knows to speak.
+2. **Transcript hygiene.** Strip the app's last spoken sentence from the transcript if it
+   echoes back; prefer the Scribe result over Apple's when both exist and they disagree
+   (Scribe gets the domain words); keep `VOICE_VOCABULARY` growing with what people actually
+   say (log every final transcript to the conversation with its parsed intent so we can see
+   the misses).
+3. **Questions get answers.** Anything that is not a command — "is the fridge open", "what is
+   on the shelf", "how many steps", "which way is the door" — goes to the camera as a `free`
+   question with the words, or to scene memory ("which way is X"), never to "Say the item
+   again." Intent `unknown` should be rare; when it happens say "I did not catch that. Say it
+   again." and nothing else.
+4. **Confirm-back on the big ones.** Before a task or a route starts: "Eggs in your fridge —
+   right?" / "The CVS on Forbes — right?" (yes / no, `intercept`). One question, not more.
+5. **Every step has a direction and a distance.** `guidedTask` speaks Stream A's `guide.ts`
+   instruction when a target is known and only falls back to the model's words otherwise;
+   the observation step says *why* ("Turn slowly to the left so I can see the kitchen."),
+   the reach step says "Hold out your hand" once and then only hand words. Cadence: a new
+   instruction on change or every 4 s, a reassurance at 12 s of silence, never two
+   sentences in a row.
+6. Phrases: the new fixed words go through `phrases.ts` + `gen:audio` (normalized).
 
-1. **Kitchen test as a Jest scenario.** In `guidedTask.test.ts`, script the real sequence:
-   "find the eggs in my kitchen" → look → plan → steps, with vision responses that mimic
-   what Haiku actually returns (see `fixtures/plan/taskPlan.json` and the live examples in
-   `IMPLEMENTATION-STATUS.md`). Every behaviour change starts by making this test say
-   what you want.
-2. **Cadence.** Narration every 5 s at INFO is the floor; try 4 s. Add a spoken nudge when
-   nothing new was said for 15 s in a guided task ("Still with you. Keep turning slowly.").
-3. **Step quality.** Steps come from Nemotron/Haiku (`taskPlan`); the observation step now
-   closes itself. When `task_step` returns `cameraRequest` / `userAction`, say them as
-   directions ("Turn a little left."). Keep every line ≤ 12 words, digits as words —
-   `npm run lint:phrases` enforces it.
-4. **Questions.** "Is that right?" for scene changes exists. Add one for the goal when the
-   parse is uncertain: "Eggs in your kitchen — did I get that right?" (voice `intercept`).
-5. **Phrases.** New fixed lines go in `phrases.ts`; generate audio with
-   `set -a; . ./server/.env; set +a; npm run gen:audio` (needs the ElevenLabs key locally —
-   ask Alex). Commit the mp3s + manifest in the same PR. You are the only stream that
-   commits `assets/audio/**` (binary conflicts are unmergeable).
+Acceptance: 20 spoken commands/questions from `DEMO-SCRIPT.md`, phone held normally, room
+quiet: ≥ 18 parsed to the right intent, every one answered with something specific.
 
-Test: `npx jest src/core` (no phone needed). Live: the keyboard path in the app.
+## C — Brain (ahlqn)
 
-### C — Brain: faster, smarter answers
-1. **Latency.** The proxy races Haiku behind Nemotron (`lib/claudePlan.ts`): Nemotron wins
-   when it answers in time, Haiku when it misses, the template last. Log both and pick per
-   job: if Nemotron's p50 stays > 3 s for `parseIntent`, flip that job to Haiku first. Keep
-   Nemotron for `routeCompile` (the "directional navigation" story).
-2. **taskPlan quality.** It receives `facts.scene` and `facts.description`. Write 5 golden
-   inputs (kitchen/fridge, living room/keys, store/eggs, street/entrance, unknown) in
-   `server/routes/plan.eval.ts` and iterate the prompt until every plan starts from what the
-   camera said. Same for `task_step` in `server/prompts/vision.ts` (a shared file — small PR):
-   it must always return a direction.
-3. **Places.** `GET /api/places` ranks by street hint and handles apostrophes. Add
-   "nearest" vs "the one on X" reply text, and a 502 → last-cached-result path. Overpass is
-   flaky; keep the 10-minute cache.
-4. **Eval.** `cd server && set -a; . ./.env; set +a; npx tsx routes/plan.eval.ts` prints
-   model vs template, latency and fallback rate per job; put the numbers in the PR.
-5. **Health.** `/api/health` already probes every upstream; add a one-line
-   `npm run doctor` that prints it in colour so a teammate can tell a dead key from a dead
-   network in five seconds.
+1. **Positions, not prose.** Add `target: { box: [x,y,w,h] | null; confidence }` to the vision
+   schema (shared-file PR with A): `task_step` and `hand_guidance` must locate the step's
+   target in the still. Add `hand: { box | null }` too, as the fallback when Vision hand pose
+   is unavailable. `speech` for these questions becomes secondary; A's `guide.ts` speaks.
+2. **Eval on real frames.** Stream A's session export gives you stills + facts from the real
+   living room; build `server/routes/vision.eval.ts` over 30 of them with hand-labelled
+   answers (target box within 0.1, setting right, "done" right) and print precision per
+   question. Iterate the prompts against it, not against feelings. Haiku vs Sonnet per
+   question by measured accuracy × latency.
+3. **taskPlan that fits the room.** Plans must start from `facts.scene / description / seen`;
+   a plan for "eggs in my fridge" in a kitchen is two steps (face the fridge, open it, reach),
+   not five. Golden set of five contexts in `plan.eval.ts`.
+4. **Latency.** Keep the planner race honest (`plannerRace.ts`): p50 per job in the log;
+   `parseIntent` under 1.5 s p50 or flip it to Haiku-first permanently.
+5. **Route script quality.** `routeCompile` output read aloud end to end for two real routes
+   (D records them): every leg's "soon / now / confirm" lines must name the street and a
+   distance in words. Fix the prompt or the template where they do not.
 
-Test: `cd server && npx tsc --noEmit && npx vitest run`. Live: `curl` against
-`http://<mac-ip>:8787` (exact calls in `IMPLEMENTATION-STATUS.md`).
+Acceptance: the vision eval prints ≥ 80 % target-box hits on the exported frames; taskPlan
+golden set passes; `/api/plan parseIntent` p50 < 1.5 s over a day of logs.
 
-### D — Screens & the walk: UI, UX, routes, haptics
-1. **Google Routes.** Enable the Routes API on Google project 188682982044 and remove the
-   key's API restriction (Alex has the console login; do it together on day one). Then
-   record two demo routes into `server/data/fixtures/` with
-   `cd server && npx tsx data/record-demo-route.ts` so the walk works even if Google is down
-   at the demo. Until then the app walks a straight-line degraded leg.
-2. **The walk.** Forbes ↔ Craig with your phone: does the COURSE buzz stay silent when you
-   face the leg and grow as you turn away? Set the body offset in Settings first. Do
-   crossing prompts land at the curb? Write down what the voice said vs. what you saw;
-   fix what's yours (`src/outdoor`, `src/crossing`, `haptics.ts`), file the rest in chat.
-3. **UI/UX.** Camera panel size vs. transcript on small phones; the scene line; a
-   **Quiet** toggle on the Nav screen (narration off, guidance on); the Stop button's arm /
-   hold behaviour with VoiceOver on; a first-launch card that says what to say. Keep the
-   white liquid-glass look (`src/ui/theme.ts`) and the ≥ 4.5:1 contrast tests.
-4. **Onboarding.** The vibration lesson (`OnboardingScreen`) should end with one practice
-   question: "You seem to be indoors. Is that right?" so users learn the yes / no loop.
-5. **Demo script.** The 3-minute run (open → narration + "you seem to be…" → "find the
-   eggs in my fridge" → "take me to the CVS on Forbes") with the exact phrases that hit the
-   fast paths, plus a one-slide architecture diagram for the pitch.
+## D — Screen & street (Tyler)
 
-Test: `npx jest src/ui src/outdoor src/crossing`. Live: your phone, plus the iOS simulator
-in mock mode (`EXPO_PUBLIC_MOCK=1 npx expo run:ios`) for pure UI work.
+1. **Camera-first screen.** On Home and Nav the camera takes ~60 % of the height; the
+   transcript becomes a two-line strip under it that expands to full height on tap (or a
+   swipe up) and collapses back. Blind users never need it open; sighted helpers do.
+   Keep the Quiet toggle, the scene line, hold-to-talk, and the ≥ 4.5:1 contrast tests.
+2. **Route preview and proof.** When a route arrives, speak a one-line summary ("Nine legs,
+   one point two kilometres, first turn left on Forbes in sixty feet.") and add a DebugPanel
+   "Route" section listing every leg (instruction, distance, bearing) and every crossing, so
+   correctness is checkable before walking. Record two demo routes into
+   `server/data/fixtures` (`npx tsx data/record-demo-route.ts`) so the demo does not depend
+   on Google being up.
+3. **The walk test protocol** (write it into `DEMO-SCRIPT.md`, run it twice): Forbes ↔ Craig,
+   phone in hand, screen recording on. Note at each leg: did the "soon" line come 60 ft
+   before, the "now" line at the corner, the "confirm" line after? Did the COURSE buzz stay
+   silent facing the leg and grow turning away (body offset set in Settings)? At the curb:
+   did it announce the crossing, read the signal, say the far curb? File each miss as an
+   issue with the transcript.
+4. **Mock walk in the simulator.** `EXPO_PUBLIC_MOCK=1` replays the recorded track; make
+   sure every spoken line of a full walk is in the transcript and readable on the screen.
 
-## The kitchen test (everyone runs it; A and B own passing it)
-Phone in hand, standing in a kitchen doorway, app freshly opened.
-1. Within 10 s it says something true about the room ("You are looking at …").
-2. Within 30 s it asks "You seem to be in a kitchen …. Is that right?" — say **yes** → "Got it."
-3. Say **"find the eggs in my fridge"** → "Eggs in my fridge. Got it." → "Let me see your
-   surroundings." → one description → first step within ~10 s.
-4. Steps name sides and things it actually saw. The fridge step closes when the door is
-   open (or when you say **yes** to "It looks like the fridge door open. Is that right?").
-5. "Done. Task complete." with the eggs in hand. Say **stop** at any point → back to Home.
+Acceptance: a screen recording of one full Forbes → Craig walk with every instruction audible
+and correct, plus the two recorded routes committed.
 
-Paste the transcript (the app keeps it on screen) into your PR when it fails.
+## The tests everyone runs
+- **Living room:** open app → within 3 s something true about the room → "You seem to be in
+  a living room. Right?" → yes → "find the eggs in my fridge" → confirm-back → steps with
+  direction + distance → at the fridge, hand words → "Grab it." → "Done."
+- **Street:** the D protocol above.
+Paste the transcript (screen or `IMPLEMENTATION-STATUS.md`) into the PR when it fails.
 
-## Rules that keep merges boring (no integrator needed)
-- **CI is the integrator.** `.github/workflows/ci.yml` runs `npm run lint && npx jest` (app)
-  and `tsc && vitest` (proxy) on every PR and on `main`. Red CI → not merged, no exceptions.
-  Run the same locally before you push; it's faster than waiting.
-- Branch per task: `a/ultrawide-format`, `b/kitchen-scenario`, `c/haiku-first-parse`,
-  `d/quiet-toggle`. Rebase on `main` every morning (`git pull --rebase origin main`); never
-  merge `main` into your branch.
-- PRs small and single-stream, title starts with the stream letter. Any teammate may approve
-  and merge a green PR in someone else's stream; the author merges their own only when nobody
-  answers in an hour. Squash-merge so `main` reads one line per PR.
-- Don't reformat files you don't own; don't run a formatter over the repo.
-- `IMPLEMENTATION-STATUS.md` is append-only: add a dated paragraph under your stream's
-  letter, never edit older text.
+## Rules that keep merges boring
+- CI runs `npm run lint && npx jest` (app) and `tsc && vitest` (proxy) on every PR; red is not merged.
+- Branch per task named by stream letter; `git pull --rebase origin main` every morning.
+- PRs small and single-stream; anyone may merge a green PR in another stream; squash-merge.
+- `IMPLEMENTATION-STATUS.md` is append-only, one dated paragraph per stream.
 - Generated things have one owner: `assets/audio/**` → B, `ios/` (never committed) → A,
   `server/data/fixtures/**` → D, `models/*.mlpackage` (never committed) → A.
-- Secrets stay in `server/.env` (git-ignored). Ask Alex for keys; never paste them in chat
-  or commits. CI has no keys and needs none.
-- If two of you must touch the same file, say so in chat first and do it in one PR.
-
-## Setup
-```bash
-git clone https://github.com/alexzxiang/aisle.git
-cd aisle/aisle && npm install                       # app (Node 20+)
-cd server && npm install && cp .env.example .env    # proxy; fill only the keys you need
-```
-B and C need no phone: `npx jest` runs the whole app graph on the mocks
-(`src/core/composeApp.test.ts` even drives the keyboard voice path end to end), and the
-proxy runs against faked upstreams under vitest. Live behaviour: `cd server && npm run dev`,
-then `npx expo start --dev-client` from `aisle/` on a Mac — the app finds the proxy on the
-Mac that runs Metro automatically.
+- Secrets stay in `server/.env`; CI has none and needs none.
+- Rebuild the phone (`npm run ios:device`) whenever `modules/perception/ios` changes; JS
+  changes only need a Metro reload. `HANDOFF.md` has the recipe and the symptoms we have met.
