@@ -14,7 +14,17 @@
  * line out loud.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Animated,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { Button } from './Button';
 import { GlassPanel } from './Glass';
 import { useMountIn, useResolvedReduceMotion } from './hooks';
@@ -32,6 +42,21 @@ export const QUIET_HINT = 'Stops Aisle narrating the scene. Directions keep talk
 export const NARRATE_HINT = 'Lets Aisle narrate the scene again';
 export const YOU_WORD = 'You';
 export const AISLE_WORD = 'Aisle';
+/**
+ * How close to the bottom still counts as "following". A few pixels of slack
+ * absorbs rounding and the mount animation's last frame, so an untouched list
+ * keeps following itself.
+ */
+export const FOLLOW_BOTTOM_SLACK_PX = 24;
+
+/** Whether the list is scrolled to (or within a hair of) its end. */
+export function isNearBottom(
+  m: Pick<NativeScrollEvent, 'layoutMeasurement' | 'contentOffset' | 'contentSize'>,
+  slackPx: number = FOLLOW_BOTTOM_SLACK_PX,
+): boolean {
+  const remaining = m.contentSize.height - m.layoutMeasurement.height - m.contentOffset.y;
+  return remaining <= slackPx;
+}
 /** Default cap: the whole log the conversation keeps (record keeping); screens that need a glance pass less. */
 export const TRANSCRIPT_MAX = 50;
 
@@ -112,14 +137,30 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
   const quietPill = showDescribe && onSetNarration !== undefined;
   const toggleNarration = useCallback(() => onSetNarration?.(!narration), [onSetNarration, narration]);
 
-  // Newest at the bottom, and the list follows it: a new line scrolls into view.
+  // Newest at the bottom, and the list follows it -- but only while the reader
+  // is already there. Following unconditionally fought the reader: the
+  // awareness loop adds a line every few seconds, and each one yanked the view
+  // back to the bottom, so scrolling up to re-read something failed until the
+  // narration happened to pause. Standard transcript behaviour instead: at the
+  // bottom, follow; scrolled up, stay put and let the new lines pile below.
   const scroller = useRef<ScrollView | null>(null);
+  const following = useRef(true);
   const lastId = visible.length > 0 ? visible[visible.length - 1].id : null;
+
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    following.current = isNearBottom(e.nativeEvent);
+  }, []);
+
+  const followIfAtBottom = useCallback((animated: boolean) => {
+    if (!following.current) return;
+    scroller.current?.scrollToEnd({ animated });
+  }, []);
+
   useEffect(() => {
-    if (lastId === null) return;
-    const id = setTimeout(() => scroller.current?.scrollToEnd({ animated: !reduceMotion }), 30);
+    if (lastId === null) return undefined;
+    const id = setTimeout(() => followIfAtBottom(!reduceMotion), 30);
     return () => clearTimeout(id);
-  }, [lastId, reduceMotion]);
+  }, [lastId, reduceMotion, followIfAtBottom]);
 
   return (
     <GlassPanel reduceMotion={reduceMotion} style={[styles.panel, style]} contentStyle={styles.content} testID={testID ?? 'transcript-panel'}>
@@ -131,7 +172,9 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
         accessibilityLabel={TRANSCRIPT_LABEL}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
-        onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
+        onScroll={onScroll}
+        scrollEventThrottle={64}
+        onContentSizeChange={() => followIfAtBottom(false)}
       >
         {visible.length === 0 ? (
           <Text accessible accessibilityRole="text" allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.empty}>

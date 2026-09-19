@@ -468,6 +468,38 @@ export function stripSlots(facts: UiFacts, now: number): StripSlot[] {
   return [signalSlot(facts, now), vehiclesSlot(facts, now), aisleSlot(facts, now)];
 }
 
+/** Past this age `ageText` reads "seen a while ago" and stops changing. */
+export const AGE_SETTLES_AFTER_MS = 100_000;
+
+/**
+ * Whether anything currently rendered still changes as the clock advances.
+ *
+ * The screens re-render on every tick of their clock, and a re-render here is
+ * the whole tree: band, camera panel, strip, transcript, controls — on a phone
+ * already running ARKit, a detector and depth. Most of the time nothing on
+ * screen is time-dependent: a leg instruction never expires, and the awareness
+ * strip prints no ages. So the clock runs only while one of these holds:
+ *
+ *   - an age is on screen and has not yet settled (`showsAges`),
+ *   - the hero is a transient the TTL table will retire (vehicle, obstacle,
+ *     scan, route) and it has not retired yet,
+ *   - an error line is still inside its window.
+ *
+ * Each condition goes false on its own once time passes, so the clock stops
+ * itself; a new event makes it true again on the next render.
+ */
+export function needsClock(mode: AppMode, facts: UiFacts, now: number, showsAges: boolean): boolean {
+  if (showsAges) {
+    for (const ts of [facts.signal?.ts, facts.vehicle?.ts, facts.scan?.ts, facts.aisle?.ts]) {
+      if (ts !== undefined && now - ts < AGE_SETTLES_AFTER_MS) return true;
+    }
+  }
+  const i = facts.instruction;
+  if (i !== null && Number.isFinite(INSTRUCTION_TTL_MS[i.kind]) && isCurrent(i, mode, now)) return true;
+  if (facts.error !== null && now - facts.error.ts < ERROR_TTL_MS) return true;
+  return false;
+}
+
 function signalSlot(facts: UiFacts, now: number): StripSlot {
   const s = facts.signal;
   if (!s) return { key: 'signal', label: 'Signal', value: 'not seen' };

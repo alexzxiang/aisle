@@ -22,7 +22,7 @@ import { TranscriptPanel } from './TranscriptPanel';
 import { TalkButton } from './TalkButton';
 import { Button } from './Button';
 import { Backdrop } from './Glass';
-import { AWARENESS_STRIP_MODES, awarenessSlots, bandSignal, heroText, showSceneLine, stripSlots } from './derive';
+import { AWARENESS_STRIP_MODES, awarenessSlots, bandSignal, heroText, needsClock, showSceneLine, stripSlots } from './derive';
 import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useScreenReader, useStoreSlice, useUiFacts, useDetections } from './hooks';
 import { assertUtterance } from './copy';
 import type { ConversationLogPort, DescribeNow, VoicePort } from './ports';
@@ -88,7 +88,10 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   const narration = useStoreSlice((s) => s.describeSurroundings);
   const setNarration = useStoreSlice((s) => s.setDescribeSurroundings);
   const facts = useUiFacts();
-  const now = useNow(1000, nowOverride);
+  // The awareness strip prints no ages, so outside those modes the clock has
+  // nothing to advance unless a transient hero is waiting to expire.
+  const showsAwareness = AWARENESS_STRIP_MODES.has(mode);
+  const now = useNow(1000, nowOverride, (t) => needsClock(mode, facts, t, !showsAwareness));
   const bus = useBus();
   const speech = useOptionalService('speech');
   const haptics = useOptionalService('haptics');
@@ -98,9 +101,11 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   const signal = bandSignal(facts);
   const accent = accentFor(mode, signal);
   const hero = heroText(mode, facts, now, { item, side, destinationOnly, taskGoal });
-  const detections = useDetections();
+  // Only the awareness strip renders detections; subscribing during the walk
+  // re-rendered the whole screen twice a second for something never shown.
+  const detections = useDetections(500, showsAwareness);
   // Walking and in the store the strip reports signal / vehicles / aisle; otherwise the room and the camera.
-  const slots = AWARENESS_STRIP_MODES.has(mode) ? awarenessSlots({ scene, cameraLive: isCameraLive(), detections }) : stripSlots(facts, now);
+  const slots = showsAwareness ? awarenessSlots({ scene, cameraLive: isCameraLive(), detections }) : stripSlots(facts, now);
 
   // ---- Repeat: say the hero again, through the queue like everything else ----
   const repeat = useCallback(() => {
