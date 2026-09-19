@@ -23,15 +23,8 @@ Pod::Spec.new do |s|
   # The Expo wrapper plus the pure-Swift engine under Engine/.
   s.source_files = '**/*.{h,m,mm,swift}'
 
-  # Model packages (04 Task 2 / 09 §8 step 4). Committed under <app>/models/ by
-  # Agent C after D's handoff PR; absent files are skipped so a checkout without
-  # weights still builds (the engine reports the missing model and degrades).
-  # Xcode compiles each .mlpackage to .mlmodelc when it is a resource of the pod.
-  models_dir = File.expand_path('../../../models', __dir__)
-  model_globs = Dir.glob(File.join(models_dir, '*.{mlpackage,mlmodelc}')) + Dir.glob(File.join(models_dir, '*.json'))
-  # CocoaPods validates file patterns as relative (no leading slash): express each match
-  # relative to this podspec's directory rather than as the absolute path Dir.glob returns.
-  s.resources = model_globs.map { |p| File.join('../../../models', File.basename(p)) } unless model_globs.empty?
+  # Model packages are added to the app target by plugins/withCoreMLModels.js (CocoaPods
+  # ignores resource patterns outside the pod root, so they cannot come from this podspec).
 
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',

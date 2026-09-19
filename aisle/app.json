@@ -71,7 +71,8 @@
             "deploymentTarget": "17.0"
           }
         }
-      ]
+      ],
+      "./plugins/withCoreMLModels.js"
     ]
   }
 }
