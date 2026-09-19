@@ -647,3 +647,20 @@ the reach step word by word against the target box (detector, or Claude's new `t
 the user's own arm is relabelled `hand`, never "a person ahead". Built and installed at
 ~14:35; the engine reports `models=[depth, detector, hand, ocr, scene]`. Not yet measured on
 the device: the step-count calibration (tape measure) and the hand-word cadence in a real fridge.
+
+### Round 7b (Stream A) — 2026-09-19, later
+"Sees the fridge, cannot guide me to it" had three causes. (1) Every Claude vision call had
+been a 400 since round 7: the Messages API refuses `minItems`/`maxItems` in `output_config`
+schemas and `target.box` carried them, so `/api/vision` answered `{ confidence: 0 }` to every
+task_step / hand_guidance / situate while the warm-up logged `warm failed` unread. Removed
+(box4() already enforces four numbers), a schema test forbids the keywords, the proxy prints
+`vision ready` / `VISION BROKEN` on boot, and the phone says "Camera brain not answering" after
+four dead answers. Verified live: warm ok for both models, a task_step probe answers in 2.4 s
+with speech and a box. (2) `stepTarget()` aimed the geometric instruction at the plan step's
+`lookFor` ("kitchen counter") instead of the fridge the detector could see; it now prefers the
+goal's place when the detector knows the class. (3) No obstacle awareness: `guide.ts` gained
+`sidestep` from the depth grid's bottom row ("Something in your way. Step left, then walk
+forward."). New trace channel: `POST /api/trace` → `server/data/cache/trace.jsonl`, one line
+per guide decision, task_step answer, detector summary, spoken/heard line and task event, so
+the next "it is confused" can be read instead of guessed. Not yet re-tested in the living
+room with the fixed proxy.

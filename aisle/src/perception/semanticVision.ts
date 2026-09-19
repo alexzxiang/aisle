@@ -63,6 +63,10 @@ export const MAX_IN_FLIGHT = 3;
 export const FRESHNESS_CROSSING_MS = 3000;
 export const FRESHNESS_INDOOR_MS = 6000;
 export const MIN_CONFIDENCE = 0.5;
+/** Round 7b: this many dead answers in a row (`confidence: 0`, the proxy's collapse shape) → one ERROR + one line. */
+export const DEAD_STREAK = 4;
+export const DEAD_REPEAT_MS = 60_000;
+export const DEAD_LINE = 'Camera brain not answering. Check the proxy.';
 export const AISLE_MATCH_MIN_CONFIDENCE = 0.7;
 export const PROMPT_MIN_INTERVAL_MS = 3000;
 export { MAX_PROMPT_WORDS };
@@ -617,6 +621,18 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
   let seq = 0;            // last seq handed out (ask() and nextSeq())
   let lastSentSeq = 0;    // last seq that went to the transport; the socket rejects a lower one
   let inFlight = 0;
+  // A proxy whose upstream is broken answers { confidence: 0 } to everything with a 200, so a
+  // whole round can pass with the app "confused" and nobody told (round 7b: a rejected schema).
+  let deadStreak = 0;
+  let deadToldAt = -Infinity;
+  const noteDead = (res: VisionResponse, question: VisionQuestion): void => {
+    const dead = res.confidence === 0 && res.speech === '' && res.target.box === null;
+    deadStreak = dead ? deadStreak + 1 : 0;
+    if (deadStreak < DEAD_STREAK || now() - deadToldAt < DEAD_REPEAT_MS) return;
+    deadToldAt = now();
+    opts.bus.emit({ type: 'ERROR', scope: 'vision', message: `${deadStreak} dead answers in a row (last: ${question})` });
+    opts.speech.say({ text: DEAD_LINE, priority: 'INFO', dedupeKey: 'vision-dead', cooldownMs: DEAD_REPEAT_MS });
+  };
   let lastAppliedSeq = 0;
   let lastPromptAt = -Infinity;
   const lastCallAt = new Map<VisionQuestion, number>();
@@ -737,6 +753,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
         return { status: 'stale', seq: n, response: res, streamed: wasStreamed, latencyMs };
       }
       lastResult.set(question, { at: now(), sceneKey: key });
+      noteDead(res, question);
       if (res.confidence < MIN_CONFIDENCE) {
         streamed.delete(n);
         stats.lowConfidence += 1;

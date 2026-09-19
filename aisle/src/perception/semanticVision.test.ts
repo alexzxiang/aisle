@@ -3,6 +3,7 @@ import { createAppStore } from '../core/store';
 import { createEventBus } from '../core/bus';
 import { fakeClock } from '../indoor/testing';
 import {
+  DEAD_LINE, DEAD_REPEAT_MS, DEAD_STREAK,
   FRESHNESS_CROSSING_MS,
   MAX_IN_FLIGHT,
   cameraPrompt,
@@ -213,6 +214,23 @@ describe('createSemanticVision policy', () => {
     expect(out.status).toBe('low_confidence');
     expect(h.speech.said).toEqual([]);
     expect(h.events).toEqual([]);
+  });
+  it('four dead answers in a row ({ confidence: 0 }, the proxy collapse) → one ERROR and one line, then quiet for a minute', async () => {
+    const transport = scripted((req) => emptyVisionResponse(req.seq));
+    const h = harness(transport);
+    for (let i = 0; i < DEAD_STREAK - 1; i += 1) {
+      expect((await h.sv.ask('storefront', { force: true })).status).toBe('low_confidence');
+    }
+    expect(h.events).toEqual([]);
+    await h.sv.ask('storefront', { force: true });
+    expect(h.events).toEqual([{ type: 'ERROR', scope: 'vision', message: `${DEAD_STREAK} dead answers in a row (last: storefront)` }]);
+    expect(h.speech.said.map((s) => s.text)).toEqual([DEAD_LINE]);
+    await h.sv.ask('storefront', { force: true });
+    await h.sv.ask('storefront', { force: true });
+    expect(h.events).toHaveLength(1);
+    h.clock.advance(DEAD_REPEAT_MS + 1);
+    await h.sv.ask('storefront', { force: true });
+    expect(h.events).toHaveLength(2);
   });
   it('a response with a lower seq than requested is stale and never spoken', async () => {
     const transport = scripted((req) => okResponse(req.seq, { speech: 'Old answer.', seq: req.seq - 1 }));

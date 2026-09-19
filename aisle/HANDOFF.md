@@ -83,11 +83,12 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1031 tests
-cd aisle/server && npx tsc --noEmit && npx vitest run   # 162 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1092 tests
+cd aisle/server && npx tsc --noEmit && npx vitest run   # 188 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
 curl -s localhost:8787/api/health | head -c 300
+grep -E 'vision ready|VISION BROKEN' <proxy log>       # the one line that matters before a demo
 curl -s -X POST localhost:8787/api/plan -H 'content-type: application/json' \
   -d '{"job":"parseIntent","input":{"transcript":"find the eggs in my kitchen","mode":"IDLE","knownItems":["eggs"]}}'
 curl -s "localhost:8787/api/places?q=cvs&street=forbes&lat=40.4433&lng=-79.9436&radiusM=4000&limit=3"
@@ -147,6 +148,31 @@ route path is 6–8 s; if "Offline" ever comes back, read the proxy log's `route
 `onHandPose` (Vision hand pose, `HandTracker.swift`) against a target box; `guidedTask.ts`
 speaks geometry first and mutes the model's sentence. The own arm is class `hand`. The step
 count is a formula (distance ≈ height / (1.4 × box height)), not yet calibrated on the phone.
+
+## Round 7b (Stream A): the proxy was lying, and the phone now keeps a diary
+Two things found while chasing "it sees the fridge but cannot guide me to it":
+- **Every Claude vision call had been failing since round 7.** The Messages API rejects
+  `minItems`/`maxItems` on arrays in `output_config` schemas; `target.box` carried them, so
+  the proxy's warm-up said `warm failed` (nobody read it) and `/api/vision` answered
+  `200 { confidence: 0 }` to everything, which the phone treats as "low confidence, stay
+  quiet". Fixed; a schema test forbids those keywords; the proxy now prints one line on
+  boot — `vision ready` or `VISION BROKEN: …` — and the phone says "Camera brain not
+  answering. Check the proxy." after four dead answers in a row (`DEAD_STREAK`). **When
+  the app is silent and "confused", check the proxy log for `VISION BROKEN` first.**
+- The guided task aimed its walking instruction at the plan step's `lookFor` ("kitchen
+  counter") rather than the goal's place; `stepTarget()` now prefers the place when the
+  detector knows it. `guide.ts` also sidesteps when the depth grid's bottom-centre cell
+  is nearer than `PATH_BLOCKED`.
+
+**Trace:** the phone posts one JSON line per decision to `POST /api/trace`; the proxy
+appends to `server/data/cache/trace.jsonl`. After a run:
+```bash
+tail -200 aisle/server/data/cache/trace.jsonl | jq -c 'select(.kind!="seen") | {at,kind,text,target,decision,role,step,status}'
+tail -200 aisle/server/data/cache/trace.jsonl | jq -c 'select(.kind=="seen") | .top'
+```
+Kinds: `guide` (target aimed at, instruction kind/steps/degrees, model box), `task_step`
+(status, speech, done, box, latency), `seen` (top detector boxes, once a second), `said`
+(every transcript line, both roles), `event` (task/hand/camera/error bus events).
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

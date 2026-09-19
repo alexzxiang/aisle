@@ -29,7 +29,13 @@ async function main(): Promise<void> {
 
   if (config.warmupOnStart) {
     // Never block listen on the warm-up; a red pair is reported, not fatal.
-    void deps.warmup.warmAll();
+    // Round 7b: a red Claude vision pair means every camera question on the phone answers
+    // { confidence: 0 } — say so in one unmistakable line instead of a per-pair warn.
+    void deps.warmup.warmAll().then((status) => {
+      const red = Object.entries(status).filter(([pair, s]) => pair.endsWith(':vision') && s.ok === false);
+      if (red.length === 0) info('vision ready: Claude answers the camera', { pairs: Object.keys(status).filter((p) => p.endsWith(':vision')) });
+      else warn('VISION BROKEN: every /api/vision call will answer { confidence: 0 } until this is fixed', { pairs: Object.fromEntries(red.map(([p, s]) => [p, s.note])) });
+    });
     deps.warmup.start();
     // Crossings for the demo area, once, with the full Overpass timeout (round 6c): every
     // route inside it is then served from memory instead of racing a flaky mirror.
