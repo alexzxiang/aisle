@@ -563,3 +563,54 @@ unplugged, so the rebuild is pending — `npm run ios:device` when it is back.
 
 Gates on this checkout: server `tsc --noEmit` clean, 183 vitest (19 files); app typecheck,
 phrase and deps lint, 1029 Jest tests (70 suites) green.
+
+## Stream D — 2026-09-19: screens, the yes/no rehearsal, the demo script
+
+`TEAM-PLAN.md` items D3, D4 and D5, on the bench. Nothing here has been seen on a phone.
+
+- **The camera yields on a short phone (D3).** Both screens capped the viewfinder at a flat
+  share of the window (0.46 trip, 0.42 Home). At 46 % of an iPhone SE's 667 pt the transcript
+  sits at its 96 pt minimum and the talk button leaves the screen. `theme.cameraMaxHeight`
+  now also subtracts the points the rest of the screen needs (`CAMERA_RESERVE_PT` 430,
+  `HOME_CAMERA_RESERVE_PT` 420) and floors at `sizes.cameraMinHeight` 160: the SE drops to
+  237 / 247 px, the demo phone is unchanged at 392 / 358.
+- **The scene line stops competing (D3).** `derive.showSceneLine` — the trip screen shows it
+  only once the app believes something (never "Looking around…" mid-walk), and never in
+  `APPROACH_CROSSING` / `AT_CURB` / `CROSSING`, where DESIGN.md rule 1 and the curb's
+  near-silence policy both apply. Home is unchanged.
+- **Quiet toggle (D3).** A pill beside "Describe surroundings" on the trip screen toggles
+  `describeSurroundings` — the same preference as Settings, reachable mid-walk. Narration
+  only: guidance, crossing facts and hazard lines keep speaking. Labels name the action
+  ("Quiet" / "Narrate") so a screen reader announces what a tap does.
+- **"Stop guidance" under VoiceOver (D3).** The hold never arrived (VoiceOver's activate
+  delivers press-in and press-out together) and the armed label was not re-read. With a
+  screen reader running the button now drops `onLongPress`, says "Double-tap, then
+  double-tap again to end guidance", widens the armed window 5 s → 12 s, and announces the
+  armed state through `announceForAccessibility`. Both taps stay explicit. **Not heard
+  through VoiceOver** — the device pass (G5) is still open.
+- **First-launch card (D3).** Home shows four things to say until the conversation has its
+  first line, as one accessibility summary. Each example is a real fast path from the README.
+- **The lesson rehearses the yes/no answer (D4).** A new `practice-scene` step before "done"
+  asks "You seem to be indoors. Is that right?" with Yes / No in place of Next; yes speaks
+  "Got it.", no speaks "Tell me where you are.", both CONFIRM and advance. So the user has
+  answered the awareness loop once before it asks for real.
+- **Demo script (D5).** `DEMO-SCRIPT.md`: the three-minute run (open → awareness → "find the
+  eggs in my fridge" → "take me to the CVS on Forbes" → close) with the exact utterances, a
+  fallback under every beat, the pre-flight table, the crossing ladder stated honestly, the
+  one-slide architecture diagram and the two sponsor sentences. Linked from the README.
+
+**One cross-stream touch, flagged:** `src/core/phrases.ts` (B's file) gained one key,
+`onboarding_practice_scene` — the rehearsal question. No test ties a phrase to an mp3, so it
+speaks through expo-speech until B runs `npm run gen:audio` and commits the clip with the
+manifest; B owns `assets/audio/**`, so D did not generate it. That is the whole diff to a
+file D does not own.
+
+**Not done, and why.** D1 (Google Routes) needs the console login for project 188682982044
+and a key in `server/.env`, which this checkout does not have — the degraded straight-line
+leg is still the plan of record, and `data/record-demo-route.ts` cannot run until the key
+exists. D2 (the Forbes ↔ Craig walk) needs a provisioned phone and a walk outside; the COURSE
+buzz, the curb prompts and the body offset remain tuned on paper only.
+
+Gates on this checkout: app typecheck clean, 1048 Jest tests (70 suites, +25),
+`lint:phrases` and `lint:deps` ok. `npx jest src/ui src/outdoor src/crossing` — D's own
+command — is 394 tests in 26 suites.

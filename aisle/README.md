@@ -92,6 +92,10 @@ budget, and the Tier-1/Tier-2 clients answer from fixtures.
 | "What's around me" | A free-form scene description. |
 | "Repeat", "how far", "where am I", "stop" | The usual trip questions. |
 
+On the trip screen, **Quiet** turns off the standing narration and leaves guidance,
+crossing facts and hazard warnings talking; **Narrate** turns it back on. It is the
+same preference as Settings → Describe surroundings, put where you need it mid-walk.
+
 ## Environment variables (app)
 
 | Variable | Meaning | Default |
@@ -171,6 +175,8 @@ spoken text at twelve words. The speech service enforces the same at runtime.
 
 ## Documents
 
+- [`DEMO-SCRIPT.md`](DEMO-SCRIPT.md) — the three-minute run, the exact phrases to say, the fallback under every beat, and the architecture slide
+- [`TEAM-PLAN.md`](TEAM-PLAN.md) — who owns which files and what each stream is doing
 - [`00-PROJECT-BRIEF.md`](../00-PROJECT-BRIEF.md), [`01-SHARED-CONTRACTS.md`](../01-SHARED-CONTRACTS.md)
 - Agent briefs: [`02` core shell](../02-AGENT-A-core-shell.md), [`03` outdoor and crossing](../03-AGENT-B-outdoor-crossing.md), [`04` perception and indoor](../04-AGENT-C-perception-indoor.md), [`05` harness, transition, demo](../05-AGENT-D-harness-transition-demo.md)
 - [`06-INTEGRATION-AND-DEMO.md`](../06-INTEGRATION-AND-DEMO.md), [`07-SPONSOR-STACK.md`](../07-SPONSOR-STACK.md), [`08-ROADMAP-AND-CONCERNS.md`](../08-ROADMAP-AND-CONCERNS.md), [`09-PERCEPTION-MODULE.md`](../09-PERCEPTION-MODULE.md), [`10-CV-TRAINING-TRACK.md`](../10-CV-TRAINING-TRACK.md), [`11-PHASE-0-CHECKLIST.md`](../11-PHASE-0-CHECKLIST.md)

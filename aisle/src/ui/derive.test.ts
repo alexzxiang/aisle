@@ -22,6 +22,8 @@ import {
   awarenessSlots,
   detectionSummary,
   AWARENESS_STRIP_MODES,
+  SCENE_LINE_SUPPRESSED_MODES,
+  showSceneLine,
 } from './derive';
 
 const T0 = 1_700_000_000_000;
@@ -336,5 +338,31 @@ describe('awareness strip (IDLE / guided task)', () => {
     ]);
     expect(awarenessSlots({ scene: { label: 'in a kitchen', confirmed: true }, cameraLive: true, detections: [] })[2].value).toBe('where you are, or what you need');
     expect(Array.from(AWARENESS_STRIP_MODES)).toEqual(['IDLE', 'ONBOARDING', 'GUIDED_TASK', 'DONE']);
+  });
+});
+
+describe('showSceneLine', () => {
+  const known = { label: 'in a kitchen' };
+
+  it('shows the line once the app believes something', () => {
+    expect(showSceneLine('INDOOR_NAV', known)).toBe(true);
+    expect(showSceneLine('GUIDED_TASK', known)).toBe(true);
+    expect(showSceneLine('OUTDOOR_NAV', known)).toBe(true);
+    expect(showSceneLine('DONE', known)).toBe(true);
+  });
+
+  it('stays quiet while nothing is known: no "Looking around…" mid-trip', () => {
+    expect(showSceneLine('INDOOR_NAV', null)).toBe(false);
+    expect(showSceneLine('INDOOR_NAV', undefined)).toBe(false);
+    expect(showSceneLine('INDOOR_NAV', { label: '' })).toBe(false);
+    expect(showSceneLine('INDOOR_NAV', { label: null })).toBe(false);
+  });
+
+  it('never competes with the band through the crossing beat', () => {
+    expect(Array.from(SCENE_LINE_SUPPRESSED_MODES)).toEqual(['APPROACH_CROSSING', 'AT_CURB', 'CROSSING']);
+    for (const mode of SCENE_LINE_SUPPRESSED_MODES) {
+      expect(showSceneLine(mode, known)).toBe(false);
+      expect(showSceneLine(mode, { label: 'at a street crossing' })).toBe(false);
+    }
   });
 });

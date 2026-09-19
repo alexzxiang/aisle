@@ -1,7 +1,8 @@
 /**
  * The transcript (DESIGN.md, "The transcript"): the last few lines of the
- * conversation, "You" and "Aisle", newest at the bottom, plus the
- * "Describe surroundings" pill.
+ * conversation, "You" and "Aisle", newest at the bottom, plus the two pills
+ * that govern what Aisle says unasked: "Describe surroundings" (one
+ * description now) and Quiet / Narrate (the standing narration).
  *
  * Rows come from the conversation log (`ConversationLogPort`); the panel is
  * a list to a screen reader and each row reads as "You: I need eggs" /
@@ -24,6 +25,11 @@ export const TRANSCRIPT_LABEL = 'Conversation';
 export const TRANSCRIPT_EMPTY = 'What you say, and what Aisle says, appears here.';
 export const DESCRIBE_LABEL = 'Describe surroundings';
 export const DESCRIBE_HINT = 'Aisle says what the camera sees right now';
+/** The narration toggle: each label names what pressing it does, not the state it is in. */
+export const QUIET_LABEL = 'Quiet';
+export const NARRATE_LABEL = 'Narrate';
+export const QUIET_HINT = 'Stops Aisle narrating the scene. Directions keep talking';
+export const NARRATE_HINT = 'Lets Aisle narrate the scene again';
 export const YOU_WORD = 'You';
 export const AISLE_WORD = 'Aisle';
 /** Default cap: the whole log the conversation keeps (record keeping); screens that need a glance pass less. */
@@ -37,6 +43,9 @@ export interface TranscriptPanelProps {
   onDescribe?: DescribeNow;
   /** Hide the pill (Home, where the camera is not running). */
   showDescribe?: boolean;
+  /** Narration state (`describeSurroundings`); the Quiet pill is hidden without a setter. */
+  narration?: boolean;
+  onSetNarration?: (on: boolean) => void;
   style?: StyleProp<ViewStyle>;
   reduceMotion?: boolean;
   testID?: string;
@@ -74,7 +83,7 @@ function Line({ entry, reduceMotion }: { entry: ConversationEntryLike; reduceMot
 }
 
 export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element {
-  const { entries, max = TRANSCRIPT_MAX, onDescribe, showDescribe = true, style, testID } = props;
+  const { entries, max = TRANSCRIPT_MAX, onDescribe, showDescribe = true, narration = true, onSetNarration, style, testID } = props;
   const reduceMotion = useResolvedReduceMotion(props.reduceMotion);
   const visible = visibleEntries(entries, max);
 
@@ -100,6 +109,8 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
   }, [onDescribe, busy]);
 
   const pill = showDescribe && onDescribe !== undefined;
+  const quietPill = showDescribe && onSetNarration !== undefined;
+  const toggleNarration = useCallback(() => onSetNarration?.(!narration), [onSetNarration, narration]);
 
   // Newest at the bottom, and the list follows it: a new line scrolls into view.
   const scroller = useRef<ScrollView | null>(null);
@@ -130,9 +141,22 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
           visible.map((e) => <Line key={e.id} entry={e} reduceMotion={reduceMotion} />)
         )}
       </ScrollView>
-      {pill ? (
+      {pill || quietPill ? (
         <View style={styles.pillRow}>
-          <Button label={DESCRIBE_LABEL} hint={DESCRIBE_HINT} onPress={describe} busy={busy} size="pill" reduceMotion={reduceMotion} testID="describe-pill" />
+          {pill ? (
+            <Button label={DESCRIBE_LABEL} hint={DESCRIBE_HINT} onPress={describe} busy={busy} size="pill" reduceMotion={reduceMotion} testID="describe-pill" />
+          ) : null}
+          {quietPill ? (
+            <Button
+              label={narration ? QUIET_LABEL : NARRATE_LABEL}
+              hint={narration ? QUIET_HINT : NARRATE_HINT}
+              onPress={toggleNarration}
+              selected={!narration}
+              size="pill"
+              reduceMotion={reduceMotion}
+              testID="quiet-pill"
+            />
+          ) : null}
         </View>
       ) : null}
     </GlassPanel>
@@ -193,5 +217,7 @@ const styles = StyleSheet.create({
   pillRow: {
     flexDirection: 'row',
     justifyContent: 'flex-start',
+    flexWrap: 'wrap',
+    gap: space.s,
   },
 });

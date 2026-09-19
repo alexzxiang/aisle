@@ -34,6 +34,15 @@ VoiceOver and the app's own speech. Ten rules; everything in `src/ui/` is built 
    `screenReaderChanged`. The two secondary targets are 64 pt, side by side: "Repeat" and
    "Stop guidance" (tap once to arm, tap again or hold two seconds to stop — never a single
    stray tap). Nothing is smaller than 44 pt. Spacing scale: 4 / 8 / 12 / 16 / 24 / 32.
+
+   **"Stop guidance" under a screen reader.** The hold is gone for the same reason the talk
+   button's is: VoiceOver's activate delivers press-in and press-out milliseconds apart, so
+   `onLongPress` never arrives and advertising it in the hint is a lie. `NavScreen` reads
+   `useScreenReader()` and, when one is running, drops `onLongPress`, swaps the hint for
+   "Double-tap, then double-tap again to end guidance", widens the armed window from 5 s to
+   12 s (VoiceOver navigation between the two taps costs swipes and a focus change), and
+   announces "Tap again to stop" through `announceForAccessibility`, because a label that
+   changes under a resting focus is not re-read. Both taps stay explicit either way.
 8. **One deliberate motion.** The band colour cross-fades over 250 ms on mode or signal
    change; that is the only animation. Under reduce-motion it swaps instantly.
 9. **Accessibility contract.** Every control has `accessibilityRole` + label (and a hint
@@ -80,6 +89,27 @@ VoiceOver and the app's own speech. Ten rules; everything in `src/ui/` is built 
   normalises "I need eggs, please" to `eggs` locally (`copy.normalizeTypedItem`), emits
   `ITEM_REQUESTED {source: 'keyboard'}` at once and speaks "Eggs. Planning the route." The
   planner is the voice path's job, never a dependency of the typed one.
+
+## The camera, the scene line and the narration toggle
+
+- **The camera yields.** Both screens cap the viewfinder at a share of the window (0.46 on
+  the trip screen, 0.42 on Home), but a flat share is wrong on a short phone: 46 % of an
+  iPhone SE's 667 pt leaves the transcript at its minimum and pushes the talk button off the
+  bottom. `theme.cameraMaxHeight(windowHeight, share, reserve)` also subtracts the points the
+  rest of the screen needs — band, transcript minimum, talk button, two targets — and floors
+  the result at `sizes.cameraMinHeight`. The demo phone is unaffected; the SE gets a
+  viewfinder that fits.
+- **The scene line is not a status bar.** Home always shows it, because the camera is the page
+  there and "Looking around…" is the honest answer before the first reading. The trip screen
+  shows it only once the app believes something (`derive.showSceneLine`) — never
+  "Looking around…" mid-walk — and never in `APPROACH_CROSSING`, `AT_CURB` or `CROSSING`,
+  where rule 1 says nothing competes with the band and the user is listening for traffic.
+- **Quiet is not mute.** The pill beside "Describe surroundings" toggles the standing
+  narration (`describeSurroundings`, the same preference as Settings) and nothing else:
+  guidance, crossing facts, hazard warnings and every CRITICAL line keep speaking. Each
+  label names the action rather than the state — "Quiet" when narration is on, "Narrate"
+  when it is off — so a screen reader announces what a tap will do, with
+  `accessibilityState.selected` carrying the state.
 
 ## Seams the integrator wires (`Root` props; helpers in `adapters.ts`)
 

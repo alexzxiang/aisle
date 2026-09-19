@@ -80,6 +80,21 @@ export const HEADPHONE_NOTE =
 /** B supplies the real Google walking-routes beta string; this is the placeholder we display. */
 export const WALKING_BETA_FALLBACK = 'Walking routes are in beta and can be wrong.';
 
+/**
+ * The first-launch card on Home: a blind user cannot discover the vocabulary
+ * by looking, and a sighted teammate handing the phone over reads it aloud.
+ * Each line is an utterance that hits a fast path (README, "What to say").
+ * Shown until the conversation has a line in it.
+ */
+export const SAY_CARD_TITLE = 'Try saying';
+export const SAY_CARD_EXAMPLES: readonly string[] = [
+  'I need eggs',
+  'Take me to the CVS on Forbes',
+  'Find the eggs in my fridge',
+  'What is around me',
+];
+export const SAY_CARD_NOTE = 'Hold the talk button, or type it above.';
+
 // ---------------------------------------------------------------------------
 // Typed input (the zero-risk keyboard path, 02 Task 7)
 // ---------------------------------------------------------------------------

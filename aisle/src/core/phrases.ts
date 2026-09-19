@@ -126,7 +126,7 @@ export type ASideKey =
   | 'onboarding_turn_back' | 'onboarding_this_is_turn' | 'onboarding_this_is_stop'
   | 'onboarding_this_is_okay' | 'onboarding_beacon' | 'onboarding_ticker_slow_fast'
   | 'onboarding_ticker_countdown' | 'onboarding_keep_cane' | 'onboarding_wear_phone'
-  | 'onboarding_ring_switch' | 'onboarding_walk_straight' | 'onboarding_done'
+  | 'onboarding_ring_switch' | 'onboarding_walk_straight' | 'onboarding_practice_scene' | 'onboarding_done'
   | 'route_unavailable' | 'no_route_data'
   | 'need_location' | 'no_store_nearby' | 'say_item_one_word' | 'describe_nothing'
   | 'let_me_see' | 'planning_route' | 'no_place_found' | 'arrived_destination' | 'task_done' | 'task_next' | 'task_step_done' | 'task_still_looking'
@@ -260,6 +260,8 @@ export const PHRASE_LIST: readonly Phrase[] = [
   P('onboarding_wear_phone', 'Wear the phone on the lanyard, screen out.', 'onboarding', true),
   P('onboarding_ring_switch', 'Keep the ring switch on.', 'onboarding', true),
   P('onboarding_walk_straight', 'Now walk straight for five seconds.', 'onboarding', true),
+  // The lesson's last beat rehearses the awareness loop's yes / no answer (situate.ts).
+  P('onboarding_practice_scene', 'You seem to be indoors. Is that right?', 'onboarding', true),
   P('onboarding_done', 'All set. Hold the talk button and say what you need.', 'onboarding', true),
 ];
 

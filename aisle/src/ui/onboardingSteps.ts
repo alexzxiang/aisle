@@ -43,6 +43,12 @@ export interface OnboardingStep {
   run?(s: StepServices): Cleanup | void;
   /** Only shown on the very first run (the disclaimer). */
   firstRunOnly?: boolean;
+  /**
+   * The step is answered rather than acknowledged: the screen shows Yes and No
+   * instead of "Next", so the user rehearses the answer the awareness loop
+   * asks for all day ("You seem to be in a kitchen. Correct?").
+   */
+  practice?: 'yes_no';
 }
 
 export interface SpokenLine {
@@ -213,6 +219,13 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
         alive = false;
       };
     },
+  },
+  {
+    id: 'practice-scene',
+    lines: ['onboarding_practice_scene'],
+    detail: 'Aisle asks this all day. Answer yes or no — out loud, or here.',
+    modeWord: 'Answer it',
+    practice: 'yes_no',
   },
   {
     id: 'done',

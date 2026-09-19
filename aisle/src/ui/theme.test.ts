@@ -9,6 +9,7 @@ import {
   bandColorFor,
   bandSurface,
   blend,
+  cameraMaxHeight,
   colors,
   contrastRatio,
   glass,
@@ -145,5 +146,37 @@ describe('type scale, targets and motion', () => {
     expect(motion.panelSlidePx).toBe(8);
     expect(motion.pressScale).toBe(0.96);
     expect(motion.listenPulseMs).toBe(1200);
+  });
+
+  describe('cameraMaxHeight', () => {
+    // The two screens' numbers, so a change to either is caught here.
+    const NAV = { share: 0.46, reserve: 430 };
+    const HOME = { share: 0.42, reserve: 420 };
+
+    it('a tall phone is governed by the share, not the reserve', () => {
+      // iPhone 16: 852 pt. 46 % = 392, and 852 - 430 = 422 is roomier, so the share wins.
+      expect(cameraMaxHeight(852, NAV.share, NAV.reserve)).toBe(392);
+      expect(cameraMaxHeight(852, HOME.share, HOME.reserve)).toBe(358);
+    });
+
+    it('a short phone gives the space back so the controls still fit', () => {
+      // iPhone SE: 667 pt. The flat share would take 307 and push the talk button off.
+      expect(cameraMaxHeight(667, NAV.share, NAV.reserve)).toBe(237);
+      expect(cameraMaxHeight(667, NAV.share, NAV.reserve)).toBeLessThan(Math.round(667 * NAV.share));
+      expect(cameraMaxHeight(667, HOME.share, HOME.reserve)).toBe(247);
+    });
+
+    it('never collapses the viewfinder below its floor', () => {
+      expect(cameraMaxHeight(480, NAV.share, NAV.reserve)).toBe(sizes.cameraMinHeight);
+      expect(cameraMaxHeight(0, NAV.share, NAV.reserve)).toBe(sizes.cameraMinHeight);
+    });
+
+    it('grows with the window and never exceeds the share', () => {
+      for (const h of [568, 667, 736, 812, 844, 852, 932]) {
+        const px = cameraMaxHeight(h, NAV.share, NAV.reserve);
+        expect(px).toBeLessThanOrEqual(Math.max(sizes.cameraMinHeight, Math.round(h * NAV.share)));
+        expect(px).toBeGreaterThanOrEqual(sizes.cameraMinHeight);
+      }
+    });
   });
 });
