@@ -10,7 +10,7 @@ import { MAX_IMAGE_LONG_EDGE } from './anthropic';
 
 export const APP_MODES: readonly AppMode[] = [
   'IDLE', 'ONBOARDING', 'OUTDOOR_NAV', 'APPROACH_CROSSING', 'AT_CURB', 'CROSSING', 'TRANSITION',
-  'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV', 'DONE',
+  'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV', 'DONE', 'GUIDED_TASK',
 ];
 export const VISION_QUESTIONS: readonly VisionQuestion[] = [
   'storefront', 'aisle_disambiguate', 'scan_left', 'scan_right', 'curb_crop', 'hand_guidance', 'free', 'task_step',
