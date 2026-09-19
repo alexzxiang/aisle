@@ -27,6 +27,8 @@
 //    - Export: jsonl payloads carry the 01 §7 callback shapes D's replayer reads.
 //
 
+import CoreImage
+import CoreVideo
 import Foundation
 import simd
 
@@ -488,11 +490,121 @@ func exportChecks() {
   let decoded = try? JSONDecoder().decode(DebugExportLine.self, from: json.data(using: .utf8)!)
   check("export: round-trips through Codable", decoded == line)
 
-  check("events: names match 01 §7", Set(PerceptionEventName.allCases.map { $0.rawValue }) == ["onSignalState", "onVehicleApproaching", "onObstacleAhead", "onHazard", "onOcrText", "onDetections", "onPose", "onLateralOffset", "onPlanes", "onDepth", "onTrackingState"])
+  // 01 §7's eleven, plus `onSceneClass` (round 6: Apple's scene classifier). A new
+  // event must be added here deliberately — the bridge in modules/perception/index.ts
+  // and D's jsonl replayer both key off these exact strings.
+  check("events: names match 01 §7 plus the round-6 additions",
+        Set(PerceptionEventName.allCases.map { $0.rawValue }) == [
+          "onSignalState", "onVehicleApproaching", "onObstacleAhead", "onHazard",
+          "onOcrText", "onDetections", "onPose", "onLateralOffset", "onPlanes",
+          "onDepth", "onTrackingState", "onSceneClass",
+        ])
   check("events: stats carry exactly the five frozen fields", Set(StatsPayload.zero.dictionary.keys) == ["detectorFps", "depthFps", "ocrFps", "frameToEventMs", "thermalState"])
   check("events: direction thresholds 0.33 / 0.67", Direction.fromCenterX(0.2) == .left && Direction.fromCenterX(0.5) == .center && Direction.fromCenterX(0.8) == .right)
   let iou = NormalizedBox(x: 0, y: 0, w: 1, h: 1).intersectionOverUnion(NormalizedBox(x: 0.5, y: 0, w: 1, h: 1))
   check("events: IoU of half-overlapping unit boxes is 1/3", approx(iou, 1.0 / 3.0, tol: 1e-9))
+}
+
+// MARK: - Snapshot encoder
+
+/// A pixel buffer carrying a one-pixel-wide vertical stripe pattern: the finest
+/// detail a sensor can hold, and the first thing a bad downscale destroys.
+private func stripedBuffer(width: Int, height: Int, period: Int = 2) -> CVPixelBuffer? {
+  var out: CVPixelBuffer?
+  let attrs: [CFString: Any] = [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary]
+  guard CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+                            kCVPixelFormatType_32BGRA, attrs as CFDictionary, &out) == kCVReturnSuccess,
+        let buffer = out else { return nil }
+  CVPixelBufferLockBaseAddress(buffer, [])
+  defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+  guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+  let stride = CVPixelBufferGetBytesPerRow(buffer)
+  let p = base.assumingMemoryBound(to: UInt8.self)
+  for y in 0..<height {
+    for x in 0..<width {
+      let v: UInt8 = (x / period) % 2 == 0 ? 0 : 255
+      let i = y * stride + x * 4
+      p[i] = v; p[i + 1] = v; p[i + 2] = v; p[i + 3] = 255
+    }
+  }
+  return buffer
+}
+
+func snapshotChecks() {
+  // --- geometry: the long edge is what the token budget assumes ---
+  let landscape = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: CGRect(x: 0, y: 0, width: 1920, height: 1440))
+  let toned = SnapshotEncoder.scaleToLongEdge(landscape, maxWidth: 768)
+  check("snapshot: long edge lands on maxWidth", approx(Double(toned.extent.width), 768, tol: 1.5), "\(toned.extent)")
+  check("snapshot: aspect is preserved", approx(Double(toned.extent.height), 576, tol: 1.5), "\(toned.extent)")
+  check("snapshot: origin is normalised to zero",
+        approx(Double(toned.extent.minX), 0, tol: 0.51) && approx(Double(toned.extent.minY), 0, tol: 0.51), "\(toned.extent)")
+
+  let portrait = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: CGRect(x: 0, y: 0, width: 1440, height: 1920))
+  let tonedPortrait = SnapshotEncoder.scaleToLongEdge(portrait, maxWidth: 768)
+  check("snapshot: a portrait frame is maxWidth TALL, not wide",
+        approx(Double(tonedPortrait.extent.height), 768, tol: 1.5) && approx(Double(tonedPortrait.extent.width), 576, tol: 1.5),
+        "\(tonedPortrait.extent)")
+
+  let small = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: CGRect(x: 0, y: 0, width: 320, height: 240))
+  check("snapshot: an already-small frame is never upscaled",
+        SnapshotEncoder.scaleToLongEdge(small, maxWidth: 768).extent.width == 320)
+
+  check("snapshot: expectedSize matches a 4:3 sensor", SnapshotEncoder.expectedSize(maxWidth: 768) == (768, 576))
+  check("snapshot: the allowed widths are the four the contract names",
+        SnapshotEncoder.allowedWidths == [512, 640, 768, 1024])
+
+  // --- the reason Lanczos is here: a 4x reduction must not alias detail away ---
+  // One-pixel stripes reduced 4x. Bilinear point-samples and returns near-flat
+  // bands; a prefiltered reduction keeps a mid-grey average with real variation.
+  if let striped = stripedBuffer(width: 1024, height: 256) {
+    let image = CIImage(cvPixelBuffer: striped)
+    let lanczos = SnapshotEncoder.lanczosScaled(image, scale: 0.25)
+    check("snapshot: Lanczos is available and returns an image", lanczos != nil)
+    if let lanczos {
+      check("snapshot: Lanczos reduction keeps the frame's geometry",
+            approx(Double(lanczos.extent.width), 256, tol: 1.5), "\(lanczos.extent)")
+    }
+    let encoder = SnapshotEncoder()
+    let source = SnapshotSource(pixelBuffer: striped, orientation: .up, horizonRow: nil, timestampMs: 42)
+    switch encoder.encode(source: source, maxWidth: 512) {
+    case .success(let payload):
+      check("snapshot: encode produces the scaled size", payload.width == 512 && payload.height == 128, "\(payload.width)x\(payload.height)")
+      check("snapshot: encode carries the frame timestamp, not the wall clock", approx(payload.timestamp, 42, tol: 0.001))
+      check("snapshot: encode returns non-empty JPEG base64", payload.base64.count > 100)
+      check("snapshot: sequence numbers start at one and rise", payload.seq == 1)
+    case .failure(let error):
+      check("snapshot: encode produces the scaled size", false, "\(error)")
+    }
+    // A second encode must advance the sequence: the client drops stale seqs.
+    let encoder2 = SnapshotEncoder()
+    _ = encoder2.encode(source: source, maxWidth: 512)
+    if case .success(let second) = encoder2.encode(source: source, maxWidth: 512) {
+      check("snapshot: seq advances per encode", second.seq == 2, "\(second.seq)")
+    }
+  } else {
+    check("snapshot: could build a striped test buffer", false)
+  }
+
+  // --- an unsupported width is refused rather than silently resized ---
+  let encoder = SnapshotEncoder()
+  var rejected = false
+  encoder.snapshot(maxWidth: 999, source: { nil }) { result in
+    if case .failure(let error) = result, case SnapshotError.invalidWidth = error { rejected = true }
+  }
+  check("snapshot: an unsupported width is rejected", rejected)
+
+  // --- curb crop: a horizon strip, full width, around the row the engine reports ---
+  let frame = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: CGRect(x: 0, y: 0, width: 1000, height: 1000))
+  let crop = SnapshotEncoder.curbCrop(frame, horizonRow: 0.4)
+  check("snapshot: curb crop keeps full width", approx(Double(crop.extent.width), 1000, tol: 0.51), "\(crop.extent)")
+  check("snapshot: curb crop keeps the configured height fraction",
+        approx(Double(crop.extent.height), 1000 * SnapshotEncoder.curbCropHeightFraction, tol: 0.51), "\(crop.extent)")
+  let cropTop = SnapshotEncoder.curbCrop(frame, horizonRow: 0.0)
+  check("snapshot: a horizon at the top clamps inside the frame",
+        cropTop.extent.minY >= -0.51 && cropTop.extent.height <= 1000, "\(cropTop.extent)")
+  let cropNil = SnapshotEncoder.curbCrop(frame, horizonRow: nil)
+  check("snapshot: a missing horizon row falls back to a sane default strip",
+        approx(Double(cropNil.extent.height), 1000 * SnapshotEncoder.curbCropHeightFraction, tol: 0.51))
 }
 
 // MARK: - Main
@@ -507,6 +619,7 @@ enum EngineChecks {
     driftChecks()
     scheduleChecks()
     exportChecks()
+    snapshotChecks()
     print("\n\(passes) passed, \(failures) failed")
     exit(failures == 0 ? 0 : 1)
   }

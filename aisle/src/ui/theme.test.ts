@@ -10,6 +10,7 @@ import {
   bandSurface,
   blend,
   cameraMaxHeight,
+  cameraStripSurface,
   colors,
   contrastRatio,
   glass,
@@ -146,6 +147,45 @@ describe('type scale, targets and motion', () => {
     expect(motion.panelSlidePx).toBe(8);
     expect(motion.pressScale).toBe(0.96);
     expect(motion.listenPulseMs).toBe(1200);
+  });
+
+  describe('text over the camera, not over the page', () => {
+    // The perception strip floats on live video. Every other panel composites
+    // against colors.bg, so the suite above is blind to this surface: at the
+    // page fill the slot labels measured 2.81:1 over the viewfinder and 2.49:1
+    // over a black frame, both below AA, and nothing failed.
+    const BLACK = '#000000';
+
+    it('the strip stays legible over the darkest frame the lens can produce', () => {
+      const surface = cameraStripSurface(BLACK);
+      expect(contrastRatio(colors.secondary, surface)).toBeGreaterThanOrEqual(MIN_SECONDARY_CONTRAST);
+      expect(contrastRatio(colors.text, surface)).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
+    });
+
+    it('holds over the viewfinder placeholder and over white', () => {
+      for (const under of [colors.viewfinder, BLACK, colors.white, '#7F7F7F']) {
+        const surface = cameraStripSurface(under);
+        expect({ under, ratio: contrastRatio(colors.secondary, surface) >= MIN_SECONDARY_CONTRAST }).toEqual({ under, ratio: true });
+        expect({ under, ratio: contrastRatio(colors.text, surface) >= MIN_SECONDARY_CONTRAST }).toEqual({ under, ratio: true });
+      }
+    });
+
+    it('holds with any mode accent tinting the strip', () => {
+      for (const accent of Object.values(accents)) {
+        const surface = cameraStripSurface(BLACK, accent);
+        expect({ accent, ok: contrastRatio(colors.secondary, surface) >= MIN_SECONDARY_CONTRAST }).toEqual({ accent, ok: true });
+      }
+      for (const signal of SIGNALS) {
+        const surface = cameraStripSurface(BLACK, signalColors[signal]);
+        expect({ signal, ok: contrastRatio(colors.secondary, surface) >= MIN_SECONDARY_CONTRAST }).toEqual({ signal, ok: true });
+      }
+    });
+
+    it('the page fill would have failed — the reason the dense fill exists', () => {
+      const pageFill = blend(colors.white, BLACK, glass.fillAlpha);
+      expect(contrastRatio(colors.secondary, pageFill)).toBeLessThan(MIN_SECONDARY_CONTRAST);
+      expect(glass.overCameraFillAlpha).toBeGreaterThan(glass.fillAlpha);
+    });
   });
 
   describe('cameraMaxHeight', () => {

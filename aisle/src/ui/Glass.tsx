@@ -58,6 +58,13 @@ export interface GlassPanelProps extends Pick<ViewProps, 'accessible' | 'accessi
   animateIn?: boolean;
   /** Drop the shadow (nested panels, the strip over the camera). */
   flat?: boolean;
+  /**
+   * White-fill opacity. Defaults to the glass recipe's 0.58, which assumes the
+   * panel sits on the page. A panel floating over the camera passes
+   * `glass.overCameraFillAlpha` so its surface — and therefore its text
+   * contrast — does not depend on the video behind it.
+   */
+  fillAlpha?: number;
   /** Outer (shadow) style: layout, margins, flex. */
   style?: StyleProp<ViewStyle>;
   /** Inner (content) style: padding, alignment. */
@@ -68,7 +75,7 @@ export interface GlassPanelProps extends Pick<ViewProps, 'accessible' | 'accessi
 export function GlassPanel(props: GlassPanelProps): React.JSX.Element {
   const {
     children, tint = null, tintAlpha = glass.bandTintAlpha, radius = glass.radius, animateIn = true, flat = false,
-    style, contentStyle, reduceMotion: reduceMotionProp,
+    fillAlpha, style, contentStyle, reduceMotion: reduceMotionProp,
     accessible, accessibilityRole, accessibilityLabel, accessibilityHint, testID, pointerEvents,
   } = props;
   const reduceMotion = useResolvedReduceMotion(reduceMotionProp);
@@ -114,7 +121,14 @@ export function GlassPanel(props: GlassPanelProps): React.JSX.Element {
     >
       <View style={[styles.inner, rounded, contentStyle]}>
         {Blur ? <Blur intensity={glass.blurIntensity} tint={glass.blurTint} style={StyleSheet.absoluteFill} /> : null}
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.fill]} />
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            styles.fill,
+            fillAlpha !== undefined && { backgroundColor: `rgba(255,255,255,${fillAlpha})` },
+          ]}
+        />
         {base !== null ? (
           <View pointerEvents="none" testID="glass-tint" style={[StyleSheet.absoluteFill, { backgroundColor: tintOf(base, tintAlpha) }]} />
         ) : null}

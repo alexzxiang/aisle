@@ -2,9 +2,11 @@
 # 09 §10 unit checks for the PerceptionModule engine, on a Mac, no device, no Xcode project.
 #
 # Compiles the ARKit-free engine files (Events, Filters, SignalDetector, VehicleTracker,
-# ObstacleEstimator, ModelRegistry, OcrReader, Geometry) together with EngineChecks.swift
-# against the macOS SDK and runs the checks. ARSessionManager / PerceptionEngine / Snapshot
-# import ARKit and are covered by the iOS typecheck instead:
+# ObstacleEstimator, ModelRegistry, OcrReader, Geometry, Snapshot) together with
+# EngineChecks.swift against the macOS SDK and runs the checks. Snapshot.swift needs only
+# CoreImage / CoreVideo / ImageIO, so the encoder that produces every image Claude ever
+# sees is testable here. ARSessionManager / PerceptionEngine import ARKit and are covered
+# by the iOS typecheck instead:
 #   xcrun -sdk iphoneos swiftc -typecheck -target arm64-apple-ios17.0 -parse-as-library ios/Engine/*.swift
 #
 # Usage: modules/perception/tests/run.sh          (from anywhere)
@@ -23,6 +25,7 @@ pure=(
   "$engine/ObstacleEstimator.swift"
   "$engine/ModelRegistry.swift"
   "$engine/OcrReader.swift"
+  "$engine/Snapshot.swift"
 )
 
 echo "== iOS typecheck of the whole engine =="
