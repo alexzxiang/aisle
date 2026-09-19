@@ -31,7 +31,6 @@ import { classForWords, spokenName } from './sceneMemory';
 import { itemOfGoal } from './handGuide';
 import { isAffirmative, isNegative, normalizeAnswer } from './yesNo';
 import type { SearchExplorer } from './searchExplorer';
-import { foodSection } from './foodCatalog';
 
 export type MissionPhase = 'approach_item' | 'approach_place' | 'scan_place' | 'find_place' | 'find_door' | 'reach' | 'confirm';
 
@@ -162,7 +161,8 @@ export const MISSION_OVERSHOOT_MS = 4000;
 /** "Keep walking" when the same forward line has stood this long without progress. */
 export const MISSION_STALL_MS = 7000;
 
-const itemLine = (name: string, g: GuideInstruction): { text: string; key: string; haptic: HapticPattern | null } => {
+/** One walking line for a thing in view or remembered (also used by the search explorer for landmarks). */
+export const itemLine = (name: string, g: GuideInstruction): { text: string; key: string; haptic: HapticPattern | null } => {
   const n = cap(name);
   const steps = g.steps === null ? 'a few steps' : stepsWords(g.steps);
   const side = (g.relativeDeg ?? 0) < 0 ? 'left' : 'right';
@@ -333,6 +333,8 @@ export const MISSION_SLOW_REPEAT_MS = 8000;
 export const MISSION_MODEL_BOX_MS = 3500;
 /** A detector track that drops out for less than this still counts as in view (a far banana flickers frame to frame). */
 export const MISSION_STICKY_MS = 1500;
+/** Turning toward a remembered place gets this long before the search explorer takes over. */
+export const MISSION_MEMORY_MS = 12_000;
 
 export interface MissionRunner {
   readonly goal: MissionGoal;
@@ -365,6 +367,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
   let lastKey: string | null = null;
   let lastSpokenAt = -Infinity;
   let searchTarget: string | null = null;
+  let memorySince: number | null = null;
   const boxes = new Map<string, TargetBox>();
 
   const sticky = new Map<string, TargetBox>();
@@ -379,9 +382,9 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     const t = now();
     const s = sticky.get(key);
     const fallback = modelBox(key) ?? (s && t - s.at <= MISSION_STICKY_MS ? s : null);
-    // Food identity must be verified in the image before using a coarse detector's box.
-    const verifyFood = !!deps.search && key === goal.item.toLowerCase() && foodSection(goal.item) !== 'unknown';
-    const g = deps.guide.instructionFor(words, fallback, deps.search ? { modelOnly: verifyFood, maxAgeMs: 6000 } : undefined);
+    // The detector's box steers the approach (a banana at fifteen frames a second beats a
+    // three-second round trip); the reach itself waits for Claude to confirm the food (guidedTask).
+    const g = deps.guide.instructionFor(words, fallback, deps.search ? { maxAgeMs: 6000 } : undefined);
     if (g?.targetVisible && g.box) sticky.set(key, g.box);
     return g;
   };
@@ -401,7 +404,15 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     tick() {
       const t = now();
       const snap = snapshot();
-      if (deps.search && state.phase !== 'reach' && state.phase !== 'confirm') {
+      // Scene memory first: a remembered bearing for the place is an immediate, free answer
+      // ("Table was on your left. Turn left slowly."). If turning there does not bring it into
+      // view within MISSION_MEMORY_MS, the explorer takes over.
+      const remembered = !snap.item?.targetVisible && snap.place !== null && !snap.place.targetVisible
+        && (snap.place.kind === 'scan_remembered' || snap.place.kind === 'turn' || snap.place.kind === 'turn_around');
+      if (remembered) memorySince = memorySince ?? t;
+      else memorySince = null;
+      const memoryFresh = remembered && memorySince !== null && t - memorySince <= MISSION_MEMORY_MS;
+      if (deps.search && !memoryFresh && state.phase !== 'reach' && state.phase !== 'confirm') {
         const direct = snap.item?.targetVisible ? snap.item : snap.place;
         const scanningSurface = !snap.item?.targetVisible && (snap.place?.kind === 'arrived' || state.phase === 'scan_place');
         const exploration = deps.search.tick(scanningSurface ? goal.item : goal.place ?? goal.item, direct, { surface: scanningSurface });
@@ -409,8 +420,9 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
           searchTarget = exploration.target;
           asking = null;
           state.phase = scanningSurface ? 'scan_place' : 'find_place';
-          const decision: MissionDecision = { phase: state.phase, text: exploration.text, key: `search:${exploration.phase}`, boxTarget: exploration.target, haptic: null, modelMaySpeak: false, asking: null };
-          return { text: exploration.text, haptic: null, modelMaySpeak: false, decision };
+          const haptic = exploration.haptic ?? null;
+          const decision: MissionDecision = { phase: state.phase, text: exploration.text, key: `search:${exploration.phase}`, boxTarget: exploration.target, haptic, modelMaySpeak: false, asking: null };
+          return { text: exploration.text, haptic, modelMaySpeak: false, decision };
         }
       }
       searchTarget = null;

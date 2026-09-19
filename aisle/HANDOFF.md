@@ -101,8 +101,8 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1232 tests
-cd aisle/server && npx tsc --noEmit && npx vitest run   # 202 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1270 tests
+cd aisle/server && npx tsc --noEmit && npx vitest run   # 212 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
 curl -s localhost:8787/api/health | head -c 300
@@ -253,6 +253,35 @@ OCR 0) so the phone stays cool — both native, both need `npm run ios:device`.
   away drops out of the bottom of the frame or behind within `MISSION_OVERSHOOT_MS`.
 - Native changed (classes, second detector, hand `near`): **rebuild with `npm run ios:device -- --clean`**
   (the `--clean` matters: the Xcode project only picks up a new `.mlpackage` at prebuild).
+
+## Round 10 (Stream A, on Codex's checkpoint): what to do when the camera sees nothing
+`src/core/searchExplorer.ts` runs under the navigator whenever a home or store task has no
+item and no place in view (and scene memory has no bearing for the place — that is tried
+first, for `MISSION_MEMORY_MS`). Claude's `task_step` now returns a `search` observation
+(`src/core/searchObservation.ts`; schema in `server/schemas/vision.ts`): the item's own
+box, a barrier (closed fridge/freezer), the readable current-area sign, foods in view, the
+view, quality, and up to three navigable landmarks with boxes. The explorer:
+1. scans (store: both shelf faces then the aisle; home: left, right, behind — 4 s each),
+2. narrates the place ("Milk and yogurt here. This seems to be dairy." → "Bananas should be
+   in produce. Let me find the way."),
+3. proposes a landmark (the item's section first, then aisle ends / doorways / surfaces,
+   never an area already searched) and asks: "May I guide you toward the produce section?",
+4. walks there by geometry through `itemLine` ("Produce display at one o'clock. Turn right a
+   little, then walk eight steps." / "Keep going. Three steps more." / "… just ahead. Slow
+   down." / "Here. Let me look around this spot."), with a lost-landmark grace and a 45 s cap,
+5. with nothing to head for: "No landmark yet. Walk forward five steps, then I will look
+   again." up to three times, then "No way on from here. Ask someone nearby, or say search again."
+Memory (`memory()`, in the DebugPanel state as `searchAreas`): every place with its sign,
+section, foods and outcome; `context()` tells Claude what was checked. A closed fridge or
+freezer seen mid-search converts the run into the fridge mission (approach → open → find →
+reach → confirm). The reach for a *food* waits for Claude's own item box within
+`REACH_CONFIRM_MS` ("Hold the camera on it. Let me confirm it is the bananas.") because the
+COCO detector confuses eggs and oranges; the approach itself is still steered by the
+detector at fifteen frames a second.
+Voice: "search again" / "keep looking" restart the scan; "where have we looked" answers from
+memory; "no" to a proposal refuses that landmark; "stop" ends everything.
+Cost: a task_step now returns ~300 more tokens (4–5 s round trip on Haiku); `FRESH_MS`
+(8 s) and the vision timeout (8 s) are set around that. Not yet run on the phone.
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

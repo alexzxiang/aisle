@@ -38,7 +38,7 @@ function setup(context: 'home' | 'store', goal = 'bananas') {
     vision: { ask }, planner: { run: planner }, handGuide: hand as never,
   });
   bus.emit({ type: 'TASK_REQUESTED', goal, context, source: 'voice' });
-  return { task, store, bus, said, ask, planner, hand, guide, setObservation: (o: Partial<SearchObservation>) => { observation = { ...observation, ...o }; }, walk: () => { steps += 3; } };
+  return { task, store, bus, said, ask, planner, hand, guide, walk: () => { steps += 3; }, setObservation: (o: Partial<SearchObservation>) => { observation = { ...observation, ...o }; } };
 }
 
 describe('adaptive search in the actual guided-task loop', () => {
@@ -64,9 +64,13 @@ describe('adaptive search in the actual guided-task loop', () => {
     expect(h.said).toContain('May I guide you toward the produce section?');
     expect(h.task.intercept('yes')).toBe(true);
     await jest.advanceTimersByTimeAsync(6000);
-    expect(h.said).toContain('Walk one step toward the visible landmark, then pause.');
-    h.walk();
-    await jest.advanceTimersByTimeAsync(500);
+    expect(h.said).toContain('Produce display ahead. Walk forward four steps.');
+    // Arrival: the landmark's box fills the view on two frames; the new spot has its own sign.
+    h.setObservation({ sign: 'Produce', items: ['apples', 'oranges'] });
+    h.guide.instructionFor = jest.fn((name: string, box?: TargetBox | null): GuideInstruction | null => (box ? { kind: 'arrived', text: '', relativeDeg: 0, steps: 0, targetVisible: true, box } : null));
+    await jest.advanceTimersByTimeAsync(8000);
+    expect(h.said).toContain('Produce display just ahead. Slow down.');
+    expect(h.said).toContain('Here. Let me look around this spot.');
     expect(h.task.getDebugState().searchAreas?.length).toBe(2);
     expect(h.ask.mock.calls.some(([, o]) => o?.userText?.includes('Memory:'))).toBe(true);
     h.setObservation({ sign: 'Produce', items: ['bananas'], item: { box: [0.4, 0.5, 0.2, 0.2], confidence: 0.95 }, landmarks: [] });
@@ -87,6 +91,23 @@ describe('adaptive search in the actual guided-task loop', () => {
     expect(h.task.getDebugState().goal).toBe('ice cream in the freezer');
     await jest.advanceTimersByTimeAsync(6500);
     expect(h.task.getDebugState().stage).toBe('approach');
+    h.task.dispose();
+  });
+
+  it('the detector steers the approach at once, but the reach waits for Claude to confirm the food', async () => {
+    const h = setup('home', 'bananas');
+    h.setObservation({ items: [], sign: null, landmarks: [], item: { box: null, confidence: 0 } });
+    // The detector (through the guide) sees bananas within reach from the first tick.
+    h.guide.instructionFor = jest.fn((name: string, box?: TargetBox | null): GuideInstruction | null =>
+      (name === 'bananas' ? { kind: 'arrived', text: '', relativeDeg: 0, steps: 0, targetVisible: true, box: box ?? { box: [0.3, 0.3, 0.4, 0.4], at: Date.now() } } : null));
+    await jest.advanceTimersByTimeAsync(1200);
+    expect(h.said).toContain('Bananas right in front of you. Reach out.');
+    expect(h.said).toContain('Hold the camera on it. Let me confirm it is the bananas.');
+    expect(h.hand.start).not.toHaveBeenCalled();
+    // Claude confirms the item; the hand loop starts.
+    h.setObservation({ item: { box: [0.3, 0.3, 0.4, 0.4], confidence: 0.95 } });
+    await jest.advanceTimersByTimeAsync(4000);
+    expect(h.hand.start).toHaveBeenCalledWith('bananas', expect.any(Object));
     h.task.dispose();
   });
 

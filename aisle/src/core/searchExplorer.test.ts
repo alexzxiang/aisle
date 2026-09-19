@@ -29,30 +29,41 @@ function setup(context: 'store' | 'home' = 'store') {
 }
 
 describe('active search with trip memory', () => {
-  it('scans first, asks permission for produce, and never walks on silence', () => {
+  it('scans first (three poses), asks permission for produce, and never walks on silence', () => {
     const h = setup(); h.permission();
+    // In a store the look-around is along the aisle; at home it is left, right, behind.
+    expect(h.said.slice(0, 3)).toEqual(['Face the shelf on your left. Pan slowly top to bottom.', 'Now face the right shelf and pan slowly top to bottom.', 'Turn to look along the aisle for signs and displays.']);
+    const home = setup('home'); home.permission();
+    expect(home.said.slice(0, 3)).toEqual(['Turn the camera slowly left.', 'Now turn the camera slowly right.', 'Turn around slowly so I can see behind you.']);
     expect(h.said).toContain('May I guide you toward the produce section?');
     expect(h.search.pending()).toBe(true);
     for (let i = 0; i < 6; i++) h.tick();
     expect(h.guide).not.toHaveBeenCalled();
-    expect(h.search.intercept('yes').consumed).toBe(true);
-    expect(h.tick()?.text).toMatch(/Walk one step/);
-    expect(h.guide).toHaveBeenLastCalledWith('produce display', expect.any(Object), { modelOnly: true, maxAgeMs: 6000 });
+    expect(h.search.intercept('yes')).toEqual({ consumed: true, text: 'Okay. Heading for the produce display.' });
+    expect(h.tick()?.text).toBe('Produce display ahead. Walk forward three steps.');
+    expect(h.guide).toHaveBeenLastCalledWith('produce display', expect.any(Object), { modelOnly: true, maxAgeMs: 8000 });
   });
 
-  it('waits for actual steps, then inspects a new view without declaring an aisle arrival', () => {
-    const h = setup(); h.permission(); h.search.intercept('yes'); h.tick();
-    expect(h.tick()?.text).toMatch(/Pause/);
-    expect(h.search.memory()).toHaveLength(1);
-    h.step(); h.tick(); h.step(); h.tick(); h.step();
-    expect(h.tick()?.text).toBe('Pause here. Let me inspect this view.');
-    expect(h.search.memory()).toHaveLength(2);
-    expect(h.search.memory()[1]!.sign).toBeNull();
-  });
-
-  it('stops walking when the landmark leaves view and honors refusal', () => {
+  it('walks by geometry — "keep going" as the count drops — and inspects the new place on arrival', () => {
     const h = setup(); h.permission(); h.search.intercept('yes');
-    expect(h.tick({ landmarks: [] })?.text).toMatch(/Pause walking/);
+    expect(h.tick()?.text).toBe('Produce display ahead. Walk forward three steps.');
+    h.guide.mockImplementation((_name, box) => ({ kind: 'forward', targetVisible: true, text: '', relativeDeg: 0, steps: 1, box }));
+    expect(h.tick()?.text).toBe('Keep going. One step more.');
+    expect(h.search.memory()).toHaveLength(1);
+    h.guide.mockImplementation((_name, box) => ({ kind: 'arrived', targetVisible: true, text: '', relativeDeg: 0, steps: 0, box }));
+    h.tick();                                                    // one arrival frame is not enough
+    const here = h.tick();
+    expect(here?.text).toBe('Here. Let me look around this spot.');
+    expect(here?.haptic).toBe('CONFIRM');
+    expect(h.search.memory()).toHaveLength(2);
+    expect(h.search.memory()[1]!.landmark).toBe('produce display');
+    expect(h.search.status()).toBe('scan');
+  });
+
+  it('keeps walking briefly when the landmark leaves view, then stops to look; refusal is honoured', () => {
+    const h = setup(); h.permission(); h.search.intercept('yes'); h.tick();
+    expect(h.tick({ landmarks: [] })?.text).toBe('Keep walking. Hold the camera level to find the produce display.');
+    expect(h.tick({ landmarks: [] })?.text).toBe('Stop. Turn slowly until I see the produce display again.');
     const n = setup(); n.permission();
     expect(n.search.intercept('no').text).toMatch(/stay here/);
     for (let i = 0; i < 6; i++) n.tick();
@@ -73,10 +84,11 @@ describe('active search with trip memory', () => {
     expect(h.search.context()).toContain('Likely category: produce');
   });
 
-  it('narrates milk and yogurt as evidence for dairy', () => {
+  it('narrates milk and yogurt as evidence for dairy, then where the bananas should be', () => {
     const h = setup();
     h.tick({ items: ['milk', 'yogurt'] });
-    expect(h.said).toContain('milk and yogurt. This seems to be dairy.');
+    h.tick({ items: ['milk', 'yogurt'] });
+    expect(h.said.slice(0, 2)).toEqual(['Milk and yogurt here. This seems to be dairy.', 'Bananas should be in produce. Let me find the way.']);
   });
 
   it('does not leave an open fridge to chase another aisle', () => {
@@ -96,11 +108,15 @@ describe('active search with trip memory', () => {
     expect(h.search.pending()).toBe(false);
   });
 
-  it('bounds fruitless scans and keeps every generated instruction speakable', () => {
+  it('with no landmark anywhere it walks on a few steps and looks again, three times, then asks for help', () => {
     const h = setup('home');
-    for (let i = 0; i < 10; i++) h.tick({ landmarks: [] });
-    expect(h.said.some((s) => s.includes('No route landmark'))).toBe(true);
+    const texts: string[] = [];
+    for (let i = 0; i < 70; i++) { const r = h.tick({ landmarks: [] }); if (r?.text) texts.push(r.text); }
+    expect(texts).toContain('No landmark yet. Walk forward five steps, then I will look again.');
+    expect(texts.filter((s) => s === 'Stop here. Let me look around again.')).toHaveLength(3);
+    expect(texts).toContain('No way on from here. Ask someone nearby, or say search again.');
     expect(h.search.pending()).toBe(true);
+    expect(h.search.status()).toBe('paused');
     for (const text of h.said) expect(checkPhrase(text)).toEqual([]);
   });
 });

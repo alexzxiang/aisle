@@ -756,3 +756,17 @@ labels: physical calibration and phone microphone acceptance remain unverified.
 See `DEPTH-VOICE-VALIDATION.md` for the replay command and device protocol, and
 `DEPTH-VOICE-CHECKPOINT.md` for resumable status. No native changes, paid CI activation or model-routing change in this repair;
 merged as #15 on top of #13 and #14.
+
+### Round 10 (Stream A, Codex checkpoint + rework) — 2026-09-19, night
+Codex's adaptive search committed as it left it (Claude's `search` observation, area memory,
+food-section priors, closed fridge/freezer discovery, fourteen more food classes, typed
+commands through the same intent path), then its movement policy reworked: the "walk one
+step, pause, wait for the pedometer" scheme is replaced by the navigator's geometric lines
+toward the chosen landmark, a brisk three-pose scan (store: shelf faces then the aisle), a
+two-line narration that says where the item should be, an "advance five steps and look
+again" fallback when no landmark is in view (three times, then ask for help), scene memory
+tried before any search, detector-steered approach with a Claude-confirmed reach for foods,
+and thresholds set to what Claude actually returns (observation ≥ 0.6, landmarks ≥ 0.6, item
+box ≥ 0.8, 8 s freshness). Live probe: a task_step with the search block answers in 4.3 s
+with a landmark box. App 1270 tests, proxy 212, Swift 117. Rebuild required (native
+classes); the phone was unreachable for the install at the time of writing.

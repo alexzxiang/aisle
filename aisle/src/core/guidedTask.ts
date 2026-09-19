@@ -42,8 +42,11 @@ import { MISSION_PHRASES } from './preparedGuidance';
 import { MISSION_STEPS, createMissionRunner, parseMissionGoal, type MissionPhase, type MissionRunner } from './itemMission';
 import { isAffirmative, isNegative } from './yesNo';
 import { createSearchExplorer, type SearchExplorer } from './searchExplorer';
+import { foodSection } from './foodCatalog';
 
 export const TASK_TICK_MS = 3000;
+/** Claude's own box for a food item must be this fresh before the hand loop reaches for it (search runs). */
+export const REACH_CONFIRM_MS = 10_000;
 /** A `done` reading at or above this counts toward closing the step on camera evidence alone. */
 export const TASK_DONE_CONFIDENCE = 0.8;
 /** A `done` reading in [ASK, DONE) is put to the user instead: "It looks like <thing>. Is that right?" */
@@ -206,6 +209,8 @@ export interface GuidedTask {
 
 interface RunState {
   itemEvidence?: { seq: number; at: number };
+  /** When "hold the camera on it" was last said while waiting for Claude to confirm the food. */
+  reachHoldAt?: number;
   search: SearchExplorer | null;
   searchTarget: string | null;
   /** Round 8: "find X on the Y" at home runs the item navigator instead of a planner's steps. */
@@ -281,6 +286,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         r.searchTarget = exploration.target;
         r.doneReadings = 0;
         lastArrivalFrame.delete(r);
+        if (exploration.haptic) deps.haptics.play(exploration.haptic);
         if (exploration.text) {
           speech.say({ text: exploration.text, priority: 'NAV', dedupeKey: 'task-search', cooldownMs: 0 });
           deps.conversation?.pushAisle(exploration.text, 'prompt');
@@ -340,6 +346,17 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const startMissionReach = (r: RunState): void => {
     const m = r.mission;
     if (!m || r.handing) return;
+    // A food the coarse detector can confuse (eggs and oranges) is reached for only once Claude
+    // has boxed the item itself recently; until then, hold the camera on it.
+    if (r.search && foodSection(m.goal.item) !== 'unknown' && !(r.itemEvidence && now() - r.itemEvidence.at <= REACH_CONFIRM_MS)) {
+      if (now() - (r.reachHoldAt ?? -Infinity) >= 5000) {
+        r.reachHoldAt = now();
+        const line = `Hold the camera on it. Let me confirm it is the ${m.goal.item}.`;
+        speech.say({ text: line, priority: 'NAV', dedupeKey: 'task-guide', cooldownMs: 0 });
+        deps.conversation?.pushAisle(line, 'prompt');
+      }
+      return;
+    }
     r.handing = true;
     const handStep = r.step;
     void handGuide.start(m.goal.item, { goal: r.goal, target: m.itemBox() ?? r.modelTarget }).then((res) => {
@@ -619,6 +636,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
           && observation.barrier === 'none') {
           const previous = r.itemEvidence;
           r.itemEvidence = { seq: out.seq, at: now() };
+          // Steering by Claude's box waits for a second sighting (one frame can be a look-alike).
           if (previous && previous.seq !== out.seq && now() - previous.at <= 15000) {
             r.mission.onModelBox(r.mission.goal.item, observation.item.box, now() - (out.latencyMs ?? 0));
           }
