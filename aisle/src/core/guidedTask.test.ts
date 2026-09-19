@@ -450,7 +450,7 @@ describe('createGuidedTask', () => {
     h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs from my fridge', context: 'home', source: 'voice' });
     expect(h.planner).not.toHaveBeenCalled();
     expect(h.describe).not.toHaveBeenCalled();
-    expect(h.said[0].text).toMatch(/Fridge.*right/);
+    expect(h.said[0].text).toMatch(/Turn right about .* degrees toward the fridge/);
     await flush(3000); // cloud request hangs
     detections = [{ cls: 'fridge', box: [0.3, 0.2, 0.4, 0.4], score: 0.9, trackId: 1 }];
     await flush(500);

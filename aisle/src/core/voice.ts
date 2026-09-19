@@ -220,6 +220,8 @@ export interface RecognizerHandlers {
 }
 
 export interface RecognizerSession {
+  /** Resolves on the native audio-capture event, not merely after calling start(). */
+  ready?: Promise<void>;
   stop(): void;
   abort(): void;
 }
@@ -325,6 +327,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   let session: Session | null = null;
   let last: VoiceOutcome | null = null;
   let unclearStreak = 0;
+  let confirmationMisses = 0;
   /** A task goal or a route destination spoken back for a yes/no before the big commitment starts (v2 B-4). */
   let pendingConfirm:
     | { kind: 'task'; goal: string; context: TaskContext }
@@ -400,7 +403,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     return output;
   };
 
-  const act = (output: ParseIntentOutput, source: VoiceSource): void => {
+  const act = (output: ParseIntentOutput, source: VoiceSource, confirm = true): void => {
     const reply = (): void => {
       const cacheKey = phraseKeyForText(output.reply);
       opts.speech.say({ text: output.reply, priority: 'NAV', dedupeKey: `voice-reply`, cooldownMs: 1000, ...(cacheKey ? { cacheKey } : {}) });
@@ -411,6 +414,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     // in finishWith) starts it; "no" asks again. Typed input is deliberate, so it starts at once.
     const askConfirm = (q: string, pending: NonNullable<typeof pendingConfirm>): void => {
       pendingConfirm = pending;
+      confirmationMisses = 0;
       opts.speech.say({ text: q, priority: 'NAV', dedupeKey: 'confirm-back', cooldownMs: 5000 });
       opts.conversation?.pushAisle(q, 'prompt');
     };
@@ -418,7 +422,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // An explicit new mission replaces a route or an older mission through the legal
       // abort edge. Previously TASK_REQUESTED was silently ignored outside IDLE.
       if (opts.store.getState().mode !== 'IDLE') opts.store.getState().abort();
-      const q = source === 'voice' ? goalConfirmQuestion(goal) : null;
+      const q = source === 'voice' && confirm ? goalConfirmQuestion(goal) : null;
       if (q) {
         askConfirm(q, { kind: 'task', goal, context });
         return;
@@ -501,7 +505,11 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       const correction = parseIntentFallback(transcript, opts.knownItems());
       if (!homeGoal && !ABORT_RE.test(transcript) &&
           !['guided_task', 'navigate_to', 'find_item'].includes(correction.intent)) {
-        const question = 'Please say yes or no. Your request is still saved.';
+        confirmationMisses += 1;
+        const question = confirmationMisses < 2
+          ? 'Say yes to confirm, or tell me your request again.'
+          : 'Confirmation cancelled. Tell me what you want to do.';
+        if (confirmationMisses >= 2) pendingConfirm = null;
         opts.speech.say({ text: question, priority: 'NAV', dedupeKey: 'confirm-retry', cooldownMs: 1000 });
         opts.conversation?.pushAisle(question, 'prompt');
         last = { output: { intent: 'unknown', item: null, reply: question }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
@@ -517,7 +525,8 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         return last;
       }
       const output: ParseIntentOutput = { intent: 'guided_task', item: null, goal: homeGoal, reply: sanitizeReply(`${titleCase(homeGoal)}. Got it.`, PHRASES.noted) };
-      act(output, source);
+      pendingConfirm = null;
+      act(output, source, false); // explicit local indoor commands need no model confirmation
       last = { output, transcript, sttPath, planner: false, plannerLatencyMs: null };
       return last;
     }
@@ -647,6 +656,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
           },
         },
       );
+      await s.handle.ready;
     },
 
     async end() {
@@ -657,7 +667,9 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         await waitForFinal(s);
         let transcript = s.finalTranscript ?? bestTranscript(s.results);
         let sttPath: VoiceOutcome['sttPath'] = transcript ? 'on-device' : 'none';
-        if (!transcript && s.audioUri && opts.sttUpload) {
+        const confidence = Math.max(...s.results.map((r) => r.confidence ?? -1));
+        const uncertain = confidence >= 0 && confidence < 0.45;
+        if ((!transcript || uncertain) && s.audioUri && opts.sttUpload) {
           const scribe = await opts.sttUpload(s.audioUri, keytermsFrom(opts.knownItems()), STT_TIMEOUT_MS);
           if (scribe && scribe.trim()) {
             transcript = scribe.trim();
@@ -729,10 +741,19 @@ export function createExpoRecognizer(): Recognizer {
       }
     },
     listen(o, h) {
+      let readyResolve!: () => void;
+      let readyReject!: (error: Error) => void;
+      const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+      void ready.catch(() => undefined); // start() can throw before begin() attaches its await
+      const readyTimer = setTimeout(() => readyReject(new Error('Microphone startup timed out')), 5000);
+      const markReady = (): void => { clearTimeout(readyTimer); readyResolve(); };
       const subs = [
+        M.addListener('audiostart', markReady),
         M.addListener('result', (e) => h.onResult({ isFinal: e.isFinal, results: e.results.map((r) => ({ transcript: r.transcript, confidence: r.confidence })) })),
-        M.addListener('error', (e) => h.onError(e.error)),
+        M.addListener('error', (e) => { clearTimeout(readyTimer); readyReject(new Error(e.error)); h.onError(e.error); }),
         M.addListener('end', () => {
+          clearTimeout(readyTimer);
+          readyReject(new Error('Recording ended before microphone became ready'));
           h.onEnd();
           for (const s of subs) s.remove();
         }),
@@ -757,6 +778,7 @@ export function createExpoRecognizer(): Recognizer {
           : {}),
       });
       return {
+        ready,
         stop: () => M.stop(),
         abort: () => M.abort(),
       };

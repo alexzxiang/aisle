@@ -345,9 +345,9 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   let latestDetections: readonly Detection[] = [];
   let latestDetectionAt = -Infinity;
   unsubs.push(perception.onDetections((d) => { latestDetections = d; latestDetectionAt = now(); }));
-  let latestDepth: { at: number; center: number; left?: number; right?: number } | null = null;
+  let latestDepth: { at: number; center: number; left?: number; right?: number; closingRate: number } | null = null;
   unsubs.push(perception.onDepth((d) => {
-    latestDepth = { at: now(), center: d.centerBottomRel, ...(typeof d.leftBottomRel === 'number' ? { left: d.leftBottomRel } : {}), ...(typeof d.rightBottomRel === 'number' ? { right: d.rightBottomRel } : {}) };
+    latestDepth = { at: now(), closingRate: d.closingRate, center: d.centerBottomRel, ...(typeof d.leftBottomRel === 'number' ? { left: d.leftBottomRel } : {}), ...(typeof d.rightBottomRel === 'number' ? { right: d.rightBottomRel } : {}) };
   }));
   const guide = createGuide({
     detections: () => now() - latestDetectionAt <= 1500 ? latestDetections : [],

@@ -5,6 +5,20 @@ import { HOLD_HINT, HOLD_MS, HoldToTalk, LISTENING_TEXT, RELEASE_TEXT } from './
 import { findForbiddenTerm } from '../core/phrases';
 
 describe('HoldToTalk', () => {
+  it('does not announce listening until microphone startup actually resolves', async () => {
+    let ready!: () => void;
+    const voice = { start: () => new Promise<void>((resolve) => { ready = resolve; }), stop: jest.fn() };
+    const onStart = jest.fn();
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(<HoldToTalk voice={voice} onStart={onStart} reduceMotion><Text>screen</Text></HoldToTalk>); });
+    act(() => tree.root.findByProps({ testID: 'hold-to-talk' }).props.onLongPress());
+    expect(onStart).not.toHaveBeenCalled();
+    expect(tree.root.findByProps({ testID: 'hold-to-talk-overlay' }).props.accessibilityLabel).toContain('Starting microphone');
+    await act(async () => { ready(); await Promise.resolve(); });
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(tree.root.findByProps({ testID: 'hold-to-talk-overlay' }).props.accessibilityLabel).toContain('Listening');
+    act(() => tree.unmount());
+  });
   it('a long press on the background starts listening with a CONFIRM, shows the overlay, and release stops', () => {
     const voice = { start: jest.fn(), stop: jest.fn() };
     const onStart = jest.fn();

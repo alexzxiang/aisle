@@ -151,7 +151,7 @@ export interface GuideDeps {
   /** The detector's latest tracks (a fresh copy each call). */
   detections: () => readonly Detection[];
   /** The depth grid's bottom row, fresh (≤ 1 s): nearness 0..1 ahead / left / right. Null when unknown. */
-  path?: () => { center: number; left?: number; right?: number } | null;
+  path?: () => { center: number; left?: number; right?: number; closingRate?: number } | null;
   /** Scene memory: remembered bearings for things out of view, and the facing. */
   memory: Pick<SceneMemory, 'whereIs' | 'facing'>;
   /** Portrait horizontal field of view of the still, degrees (56 wide / 100 ultra-wide). */
@@ -207,7 +207,9 @@ export function createGuide(deps: GuideDeps): Guide {
           // The way ahead: when the depth grid says something is close in front and the target
           // is still a few steps off, route around it toward the more open side (round 7b).
           const p = deps.path?.() ?? null;
-          if (p && p.center >= PATH_BLOCKED && steps >= 2) {
+          const obstruction = deps.detections().some((d) => d.cls !== cls && d.score >= 0.7 &&
+            d.box[3] >= 0.4 && d.box[0] < 0.6 && d.box[0] + d.box[2] > 0.4 && d.box[1] + d.box[3] > 0.75);
+          if (p && p.center >= PATH_BLOCKED && steps >= 2 && ((p.closingRate ?? 0) > 0.05 || obstruction)) {
             const leftOpen = typeof p.left === 'number' ? p.left : 1;
             const rightOpen = typeof p.right === 'number' ? p.right : 1;
             const stepSide = leftOpen <= rightOpen ? 'left' : 'right';
@@ -215,8 +217,9 @@ export function createGuide(deps: GuideDeps): Guide {
           }
           return { kind: 'forward', text: say('forward', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
         }
-        if (a <= hfov * 0.3) return { kind: 'turn_little', text: say('turn_little', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
-        return { kind: 'turn', text: say('turn', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
+        const turnText = `Turn ${side} about ${integerToWords(Math.max(5, Math.round(a / 5) * 5))} degrees toward the ${name}.`;
+        if (a <= hfov * 0.3) return { kind: 'turn_little', text: turnText, relativeDeg: rel, steps, targetVisible: true };
+        return { kind: 'turn', text: turnText, relativeDeg: rel, steps, targetVisible: true };
       }
 
       // 2. Out of view: remembered bearing.

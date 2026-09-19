@@ -244,6 +244,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const { bus, store, speech } = deps;
 
   const handGuide: HandGuide = deps.handGuide ?? createHandGuide({ vision: deps.vision, speech, haptics: deps.haptics, bus, conversation: deps.conversation, now });
+  const lastTurnPulse = new WeakMap<RunState, number>();
 
   /**
    * Round 7: geometry speaks first. Returns true when a geometric instruction was spoken (or
@@ -265,8 +266,12 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     else r.doneReadings = 0;
     const prev = r.guided;
     const news = deps.guide.changed(prev?.instruction ?? null, next);
+    if (next.targetVisible && next.kind.startsWith('turn') && t - (lastTurnPulse.get(r) ?? -Infinity) >= 1500) {
+      deps.haptics.play('TURN');
+      lastTurnPulse.set(r, t);
+    }
     if (prev && t - prev.at < (news ? 2500 : guideRepeatMs)) return true;
-    if (next.kind.startsWith('turn') || next.kind === 'scan_remembered') deps.haptics.play('TURN');
+    if (next.kind === 'scan_remembered') deps.haptics.play('TURN');
     else if (next.kind === 'forward' && prev?.instruction.kind !== 'forward') deps.haptics.play('CONFIRM');
     speech.say({ text: next.text, priority: 'NAV', dedupeKey: 'task-guide', cooldownMs: 800 });
     r.guided = { at: t, instruction: next };

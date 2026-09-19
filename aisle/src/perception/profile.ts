@@ -91,5 +91,6 @@ export function obstacleReflexFor(
   if (mode !== undefined && OBSTACLE_QUIET_MODES.has(mode)) return 'NONE';
   if (e.distanceClass !== 'NEAR') return 'NONE';
   if (!lastDepth || !(lastDepth.closingRate > 0)) return 'NONE';
+  if (mode === 'GUIDED_TASK' && lastDepth.closingRate <= 0.05) return 'NONE';
   return isIndoorProfile(profile) ? 'STOP_AND_SPEAK' : 'STOP_ONLY';
 }

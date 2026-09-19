@@ -692,7 +692,7 @@ describe('goal confirmation when a spoken item is uncertain', () => {
   it.each(['yes', 'That is correct', 'Yes, that’s correct.', 'That’s right!', 'Okay', 'Yes please'])('accepts %s for the kitchen/eggs mission without replanning', async (answer) => {
     const { v, rec, events } = setup('home');
     await v.begin();
-    rec.final('take me to the kitchen where my eggs are');
+    rec.final('find the pasta');
     await v.end();
     expect(v.isAwaitingConfirmation()).toBe(true);
     await v.begin();
@@ -701,22 +701,22 @@ describe('goal confirmation when a spoken item is uncertain', () => {
     expect(result.planner).toBe(false);
     expect(v.isAwaitingConfirmation()).toBe(false);
     expect(events.filter((e) => e.type === 'TASK_REQUESTED')).toEqual([
-      expect.objectContaining({ goal: 'kitchen where my eggs are', context: 'home' }),
+      expect.objectContaining({ goal: 'pasta', context: 'home' }),
     ]);
   });
 
   it.each(['', 'hmm', 'yes but no'])('keeps the mission after unclear confirmation %p, then accepts a retry', async (answer) => {
     const { v, rec, events, said } = setup('home');
     await v.begin();
-    rec.final('get eggs from my fridge');
+    rec.final('find the pasta');
     await v.end();
     await v.submitText(answer);
     expect(v.isAwaitingConfirmation()).toBe(true);
     expect(events.some((e) => e.type === 'TASK_REQUESTED')).toBe(false);
-    expect(said[said.length - 1].text).toContain('still saved');
+    expect(said[said.length - 1].text).toContain('Say yes to confirm');
     await v.submitText('That is correct');
     expect(events.filter((e) => e.type === 'TASK_REQUESTED')).toEqual([
-      expect.objectContaining({ goal: 'eggs from my fridge', context: 'home' }),
+      expect.objectContaining({ goal: 'pasta', context: 'home' }),
     ]);
   });
 
@@ -725,6 +725,30 @@ describe('goal confirmation when a spoken item is uncertain', () => {
     await v.submitText('find the pasta');
     expect(said.some((s) => s.text === 'Pasta. Did I get that right?')).toBe(false);
     expect(events.find((e) => e.type === 'TASK_REQUESTED')).toMatchObject({ goal: 'pasta', context: 'store' });
+  });
+
+  it('starts an explicit compound home mission immediately and retains the eggs goal', async () => {
+    const { v, rec, events } = setup('home');
+    await v.begin();
+    rec.final('take me to my fridge and find my eggs');
+    await v.end();
+    expect(v.isAwaitingConfirmation()).toBe(false);
+    expect(events.filter((e) => e.type === 'TASK_REQUESTED')).toEqual([
+      expect.objectContaining({ goal: 'eggs in my fridge', context: 'home' }),
+    ]);
+  });
+
+  it('exits confirmation after two unclear replies rather than trapping the user', async () => {
+    const { v, rec, events } = setup('home');
+    await v.begin();
+    rec.final('find pasta');
+    await v.end();
+    await v.submitText('hmm');
+    await v.submitText('hmm');
+    expect(v.isAwaitingConfirmation()).toBe(false);
+    expect(events.some((e) => e.type === 'TASK_REQUESTED')).toBe(false);
+    await v.submitText('take me to my fridge and find my eggs');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge' }));
   });
 
   it('a spoken route is confirmed before it starts; "yes" then launches the trip (v2 B-4)', async () => {

@@ -4,6 +4,29 @@ User: Alex (person A). Request: pull teammate changes, restore audible/fast spee
 expand prepared speech, and reliably carry "eggs from my fridge" through approach,
 opening, item identification, hand guidance and completion. Keep this file current.
 
+## Latest — team reconciliation and recording readiness
+
+Checkpointed previous work at `1eba080`, merged origin/main through `de7b6b1`;
+automatic documentation merge preserved both entries, no unresolved conflicts.
+Included D's transcript stability changes and C's opt-in vision-frame/eval tools.
+Frame capture remains off by default; do not push private frames or service keys.
+
+Compound explicit home requests normalize "take me to my fridge and find my eggs"
+to "eggs in my fridge" and start directly, without confirmation. Other uncertain
+goals retain confirmation, but two unclear answers exit it instead of looping.
+Mic begin now awaits native audiostart; UI shows Starting microphone until then,
+only announces Listening once capture starts. Low-confidence nonempty STT can use
+the existing Scribe fallback too. This does not eliminate native startup time or
+guarantee recognition accuracy; speak after Listening.
+
+Turns name approximate five-degree increments; forward steps remain approximate.
+Visible-target turn haptics repeat every 1.5 seconds independently of speech.
+Static relative depth alone no longer produces a stop in the approach guide:
+requires closing evidence or a large central detected obstruction. Tiny closing
+noise does not trigger the separate guided-task obstacle reflex. These are
+heuristic filters, NOT calibrated obstacle detection or a verified traversable path.
+Rehearse with a sighted helper and cane; physical room performance remains unproven.
+
 ## Starting point
 
 - `git pull --ff-only`: already current, main `9065e0b`. Poon's microphone,

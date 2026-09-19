@@ -36,6 +36,8 @@ export interface HoldToTalkProps {
 export function HoldToTalk({ voice, onStart, children, reduceMotion: reduceMotionProp, testID = 'hold-to-talk' }: HoldToTalkProps): React.JSX.Element {
   const reduceMotion = useResolvedReduceMotion(reduceMotionProp);
   const [held, setHeld] = useState(false);
+  const [ready, setReady] = useState(false);
+  const capture = useRef(0);
   const heldRef = useLatest(held);
   const voiceRef = useLatest(voice);
   const pulse = useRef(new Animated.Value(0)).current;
@@ -43,10 +45,18 @@ export function HoldToTalk({ voice, onStart, children, reduceMotion: reduceMotio
   const begin = useCallback(() => {
     if (heldRef.current || !voiceRef.current) return;
     setHeld(true);
-    onStart?.();
-    AccessibilityInfo.announceForAccessibility(LISTENING_TEXT);
+    setReady(false);
+    const attempt = ++capture.current;
+    const listening = (): void => {
+      if (capture.current !== attempt) return;
+      setReady(true);
+      onStart?.();
+      AccessibilityInfo.announceForAccessibility(LISTENING_TEXT);
+    };
     try {
-      void voiceRef.current.start();
+      const started = voiceRef.current.start();
+      if (started) void started.then(listening).catch(() => { if (capture.current === attempt) setHeld(false); });
+      else listening();
     } catch {
       setHeld(false);
     }
@@ -54,7 +64,9 @@ export function HoldToTalk({ voice, onStart, children, reduceMotion: reduceMotio
 
   const end = useCallback(() => {
     if (!heldRef.current) return;
+    capture.current += 1;
     setHeld(false);
+    setReady(false);
     try {
       void voiceRef.current?.stop();
     } catch {
@@ -99,10 +111,10 @@ export function HoldToTalk({ voice, onStart, children, reduceMotion: reduceMotio
     >
       {children}
       {held ? (
-        <View style={styles.overlay} pointerEvents="none" accessible accessibilityRole="text" accessibilityLabel={`${LISTENING_TEXT}. ${RELEASE_TEXT}.`} testID={`${testID}-overlay`}>
+        <View style={styles.overlay} pointerEvents="none" accessible accessibilityRole="text" accessibilityLabel={ready ? `${LISTENING_TEXT}. ${RELEASE_TEXT}.` : 'Starting microphone. Wait for listening.'} testID={`${testID}-overlay`}>
           <Animated.View style={[styles.ring, { transform: [{ scale: ringScale }], opacity: ringOpacity }]} />
           <View style={styles.dot} />
-          <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.title}>{LISTENING_TEXT}</Text>
+          <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.title}>{ready ? LISTENING_TEXT : 'Starting microphone'}</Text>
           <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.hint}>{RELEASE_TEXT}</Text>
         </View>
       ) : null}
