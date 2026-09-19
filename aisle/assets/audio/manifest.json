@@ -570,6 +570,62 @@
       "bytes": 12164,
       "estimatedMs": 1521,
       "generatedAt": "2026-09-19T01:30:23.989Z"
+    },
+    "arrived_destination": {
+      "key": "arrived_destination",
+      "file": "arrived_destination.mp3",
+      "textSha1": "effed9b90b817b6e0202bc7ddeea175e914807c3",
+      "bytes": 9030,
+      "estimatedMs": 1129,
+      "generatedAt": "2026-09-19T02:15:28.395Z"
+    },
+    "planning_route": {
+      "key": "planning_route",
+      "file": "planning_route.mp3",
+      "textSha1": "94c7782ab1d82149a97333a75b7ffa6b9dfff06e",
+      "bytes": 9448,
+      "estimatedMs": 1181,
+      "generatedAt": "2026-09-19T02:15:28.395Z"
+    },
+    "let_me_see": {
+      "key": "let_me_see",
+      "file": "let_me_see.mp3",
+      "textSha1": "e2514fca33d1f823264a5e78070d545811f49e97",
+      "bytes": 12164,
+      "estimatedMs": 1521,
+      "generatedAt": "2026-09-19T02:15:28.395Z"
+    },
+    "no_place_found": {
+      "key": "no_place_found",
+      "file": "no_place_found.mp3",
+      "textSha1": "64fc71ffc67a6c7b7ea758656e6afade860efe8e",
+      "bytes": 15717,
+      "estimatedMs": 1965,
+      "generatedAt": "2026-09-19T02:15:28.395Z"
+    },
+    "task_step_done": {
+      "key": "task_step_done",
+      "file": "task_step_done.mp3",
+      "textSha1": "cc606d3f15ea57809f82eff55bed4af8cfb92d48",
+      "bytes": 7149,
+      "estimatedMs": 894,
+      "generatedAt": "2026-09-19T02:15:28.395Z"
+    },
+    "task_next": {
+      "key": "task_next",
+      "file": "task_next.mp3",
+      "textSha1": "8efa31ab3f44909b9c050937318709fed5b76e59",
+      "bytes": 7567,
+      "estimatedMs": 946,
+      "generatedAt": "2026-09-19T02:15:28.395Z"
+    },
+    "task_done": {
+      "key": "task_done",
+      "file": "task_done.mp3",
+      "textSha1": "225421cc3a8f7086a3c89611286b0e12e9ba5e6f",
+      "bytes": 12791,
+      "estimatedMs": 1599,
+      "generatedAt": "2026-09-19T02:15:28.395Z"
     }
   }
 }
