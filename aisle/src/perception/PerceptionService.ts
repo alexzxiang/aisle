@@ -106,6 +106,13 @@ export function createNativePerceptionService(native: PerceptionNativeModule): P
     onTrackingState: (cb) => subscribePerceptionEvent(native, 'onTrackingState', cb),
     onSceneClass: (cb) => subscribePerceptionEvent(native, 'onSceneClass', cb),
 
+    debugLog: () => {
+      try {
+        return native.nativeLog();
+      } catch {
+        return [];
+      }
+    },
     async snapshotJPEG(maxWidth): Promise<Snapshot> {
       if (!isSnapshotWidth(maxWidth)) {
         throw new Error(`[perception] snapshotJPEG width must be 512 | 640 | 768 | 1024, got ${String(maxWidth)}`);
@@ -200,7 +207,14 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
     if (!started) {
       if (next === 'IDLE') return;
       started = true;
-      perception.start(next).catch((err: unknown) => report('perception.start', err));
+      perception.start(next)
+        .then(() => {
+          // One Metro line with the lens the phone chose (round 6: it decides how much of the room we see).
+          const lines = perception.debugLog?.() ?? [];
+          const format = lines.find((l) => l.includes('videoFormat'));
+          if (format) console.log(`[perception] ${format}`);
+        })
+        .catch((err: unknown) => report('perception.start', err));
       return;
     }
     try {

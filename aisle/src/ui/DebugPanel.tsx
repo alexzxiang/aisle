@@ -85,9 +85,13 @@ interface Live {
   course: CourseStateLike | null;
   beaconMuted: boolean | null;
   tickerMuted: boolean | null;
+  /** "1920x1440@30 wide" — the ARKit format the engine chose (round 6). */
+  videoFormat: string | null;
+  /** Apple's scene classifier, top three: "kitchen 0.71, refrigerator 0.44". */
+  sceneLabels: string | null;
 }
 
-const EMPTY_LIVE: Live = { fused: null, stats: null, tracking: null, speech: null, course: null, beaconMuted: null, tickerMuted: null };
+const EMPTY_LIVE: Live = { fused: null, stats: null, tracking: null, speech: null, course: null, beaconMuted: null, tickerMuted: null, videoFormat: null, sceneLabels: null };
 
 export interface DebugPanelProps {
   visible: boolean;
@@ -139,6 +143,8 @@ export function DebugPanel({ visible, onClose, metrics, audio, mockControls }: D
   const haptics = useOptionalService('haptics');
   const facts = useUiFacts();
   const now = useNow(DEBUG_POLL_MS);
+  const scene = useStoreSlice((st) => st.scene);
+  const sceneLine = scene ? `${scene.label} (${scene.setting}, ${scene.confidence.toFixed(2)}${scene.confirmed ? ', confirmed' : ''}, ${scene.source})` : DASH;
 
   const [live, setLive] = useState<Live>(EMPTY_LIVE);
   const [calibrating, setCalibrating] = useState(false);
@@ -149,19 +155,30 @@ export function DebugPanel({ visible, onClose, metrics, audio, mockControls }: D
   useEffect(() => {
     if (!visible) return undefined;
     const read = (): void => {
-      setLive({
+      setLive((prev) => ({
+        sceneLabels: prev.sceneLabels,
         fused: sensors?.getFusedHeadingDeg() ?? null,
         stats: perception?.getStats() ?? null,
+        videoFormat: (perception?.debugLog?.() ?? []).find((l) => l.includes('videoFormat'))?.replace(/^.*videoFormat=/, '') ?? null,
         tracking: perception?.getTrackingState() ?? null,
         speech: speechStatsOf(speech),
         course: courseStateOf(haptics),
         beaconMuted: beacon?.isMuted ? beacon.isMuted() : null,
         tickerMuted: ticker?.isMuted ? ticker.isMuted() : null,
-      });
+      }));
     };
     read();
     const id = setInterval(read, DEBUG_POLL_MS);
-    return () => clearInterval(id);
+    const unsubScene = perception?.onSceneClass
+      ? perception.onSceneClass((e) => {
+          const top = e.labels.slice(0, 3).map((l) => `${l.id} ${l.confidence.toFixed(2)}`).join(', ');
+          setLive((l) => ({ ...l, sceneLabels: top }));
+        })
+      : null;
+    return () => {
+      clearInterval(id);
+      unsubScene?.();
+    };
   }, [visible, sensors, perception, speech, haptics, beacon, ticker]);
 
   const toggleBeacon = (): void => {
@@ -237,6 +254,9 @@ export function DebugPanel({ visible, onClose, metrics, audio, mockControls }: D
           <Section title="Perception">
             <Line>{`detector  ${fmtFps(s?.detectorFps)}   depth ${fmtFps(s?.depthFps)}   ocr ${fmtFps(s?.ocrFps)}`}</Line>
             <Line>{`thermal   ${s?.thermalState ?? DASH}`}</Line>
+            <Line>{`lens      ${live.videoFormat ?? DASH}`}</Line>
+            <Line>{`scene     ${live.sceneLabels ?? DASH}`}</Line>
+            <Line>{`place     ${sceneLine}`}</Line>
             <Line>
               {facts.signal
                 ? `signal    ${facts.signal.state}   fresh ${facts.signal.fresh ? 'yes' : 'no'}   conf ${facts.signal.confidence.toFixed(2)}   ${ageText(facts.signal.ts, now)}`

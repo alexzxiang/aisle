@@ -314,6 +314,8 @@ export interface PerceptionService {
   snapshotJPEG(maxWidth: SnapshotWidth): Promise<Snapshot>;  // upright, EXIF baked in
   getTrackingState(): TrackingState;
   getStats(): { detectorFps: number; depthFps: number; ocrFps: number; frameToEventMs: number; thermalState: string };
+  /** The native engine's own log lines (video format, model loads) — DebugPanel and Metro. Absent on mocks. */
+  debugLog?(): string[];
 }
 
 // ---------------------------------------------------------------------------

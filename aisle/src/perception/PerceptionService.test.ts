@@ -218,8 +218,7 @@ describe('bindPerceptionToApp', () => {
     const store = createAppStore({ bus, warn: () => {} });
     bindPerceptionToApp({ perception, bus, store, haptics: { play: () => {}, startCourse: () => {}, stopCourse: () => {} }, speech: { say: () => {}, playStream: () => {}, clearQueue: () => {}, isSpeaking: () => false, setRate: () => {} } });
     store.setState({ mode: 'OUTDOOR_NAV' });
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));   // the start → log → report chain is a few microtasks long
     expect(errors).toEqual([{ type: 'ERROR', scope: 'perception.start', message: 'ARKit unavailable' }]);
   });
 });
