@@ -1,4 +1,4 @@
-import type { ParseIntentOutput, SpeechRequest } from './contracts';
+import type { ParseIntentOutput, SpeechRequest, SpeechService } from './contracts';
 import { createEventBus, type AppEventBus } from './bus';
 import { createAppStore, type AppStore } from './store';
 import { PHRASES, checkPhrase } from './phrases';
@@ -79,9 +79,9 @@ describe('bestTranscript / sanitizeReply / coerceParseIntentOutput / keytermsFro
   it('coerceParseIntentOutput repairs a malformed planner payload', () => {
     const fb = parseIntentFallback('I need eggs', KNOWN);
     expect(coerceParseIntentOutput(null, fb)).toBe(fb);
-    expect(coerceParseIntentOutput({ intent: 'nope', item: 7, reply: 'x' }, fb)).toEqual({ intent: 'find_item', item: 'eggs', reply: 'x' });
-    expect(coerceParseIntentOutput({ intent: 'find_item', item: ' Milk ', reply: 'Milk. Finding it.' }, fb)).toEqual({ intent: 'find_item', item: 'milk', reply: 'Milk. Finding it.' });
-    expect(coerceParseIntentOutput({ intent: 'repeat', item: 'eggs', reply: 'The way is clear' }, fb)).toEqual({ intent: 'repeat', item: 'eggs', reply: fb.reply });
+    expect(coerceParseIntentOutput({ intent: 'nope', item: 7, reply: 'x' }, fb)).toMatchObject({ intent: 'find_item', item: 'eggs', reply: 'x' });
+    expect(coerceParseIntentOutput({ intent: 'find_item', item: ' Milk ', reply: 'Milk. Finding it.' }, fb)).toMatchObject({ intent: 'find_item', item: 'milk', reply: 'Milk. Finding it.' });
+    expect(coerceParseIntentOutput({ intent: 'repeat', item: 'eggs', reply: 'The way is clear' }, fb)).toMatchObject({ intent: 'repeat', item: 'eggs', reply: fb.reply });
     expect(coerceParseIntentOutput({ intent: 'abort' }, fb).item).toBeNull();
   });
 
@@ -180,7 +180,7 @@ describe('createVoiceInput', () => {
     const out = await v.end();
     expect(r.calls).toEqual(['listen', 'stop']);
     expect(out).toMatchObject({ transcript: 'I need eggs', sttPath: 'on-device', planner: true, plannerLatencyMs: 640 });
-    expect(out.output).toEqual({ intent: 'find_item', item: 'eggs', reply: 'Eggs. Route ready: two legs.' });
+    expect(out.output).toMatchObject({ intent: 'find_item', item: 'eggs', reply: 'Eggs. Route ready: two legs.' });
     expect(fetchCalls[0].url).toBe('http://proxy/api/plan');
     expect(fetchCalls[0].body).toEqual({ job: 'parseIntent', input: { transcript: 'I need eggs', mode: 'OUTDOOR_NAV', knownItems: KNOWN } });
     expect(events).toEqual(['eggs@voice']);
@@ -199,7 +199,7 @@ describe('createVoiceInput', () => {
     r.final('I need milk');
     let out = await v.end();
     expect(out.planner).toBe(false);
-    expect(out.output).toEqual({ intent: 'find_item', item: 'milk', reply: 'Milk. Finding it.' });
+    expect(out.output).toMatchObject({ intent: 'find_item', item: 'milk', reply: 'Milk. Finding it.' });
     expect(events).toEqual(['milk@voice']);
 
     fetchStatus = 200;
@@ -493,5 +493,54 @@ describe('createVoiceInput', () => {
       expect(out.localIntent).toBeUndefined();
       expect(fetchCalls).toHaveLength(1);
     });
+  });
+});
+
+describe('round 4: the voice path emits the new events', () => {
+  let bus: AppEventBus;
+  let store: AppStore;
+  let events: Array<{ type: string } & Record<string, unknown>>;
+  const said: SpeechRequest[] = [];
+  beforeEach(() => {
+    bus = createEventBus();
+    store = createAppStore({ bus, warn: () => {} });
+    events = [];
+    bus.onAny((r) => events.push(r.event as { type: string } & Record<string, unknown>));
+    said.length = 0;
+  });
+  const make = (): VoiceInput => createVoiceInput({
+    speech: { say: (r: SpeechRequest) => { said.push(r); } } as unknown as SpeechService,
+    bus, store, proxyUrl: 'http://proxy', knownItems: () => KNOWN, recognizer: undefined,
+    fetchImpl: (async () => { throw new Error('offline'); }) as unknown as typeof fetch,
+  });
+  it('"take me to CVS" (keyboard) → DESTINATION_REQUESTED', async () => {
+    await make().submitText('take me to CVS');
+    const e = events.find((x) => x.type === 'DESTINATION_REQUESTED');
+    expect(e).toMatchObject({ name: 'CVS', source: 'keyboard' });
+  });
+  it('"eggs in my fridge" at home (IDLE) → TASK_REQUESTED with context home; in the store → store', async () => {
+    await make().submitText('take me to the eggs in my fridge');
+    expect(events.find((x) => x.type === 'TASK_REQUESTED')).toMatchObject({ goal: 'eggs in my fridge', context: 'home' });
+    events = [];
+    store.setState({ mode: 'INDOOR_NAV' });
+    await make().submitText('find my keys');
+    expect(events.find((x) => x.type === 'TASK_REQUESTED')).toMatchObject({ context: 'store' });
+  });
+});
+
+describe('round 4: destinations and guided tasks through the voice path', () => {
+  it('fallback parser: "take me to CVS" → navigate_to; home goals → guided_task; store items still win', () => {
+    expect(parseIntentFallback('take me to CVS', KNOWN)).toMatchObject({ intent: 'navigate_to', destination: 'CVS' });
+    expect(parseIntentFallback('walk me to the library', KNOWN)).toMatchObject({ intent: 'navigate_to', destination: 'library' });
+    expect(parseIntentFallback('take me to the eggs in my fridge', KNOWN)).toMatchObject({ intent: 'guided_task', goal: 'eggs in my fridge' });
+    expect(parseIntentFallback('get to the living room', KNOWN)).toMatchObject({ intent: 'guided_task' });
+    expect(parseIntentFallback('I need eggs', KNOWN)).toMatchObject({ intent: 'find_item', item: 'eggs' });
+  });
+  it('coercion keeps a planner destination / goal and repairs a missing one from the fallback', () => {
+    const fb = parseIntentFallback('take me to CVS', KNOWN);
+    expect(coerceParseIntentOutput({ intent: 'navigate_to', item: null, destination: 'CVS Pharmacy', goal: null, reply: 'CVS. Planning a route.' }, fb)).toMatchObject({ intent: 'navigate_to', destination: 'CVS Pharmacy' });
+    expect(coerceParseIntentOutput({ intent: 'navigate_to', item: null, destination: null, goal: null, reply: 'Planning a route.' }, fb)).toMatchObject({ intent: 'navigate_to', destination: 'CVS' });
+    const fb2 = parseIntentFallback('eggs in my fridge', KNOWN);
+    expect(coerceParseIntentOutput({ intent: 'guided_task', item: null, destination: null, goal: null, reply: 'Let me see.' }, fb2)).toMatchObject({ intent: 'guided_task', goal: 'eggs in my fridge' });
   });
 });

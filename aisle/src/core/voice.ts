@@ -22,7 +22,8 @@
  * The recognizer, the STT upload and fetch are injected so the flow is
  * unit-tested; the expo implementations are at the bottom and required lazily.
  */
-import type { AppMode, ParseIntentInput, ParseIntentOutput, PlannerResult, SpeechService } from './contracts';
+import type { AppMode, ParseIntentInput, ParseIntentOutput, PlannerResult, SpeechService, TaskContext } from './contracts';
+import { classifyGoalPhrase } from '../outdoor/plannerJobs';
 import type { AppEventBus } from './bus';
 import type { ConversationLog } from './conversation';
 import type { AppStore } from './store';
@@ -77,6 +78,12 @@ export function parseIntentFallback(transcript: string, knownItems: readonly str
   if (HOW_FAR_RE.test(t)) return { intent: 'how_far', item: null, reply: 'Checking the distance.' };
   if (WHERE_RE.test(t)) return { intent: 'where_am_i', item: null, reply: 'Checking where you are.' };
 
+  // Round 4: home goals ("eggs in my fridge", "the living room") are never store items.
+  const goal = classifyGoalPhrase(transcript);
+  if (goal?.kind === 'guided_task') {
+    return { intent: 'guided_task', item: null, destination: null, goal: goal.goal, reply: `${titleCase(goal.goal)}. Let me see your surroundings.` };
+  }
+
   // Known vocabulary first: longest match wins ("egg noodles" over "egg").
   let best: string | null = null;
   for (const raw of knownItems) {
@@ -89,6 +96,11 @@ export function parseIntentFallback(transcript: string, knownItems: readonly str
   if (best) return { intent: 'find_item', item: best, reply: `${titleCase(best)}. Finding it.` };
 
   if (HELP_RE.test(t)) return { intent: 'help', item: null, reply: 'Hold the button and name an item.' };
+
+  // Round 4: "take me to CVS" → a place to walk to.
+  if (goal?.kind === 'navigate_to') {
+    return { intent: 'navigate_to', item: null, destination: goal.destination, goal: null, reply: `${titleCase(goal.destination)}. Planning a route.` };
+  }
 
   // Free-form "I need X" with the filler stripped.
   const m = t.match(FIND_PREFIX_RE);
@@ -124,7 +136,7 @@ export function sanitizeReply(reply: unknown, fallback: string = FALLBACK_REPLY)
 }
 
 const INTENTS: ReadonlySet<ParseIntentOutput['intent']> = new Set([
-  'find_item', 'repeat', 'how_far', 'where_am_i', 'abort', 'help', 'unknown',
+  'find_item', 'navigate_to', 'guided_task', 'repeat', 'how_far', 'where_am_i', 'abort', 'help', 'unknown',
 ]);
 
 export function coerceParseIntentOutput(raw: unknown, fallback: ParseIntentOutput): ParseIntentOutput {
@@ -132,7 +144,10 @@ export function coerceParseIntentOutput(raw: unknown, fallback: ParseIntentOutpu
   const o = raw as Partial<ParseIntentOutput>;
   const intent = INTENTS.has(o.intent as ParseIntentOutput['intent']) ? (o.intent as ParseIntentOutput['intent']) : fallback.intent;
   const item = typeof o.item === 'string' && o.item.trim().length > 0 ? o.item.trim().toLowerCase() : intent === 'find_item' ? fallback.item : null;
-  return { intent, item, reply: sanitizeReply(o.reply, fallback.reply) };
+  const cleanName = (v: unknown, max: number): string | null => (typeof v === 'string' && v.trim().length > 0 ? v.trim().slice(0, max) : null);
+  const destination = intent === 'navigate_to' ? cleanName(o.destination, 60) ?? fallback.destination ?? null : null;
+  const goal = intent === 'guided_task' ? cleanName(o.goal, 120) ?? fallback.goal ?? null : null;
+  return { intent, item, destination, goal, reply: sanitizeReply(o.reply, fallback.reply) };
 }
 
 /** Keyterms for Scribe: item + aisle vocabulary, capped so billing stays sane (07 §2). */
@@ -327,6 +342,12 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   const act = (output: ParseIntentOutput, source: VoiceSource): void => {
     if (output.intent === 'find_item' && output.item) {
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
+    } else if (output.intent === 'navigate_to' && output.destination) {
+      opts.bus.emit({ type: 'DESTINATION_REQUESTED', name: output.destination, source });
+    } else if (output.intent === 'guided_task' && output.goal) {
+      const m = opts.store.getState().mode;
+      const context: TaskContext = m === 'INDOOR_NAV' || m === 'AT_ITEM' || m === 'ITEM_PICKUP' || m === 'CHECKOUT_NAV' ? 'store' : m === 'OUTDOOR_NAV' ? 'street' : 'home';
+      opts.bus.emit({ type: 'TASK_REQUESTED', goal: output.goal, context, source });
     } else if (output.intent === 'abort') {
       opts.store.getState().abort();
     }

@@ -189,6 +189,12 @@ export interface StoreResolver {
   onTarget(cb: (t: ResolvedTarget | null, outcome: ResolveOutcome) => void): () => void;
   /** Loads and validates the map without a request (App start). */
   ensureMap(): Promise<AisleStoreMap | null>;
+  /**
+   * Round 4: a synthesized map for a place the user named ("take me to CVS") — no aisles,
+   * entrance = the place. It replaces the loaded map until `restoreMap()`; `getMap()` returns it.
+   */
+  useMap(m: AisleStoreMap): void;
+  restoreMap(): void;
   dispose(): void;
 }
 
@@ -198,6 +204,7 @@ export function createStoreResolver(opts: StoreResolverOptions): StoreResolver {
   let mapErrors: string[] | null = null;
   let mapLoading: Promise<AisleStoreMap | null> | null = null;
   let target: ResolvedTarget | null = null;
+  let overridden: AisleStoreMap | null = null;   // the loaded map, while a POI map is in use
   let primed = false;
   const listeners = new Set<(t: ResolvedTarget | null, o: ResolveOutcome) => void>();
 
@@ -324,6 +331,20 @@ export function createStoreResolver(opts: StoreResolverOptions): StoreResolver {
       };
     },
     ensureMap,
+    useMap(m) {
+      if (overridden === null) overridden = map;
+      map = m;
+      target = null;
+      opts.store.getState().setStoreId(m.storeId);
+      opts.perception.setKnownSigns(signVocabulary(m));
+    },
+    restoreMap() {
+      if (overridden === null) return;
+      map = overridden;
+      overridden = null;
+      target = null;
+      if (map) opts.perception.setKnownSigns(signVocabulary(map));
+    },
     dispose() {
       unsub();
       listeners.clear();
