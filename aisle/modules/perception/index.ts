@@ -175,14 +175,38 @@ let cachedView: ComponentType<PerceptionPreviewNativeProps> | null | undefined;
  * hands back an adapter that red-boxes "Unimplemented component" at render time
  * when the build predates the view. Expo's registry answers up front.
  */
+interface ExpoGlobal {
+  getViewConfig?: (moduleName: string, viewName?: string) => unknown;
+  modules?: Record<string, { ViewPrototypes?: Record<string, unknown> } | undefined>;
+}
+
+let linkedLogged = false;
+
 export function isPerceptionPreviewViewLinked(): boolean {
-  const expo = (globalThis as { expo?: { getViewConfig?: (m: string, v?: string) => unknown } }).expo;
+  const expo = (globalThis as { expo?: ExpoGlobal }).expo;
   if (!expo || typeof expo.getViewConfig !== 'function') return getPerceptionNative() !== null; // no registry (tests): follow the module
+  // Three independent answers from the registry; any yes is a yes. The module has one
+  // view, so its default view is the preview view (`getViewConfig(module)` alone).
+  let named = false;
+  let dflt = false;
+  let prototypes = false;
   try {
-    return expo.getViewConfig(NATIVE_MODULE_NAME, NATIVE_PREVIEW_VIEW_NAME) != null;
-  } catch {
-    return false;
+    named = expo.getViewConfig(NATIVE_MODULE_NAME, NATIVE_PREVIEW_VIEW_NAME) != null;
+  } catch { /* fall through */ }
+  try {
+    dflt = expo.getViewConfig(NATIVE_MODULE_NAME) != null;
+  } catch { /* fall through */ }
+  try {
+    const protos = expo.modules?.[NATIVE_MODULE_NAME]?.ViewPrototypes;
+    prototypes = !!protos && Object.keys(protos).length > 0;
+  } catch { /* fall through */ }
+  const linked = named || dflt || prototypes;
+  if (!linkedLogged) {
+    linkedLogged = true;
+    // One line in Metro so a build mismatch is diagnosable from the laptop.
+    console.log(`[perception] preview view ${linked ? 'linked' : 'NOT in this build'} (named=${named} default=${dflt} prototypes=${prototypes}, module=${getPerceptionNative() !== null})`);
   }
+  return linked;
 }
 
 export function getPerceptionPreviewView(): ComponentType<PerceptionPreviewNativeProps> | null {
