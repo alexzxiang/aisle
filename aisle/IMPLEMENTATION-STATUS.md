@@ -377,3 +377,5 @@ TTS + STT, Overpass; Google Routes red until the Routes API is enabled on projec
 Not yet exercised (needs the phone in live mode): ARKit camera + on-device detector/depth/OCR fps,
 hold-to-talk → on-device STT, the DebugPanel readouts. Proxy route counters were empty at
 20:48, i.e. the phone has not connected live yet.
+
+**Degraded route mode (2026-09-18, `241492c`).** When `/api/route` fails with an http/shape error (Google Routes disabled — the current state until the API is enabled on project 188682982044 — or a 5xx), the trip speaks "No route data. Heading straight to the store." and installs a one-leg ARRIVE route on the bearing to the pinned entrance, so perception, the transition and the indoor flow still run; crossings are not announced on that leg (nothing is known about them). Network/timeout errors keep the offline notice. The Home-screen banner "Couldn't plan the route. Check the connection…" seen on the first live attempt was this server-side failure wearing the connection wording; the degraded scope now reads neutrally.
