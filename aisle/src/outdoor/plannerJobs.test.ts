@@ -1,5 +1,46 @@
-import { digitsToWords, templateFor, validateFor } from './plannerJobs';
+import { confirmPhrase, digitsToWords, templateFor, templateRouteCompile, turnPhrases, validateFor } from './plannerJobs';
 import { describe, expect, it } from '@jest/globals';
+
+// v2 C5: every leg's soon / now / confirm names the street and a distance in words.
+describe('route script names the street', () => {
+  it('names the street being turned onto, taken from the next step', () => {
+    const out = templateRouteCompile({
+      steps: [
+        { index: 0, instruction: 'Head southwest on Forbes Ave toward S Bouquet St', maneuver: 'TURN_RIGHT', distanceM: 183, startBearingDeg: 250 },
+        { index: 1, instruction: 'Turn right onto S Bouquet St\nDestination will be on the right', maneuver: 'ARRIVE', distanceM: 61, startBearingDeg: 308 },
+      ],
+      crossings: [],
+    });
+    expect(out.legs[0]).toMatchObject({
+      soon: 'Turn right onto South Bouquet Street in sixty feet.',
+      now: 'Turn right onto South Bouquet Street now.',
+      confirm: 'Continue on Forbes Avenue, about six hundred feet.',
+    });
+    expect(out.legs[1]!.confirm).toBe('Entrance ahead on South Bouquet Street, about two hundred feet.');
+  });
+
+  it('keeps the bare turn when there is no next street, and never names one for a turn around', () => {
+    expect(turnPhrases('TURN_LEFT', '')).toEqual({ soon: 'Turn left in sixty feet.', now: 'Turn left now.' });
+    expect(turnPhrases('UTURN', 'Forbes Ave')).toEqual({ soon: 'Turn around in sixty feet.', now: 'Turn around now.' });
+    expect(turnPhrases('STRAIGHT', 'Forbes Ave')).toEqual({ soon: '', now: '' });
+  });
+
+  it('spells a numbered street out rather than speaking a digit', () => {
+    const now = turnPhrases('TURN_LEFT', '5th Ave').now;
+    expect(now).toMatch(/^Turn left onto fifth Avenue now\.$/i);   // casing is spokenStreet's, and inaudible
+    expect(now).not.toMatch(/\d/);
+  });
+
+  it('falls back to the bare turn when the street will not fit twelve words', () => {
+    const long = 'Martin Luther King Junior Memorial Scenic Boulevard Extension Road';
+    expect(turnPhrases('TURN_RIGHT', long)).toEqual({ soon: 'Turn right in sixty feet.', now: 'Turn right now.' });
+  });
+
+  it('names the entrance street on arrival, and drops it rather than overflow', () => {
+    expect(confirmPhrase('Forbes Ave', 30, 'ARRIVE')).toBe('Entrance ahead on Forbes Avenue, about one hundred feet.');
+    expect(confirmPhrase('', 30, 'ARRIVE')).toBe('Entrance ahead, about one hundred feet.');
+  });
+});
 
 describe('digitsToWords + answer validation', () => {
   it('spells bare integers out and leaves decimals, times and codes alone', () => {

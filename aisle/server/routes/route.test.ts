@@ -92,8 +92,9 @@ describe('buildRoute on the recorded Forbes / Bouquet route', () => {
     // Script: one entry per leg, templates (no NIM key), announcement per crossing.
     expect(r.planner.routeCompile.fallback).toBe(true);
     expect(r.script.legs.map((l) => l.index)).toEqual([0, 1]);
-    expect(r.script.legs[0]).toMatchObject({ soon: 'Turn right in sixty feet.', now: 'Turn right now.' });
-    expect(r.script.legs[1]!.confirm).toMatch(/^Entrance ahead, /);
+    // v2 C5: the turn names the street it turns onto, taken from the next step's instruction.
+    expect(r.script.legs[0]).toMatchObject({ soon: 'Turn right onto South Bouquet Street in sixty feet.', now: 'Turn right onto South Bouquet Street now.' });
+    expect(r.script.legs[1]!.confirm).toBe('Entrance ahead on South Bouquet Street, about two hundred feet.');
     expect(r.script.crossingAnnouncements.map((a) => a.crossingId)).toEqual(r.crossings.map((c) => c.crossingId));
     const forbesText = r.script.crossingAnnouncements.find((a) => a.crossingId === forbes!.crossingId)!.text;
     expect(forbesText.startsWith('Crossing ahead: Forbes Avenue. Signalized.')).toBe(true);

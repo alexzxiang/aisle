@@ -63,7 +63,7 @@ describe('leg and crossing requests', () => {
   it('STRAIGHT and ARRIVE legs have no soon / now', () => {
     expect(legSoonRequest(leg(0, 'STRAIGHT', 'Forbes Ave'), null)).toBeNull();
     expect(legNowRequest(leg(0, 'ARRIVE', 'Forbes Ave'), null)).toBeNull();
-    expect(legConfirmRequest(leg(0, 'ARRIVE', 'Forbes Ave', 30), null)?.text).toBe('Entrance ahead, about one hundred feet.');
+    expect(legConfirmRequest(leg(0, 'ARRIVE', 'Forbes Ave', 30), null)?.text).toBe('Entrance ahead on Forbes Avenue, about one hundred feet.');
   });
 
   it('crossing ahead: the compiled announcement once, push_button_likely once when flagged', () => {
@@ -92,7 +92,7 @@ describe('pre-synthesis', () => {
     const texts = variablePhrases({ legs, crossings: [crossing()], warnings: [WALKING_BETA_WARNING], script: null });
     expect(texts[0]).toBe(WALKING_BETA_WARNING);
     expect(texts).toContain('Continue on South Bouquet Street, about three hundred fifty feet.');
-    expect(texts).toContain('Entrance ahead, about one hundred fifty feet.');
+    expect(texts).toContain('Entrance ahead on South Bouquet Street, about one hundred fifty feet.');
     expect(texts).toContain('Crossing ahead: Forbes Avenue. Signalized.');
     // A bundles `signal_read_delayed` (A-side key), so it is not pre-synthesized.
     expect(texts).not.toContain('Signal read is delayed.');

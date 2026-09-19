@@ -110,9 +110,31 @@ const MANEUVER_WORDS: Record<string, { soon: string; now: string } | null> = {
   ARRIVE: null,
 };
 
+/**
+ * "Turn right onto South Bouquet Street in sixty feet." The street being turned onto is what tells
+ * a blind pedestrian they are at the right corner, and Google puts it in the *next* step's
+ * instruction — so a leg compiled on its own could never say it (v2 C5). A turn around has no new
+ * street, and a name that will not fit twelve clean words falls back to the bare turn.
+ */
+export function turnPhrases(maneuver: string, ontoStreet: string): { soon: string; now: string } {
+  const bare = MANEUVER_WORDS[maneuver] ?? null;
+  if (!bare) return { soon: '', now: '' };
+  const spoken = maneuver === 'UTURN' ? '' : spokenStreet(ontoStreet);
+  if (spoken === '') return { ...bare };
+  const verb = bare.now.replace(/ now\.$/, '');
+  const soon = `${verb} onto ${spoken} in sixty feet.`;
+  const now = `${verb} onto ${spoken} now.`;
+  return { soon: isValidPhrase(soon, false) ? soon : bare.soon, now: isValidPhrase(now, false) ? now : bare.now };
+}
+
 /** "Continue on Forbes Avenue, about two hundred feet." — trimmed to 12 words. */
 export function confirmPhrase(street: string, distanceM: number, maneuver: string): string {
-  if (maneuver === 'ARRIVE') return `Entrance ahead, ${feetWords(distanceM)}.`;
+  if (maneuver === 'ARRIVE') {
+    // Name the street the entrance is on: "ahead" alone does not say the user is on the right block.
+    const spoken = spokenStreet(street);
+    const named = `Entrance ahead on ${spoken}, ${feetWords(distanceM)}.`;
+    return spoken !== '' && isValidPhrase(named, false) ? named : `Entrance ahead, ${feetWords(distanceM)}.`;
+  }
   const spoken = spokenStreet(street);
   if (spoken !== '') {
     const full = `Continue on ${spoken}, ${feetWords(distanceM)}.`;
@@ -123,13 +145,14 @@ export function confirmPhrase(street: string, distanceM: number, maneuver: strin
   return `Continue straight, ${feetWords(distanceM)}.`;
 }
 
-export function templateLeg(step: RouteCompileInput['steps'][number]): RouteCompileOutput['legs'][number] {
-  const words = MANEUVER_WORDS[step.maneuver] ?? null;
+/** `next` is the step after this one, whose instruction names the street this leg turns onto. */
+export function templateLeg(step: RouteCompileInput['steps'][number], next?: RouteCompileInput['steps'][number]): RouteCompileOutput['legs'][number] {
   const street = streetFromInstruction(step.instruction);
+  const { soon, now } = turnPhrases(step.maneuver, next ? streetFromInstruction(next.instruction) : '');
   return {
     index: step.index,
-    soon: words?.soon ?? '',
-    now: words?.now ?? '',
+    soon,
+    now,
     confirm: confirmPhrase(street, step.distanceM, step.maneuver),
   };
 }
@@ -157,7 +180,8 @@ export function crossingAnnouncementText(c: { street: string; signalized: boolea
 
 export function templateRouteCompile(input: RouteCompileInput): RouteCompileOutput {
   return {
-    legs: input.steps.map(templateLeg),
+    // Not `.map(templateLeg)`: map's second argument is the index, which would land in `next`.
+    legs: input.steps.map((step, i) => templateLeg(step, input.steps[i + 1])),
     crossingAnnouncements: input.crossings.map((c) => ({ crossingId: c.crossingId, text: crossingAnnouncementText(c) })),
   };
 }
@@ -200,10 +224,10 @@ export const ROUTE_COMPILE_PROMPT = [
   'You compile walking directions for a blind pedestrian walking at a normal pace.',
   'Input: JSON with steps (index, instruction, maneuver, distanceM, startBearingDeg) and crossings.',
   'For every step output one leg with the same index and three phrases:',
-  '- soon: spoken about sixty feet before the maneuver; say "sixty feet" or give no distance.',
-  '- now: the imperative at the maneuver point, e.g. "Turn left now."',
+  '- soon: spoken about sixty feet before the maneuver; name the street being turned onto, which is the street in the NEXT step\'s instruction, e.g. "Turn right onto South Bouquet Street in sixty feet."',
+  '- now: the imperative at the maneuver point, naming that same street, e.g. "Turn right onto South Bouquet Street now." The street is how the person knows it is the right corner.',
   '- confirm: names the street to continue on and its length in feet, written as words.',
-  'Maneuver STRAIGHT: soon and now are empty strings. Maneuver ARRIVE: soon and now are empty; confirm is "Entrance ahead, about N feet." with N as words.',
+  'Maneuver STRAIGHT: soon and now are empty strings. Maneuver ARRIVE: soon and now are empty; confirm is "Entrance ahead on <street>, about N feet." with the street spelled out and N as words.',
   'Rules for every phrase: at most twelve words; no digits, write every number as words; no abbreviations, spell street names out ("Forbes Avenue", "South Bouquet Street").',
   'Never say anything about when to cross, traffic, or whether it is fine to proceed.',
   'For every crossing output text exactly "Crossing ahead: <street>. Signalized." when signalized is true, or "Crossing ahead: <street>." otherwise, adding " Push button likely." when pushButtonLikely is true.',
