@@ -490,15 +490,29 @@ func exportChecks() {
   let decoded = try? JSONDecoder().decode(DebugExportLine.self, from: json.data(using: .utf8)!)
   check("export: round-trips through Codable", decoded == line)
 
-  // 01 §7's eleven, plus `onSceneClass` (round 6: Apple's scene classifier). A new
-  // event must be added here deliberately — the bridge in modules/perception/index.ts
-  // and D's jsonl replayer both key off these exact strings.
-  check("events: names match 01 §7 plus the round-6 additions",
-        Set(PerceptionEventName.allCases.map { $0.rawValue }) == [
-          "onSignalState", "onVehicleApproaching", "onObstacleAhead", "onHazard",
-          "onOcrText", "onDetections", "onPose", "onLateralOffset", "onPlanes",
-          "onDepth", "onTrackingState", "onSceneClass",
-        ])
+  // 01 §7's eleven, plus the additions each round has made deliberately. This stays
+  // strict on purpose: `modules/perception/index.ts` and D's jsonl replayer key off
+  // these exact strings, so a native event JS does not forward is a silent dead end.
+  // Adding one here is the step that says "the bridge handles it too".
+  //
+  // It has now broken twice unnoticed (onSceneClass in round 6, onHandPose in round 7)
+  // because .github/workflows/ci.yml runs Jest and vitest but never this harness.
+  // The failure prints the difference so the fix is obvious without reading the file.
+  let expectedEvents: Set<String> = [
+    "onSignalState", "onVehicleApproaching", "onObstacleAhead", "onHazard",
+    "onOcrText", "onDetections", "onPose", "onLateralOffset", "onPlanes",
+    "onDepth", "onTrackingState",
+    "onSceneClass",   // round 6: Apple's scene classifier
+    "onHandPose",     // round 7: the user's own hand, via Vision hand pose
+  ]
+  let actualEvents = Set(PerceptionEventName.allCases.map { $0.rawValue })
+  let added = actualEvents.subtracting(expectedEvents).sorted()
+  let removed = expectedEvents.subtracting(actualEvents).sorted()
+  check("events: names match 01 §7 plus the rounds' deliberate additions",
+        actualEvents == expectedEvents,
+        "new in Events.swift and not in this list: \(added.isEmpty ? "none" : added.joined(separator: ", "))"
+          + "; in this list and gone from Events.swift: \(removed.isEmpty ? "none" : removed.joined(separator: ", "))"
+          + " — add it to the bridge in modules/perception/index.ts too, then to this list")
   check("events: stats carry exactly the five frozen fields", Set(StatsPayload.zero.dictionary.keys) == ["detectorFps", "depthFps", "ocrFps", "frameToEventMs", "thermalState"])
   check("events: direction thresholds 0.33 / 0.67", Direction.fromCenterX(0.2) == .left && Direction.fromCenterX(0.5) == .center && Direction.fromCenterX(0.8) == .right)
   let iou = NormalizedBox(x: 0, y: 0, w: 1, h: 1).intersectionOverUnion(NormalizedBox(x: 0.5, y: 0, w: 1, h: 1))
