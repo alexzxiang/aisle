@@ -92,9 +92,8 @@ export interface AnthropicDeps {
   timeoutMs?: number;
 }
 
-export function sdkStreamFactory(apiKey: string): StreamFactory {
-  const clientTimeoutMs = deps.timeoutMs ?? VISION_TIMEOUT_MS;
-  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: clientTimeoutMs });
+export function sdkStreamFactory(apiKey: string, timeoutMs: number = VISION_TIMEOUT_MS): StreamFactory {
+  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: timeoutMs });
   return (params, signal) => client.messages.stream(params, { signal });
 }
 
@@ -115,7 +114,7 @@ export async function runVision(req: VisionRequest, hooks: VisionHooks, deps: An
   let stream: StreamFactory | undefined = deps.stream;
   if (!stream) {
     if (!deps.apiKey) throw new AnthropicConfigError();
-    stream = sdkStreamFactory(deps.apiKey);
+    stream = sdkStreamFactory(deps.apiKey, timeoutMs);
   }
 
   const controller = new AbortController();

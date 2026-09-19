@@ -69,8 +69,8 @@ describe('overpass status probe', () => {
     const { fn, calls } = fakeFetch(() => new Response('OK', { status: 200 }));
     await defaultHealthChecks(cfg, fn).overpass(signal);
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe(OVERPASS_STATUS_URLS[0]);
-    const h = calls[0].init?.headers as Record<string, string>;
+    expect(calls[0]?.url).toBe(OVERPASS_STATUS_URLS[0]);
+    const h = (calls[0]?.init?.headers ?? {}) as Record<string, string>;
     expect(h['User-Agent']).toBe(OVERPASS_USER_AGENT);
     expect(h.Accept).toMatch(/text\/plain/);
   });
