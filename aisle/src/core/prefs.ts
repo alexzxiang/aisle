@@ -1,7 +1,8 @@
 /**
- * Persisted preferences (02 Task 2 / Task 10): the four store fields that must
+ * Persisted preferences (02 Task 2 / Task 10): the five store fields that must
  * survive a relaunch — `firstRun` (gates ONBOARDING and the spoken disclaimer),
- * `trainingMode`, `speechRate` and `bodyOffsetDeg`.
+ * `trainingMode`, `describeSurroundings` (the scene describer's toggle),
+ * `speechRate` and `bodyOffsetDeg`.
  *
  * Pure codec (`parsePrefs` / `serializePrefs`) plus a store binding that
  * hydrates once at start and writes back, debounced, on every change. The
@@ -22,6 +23,7 @@ export const PREFS_WRITE_DEBOUNCE_MS = 300;
 export interface Prefs {
   firstRun: boolean;
   trainingMode: boolean;
+  describeSurroundings: boolean;
   speechRate: number;
   bodyOffsetDeg: number;
 }
@@ -35,11 +37,12 @@ export interface PrefsStorage {
 export const DEFAULT_PREFS: Readonly<Prefs> = Object.freeze({
   firstRun: true,
   trainingMode: true,
+  describeSurroundings: true,
   speechRate: 1.0,
   bodyOffsetDeg: 0,
 });
 
-const PREF_KEYS: readonly (keyof Prefs)[] = ['firstRun', 'trainingMode', 'speechRate', 'bodyOffsetDeg'];
+const PREF_KEYS: readonly (keyof Prefs)[] = ['firstRun', 'trainingMode', 'describeSurroundings', 'speechRate', 'bodyOffsetDeg'];
 
 /** Tolerant: unknown keys ignored, wrong types dropped, rate clamped, offset must be finite. */
 export function parsePrefs(text: string | null | undefined): Partial<Prefs> {
@@ -55,17 +58,27 @@ export function parsePrefs(text: string | null | undefined): Partial<Prefs> {
   const out: Partial<Prefs> = {};
   if (typeof r.firstRun === 'boolean') out.firstRun = r.firstRun;
   if (typeof r.trainingMode === 'boolean') out.trainingMode = r.trainingMode;
+  if (typeof r.describeSurroundings === 'boolean') out.describeSurroundings = r.describeSurroundings;
   if (typeof r.speechRate === 'number' && Number.isFinite(r.speechRate)) out.speechRate = clampSpeechRate(r.speechRate);
   if (typeof r.bodyOffsetDeg === 'number' && Number.isFinite(r.bodyOffsetDeg)) out.bodyOffsetDeg = r.bodyOffsetDeg;
   return out;
 }
 
-export function serializePrefs(p: Prefs): string {
+/** What `serializePrefs` accepts: a later-added key may be absent (the store default then applies on read). */
+export type PrefsInput = Omit<Prefs, 'describeSurroundings'> & Partial<Pick<Prefs, 'describeSurroundings'>>;
+
+export function serializePrefs(p: PrefsInput): string {
   return JSON.stringify({ v: PREFS_VERSION, ...p });
 }
 
-export function prefsFrom(s: Pick<AppState, 'firstRun' | 'trainingMode' | 'speechRate' | 'bodyOffsetDeg'>): Prefs {
-  return { firstRun: s.firstRun, trainingMode: s.trainingMode, speechRate: s.speechRate, bodyOffsetDeg: s.bodyOffsetDeg };
+export function prefsFrom(s: Pick<AppState, 'firstRun' | 'trainingMode' | 'describeSurroundings' | 'speechRate' | 'bodyOffsetDeg'>): Prefs {
+  return {
+    firstRun: s.firstRun,
+    trainingMode: s.trainingMode,
+    describeSurroundings: s.describeSurroundings,
+    speechRate: s.speechRate,
+    bodyOffsetDeg: s.bodyOffsetDeg,
+  };
 }
 
 export function samePrefs(a: Prefs, b: Prefs): boolean {
@@ -77,6 +90,7 @@ export function applyPrefs(store: Pick<AppStore, 'getState'>, p: Partial<Prefs>)
   const s = store.getState();
   if (p.firstRun !== undefined) s.setFirstRun(p.firstRun);
   if (p.trainingMode !== undefined) s.setTrainingMode(p.trainingMode);
+  if (p.describeSurroundings !== undefined) s.setDescribeSurroundings(p.describeSurroundings);
   if (p.speechRate !== undefined) s.setSpeechRate(p.speechRate);
   if (p.bodyOffsetDeg !== undefined) s.setBodyOffsetDeg(p.bodyOffsetDeg);
 }
@@ -144,6 +158,7 @@ export function bindPrefs(store: AppStore, storage: PrefsStorage, opts: BindPref
       if (
         s.firstRun !== prev.firstRun ||
         s.trainingMode !== prev.trainingMode ||
+        s.describeSurroundings !== prev.describeSurroundings ||
         s.speechRate !== prev.speechRate ||
         s.bodyOffsetDeg !== prev.bodyOffsetDeg
       ) {

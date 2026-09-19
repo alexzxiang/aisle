@@ -493,6 +493,37 @@ describe('SpeechService', () => {
     expect(svc.getStats().utterancesPerMinute).toBe(0);
   });
 
+  it('pushes every utterance that starts playing to the conversation log, never a dropped one (round 3)', async () => {
+    const pushed: Array<{ text: string; source?: string }> = [];
+    make('OUTDOOR_NAV', { conversation: { pushAisle: (text, source) => { pushed.push({ text, source }); } } });
+    svc.say({ text: PHRASES.turn_right_soon, priority: 'NAV', cacheKey: 'turn_right_soon' });
+    expect(pushed).toEqual([{ text: PHRASES.turn_right_soon, source: 'speech' }]);
+    // Queue-dropped INFO (something is pending) and policy-dropped speech never appear.
+    svc.say({ text: PHRASES.turn_left_now, priority: 'NAV', cacheKey: 'turn_left_now' });      // pending
+    svc.say({ text: 'Open door ahead.', priority: 'INFO' });                                     // dropped: pending exists
+    store.setState({ mode: 'AT_CURB' });
+    svc.say({ text: 'Shelves both sides.', priority: 'INFO' });                                  // policy-dropped at the curb
+    expect(pushed).toHaveLength(1);
+    fb.finish();
+    jest.advanceTimersByTime(MIN_GAP_MS);
+    expect(pushed).toHaveLength(1);   // the pending leg cue was policy-dropped at dequeue (curb)
+    store.setState({ mode: 'OUTDOOR_NAV' });
+    svc.say({ text: 'Open door ahead.', priority: 'INFO' });
+    await flush();
+    expect(pushed).toEqual([
+      { text: PHRASES.turn_right_soon, source: 'speech' },
+      { text: 'Open door ahead.', source: 'speech' },
+    ]);
+    // A stream has no text to show; a throwing log never takes the queue down.
+    svc.clearQueue();
+    svc.playStream('7', 'NAV');
+    expect(pushed).toHaveLength(2);
+    svc.dispose();
+    make('OUTDOOR_NAV', { conversation: { pushAisle: () => { throw new Error('log'); } } });
+    expect(() => svc.say({ text: PHRASES.turn_right_soon, priority: 'NAV', cacheKey: 'turn_right_soon' })).not.toThrow();
+    expect(svc.getStats().spoken).toBe(1);
+  });
+
   it('fnv1a32 is stable and hex', () => {
     expect(fnv1a32('Aisle three.')).toMatch(/^[0-9a-f]{8}$/);
     expect(fnv1a32('Aisle three.')).toBe(fnv1a32('Aisle three.'));

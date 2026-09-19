@@ -24,8 +24,9 @@
  */
 import type { AppMode, ParseIntentInput, ParseIntentOutput, PlannerResult, SpeechService } from './contracts';
 import type { AppEventBus } from './bus';
+import type { ConversationLog } from './conversation';
 import type { AppStore } from './store';
-import { PHRASES, checkPhrase } from './phrases';
+import { PHRASES, checkPhrase, phraseKeyForText } from './phrases';
 
 // ---------------------------------------------------------------------------
 // Pure: intent fallback and transcript choice
@@ -42,6 +43,15 @@ const REPEAT_RE = /\b(?:repeat|again|what did you say|say that again)\b/i;
 const HOW_FAR_RE = /\b(?:how far|how much further|how much farther|how long)\b/i;
 const WHERE_RE = /\b(?:where am i|where are we|what street)\b/i;
 const HELP_RE = /\b(?:help|what can you do|instructions)\b/i;
+/**
+ * "Describe" requests are answered locally by the scene describer (round 3).
+ * 01 §9 freezes the `ParseIntentOutput.intent` union, so this is not a new
+ * planner intent: the transcript is mapped before the planner is called and
+ * the outcome carries `localIntent: 'describe'`.
+ */
+const DESCRIBE_RE = /(?:\b(?:what(?:'s| is) (?:around|ahead of|in front of) me|what(?:'s| is) (?:around|ahead)|what (?:do|can) you see|look around)\b|^describe(?:\s+(?:the\s+)?(?:surroundings|scene|what you see|around me|ahead))?$)/i;
+/** Two unclear tries in a row earn the shorter ask (say_item_one_word). */
+export const UNCLEAR_TRIES_BEFORE_ONE_WORD = 2;
 const FIND_PREFIX_RE = /^(?:(?:i|we)\s+(?:need|want|am looking for|'m looking for)|find|get|(?:take|bring) me to|looking for|where (?:is|are)(?: the)?|(?:i|we)\s+(?:need|want) to (?:find|get|buy))\s+/i;
 const FILLER_RE = /\b(?:uh|um|please|some|the|a|an|like)\b/gi;
 
@@ -51,6 +61,11 @@ function normalize(text: string): string {
 
 function titleCase(s: string): string {
   return s.length ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/** True when the transcript asks for a description of the surroundings. */
+export function isDescribeRequest(transcript: string): boolean {
+  return DESCRIBE_RE.test(normalize(transcript));
 }
 
 /** Deterministic keyword parser: the templated fallback when the planner misses its deadline. */
@@ -184,6 +199,10 @@ export interface VoiceInputOptions {
   now?: () => number;
   finalTimeoutMs?: number;
   planTimeoutMs?: number;
+  /** The transcript blurb: the user's words ('you') and the reply ('aisle'). */
+  conversation?: Pick<ConversationLog, 'pushUser' | 'pushAisle'>;
+  /** The scene describer's on-demand path; resolves to the text it spoke, or null. */
+  describe?: () => Promise<string | null>;
 }
 
 export type VoiceSource = 'voice' | 'keyboard';
@@ -196,6 +215,8 @@ export interface VoiceOutcome {
   /** Planner answered (false = local keyword fallback). */
   planner: boolean;
   plannerLatencyMs: number | null;
+  /** Answered locally, before the planner: a "describe" request (01 §9's intent union is frozen). */
+  localIntent?: 'describe';
 }
 
 export interface VoiceInput {
@@ -232,6 +253,11 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   const deleteFile = opts.deleteFile ?? createExpoFileDelete();
   let session: Session | null = null;
   let last: VoiceOutcome | null = null;
+  let unclearStreak = 0;
+
+  const pushUser = (transcript: string, source: VoiceSource): void => {
+    if (transcript.length > 0) opts.conversation?.pushUser(transcript, source);
+  };
 
   /** Delete the persisted clip (if any) exactly once; never throws. */
   const discardClip = (s: Session): void => {
@@ -288,21 +314,49 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     }
   };
 
+  /** Two unclear tries in a row: the canonical "say the item again" becomes the one-word ask. */
+  const withUnclearPrompt = (output: ParseIntentOutput): ParseIntentOutput => {
+    if (output.intent === 'unknown') unclearStreak += 1;
+    else unclearStreak = 0;
+    if (output.intent === 'unknown' && unclearStreak >= UNCLEAR_TRIES_BEFORE_ONE_WORD && output.reply === FALLBACK_REPLY) {
+      return { ...output, reply: PHRASES.say_item_one_word };
+    }
+    return output;
+  };
+
   const act = (output: ParseIntentOutput, source: VoiceSource): void => {
     if (output.intent === 'find_item' && output.item) {
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
     } else if (output.intent === 'abort') {
       opts.store.getState().abort();
     }
-    opts.speech.say({ text: output.reply, priority: 'NAV', dedupeKey: `voice-reply`, cooldownMs: 1000 });
+    const cacheKey = phraseKeyForText(output.reply);
+    opts.speech.say({ text: output.reply, priority: 'NAV', dedupeKey: `voice-reply`, cooldownMs: 1000, ...(cacheKey ? { cacheKey } : {}) });
+    opts.conversation?.pushAisle(output.reply, 'speech');
   };
 
   const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource): Promise<VoiceOutcome> => {
+    pushUser(transcript, source);
+    if (transcript.length > 0 && opts.describe && isDescribeRequest(transcript)) {
+      unclearStreak = 0;
+      let text: string | null = null;
+      try {
+        text = await opts.describe();
+      } catch {
+        text = null;
+      }
+      // The describer spoke (and logged) its own words; only the empty case needs a reply here.
+      const output: ParseIntentOutput = { intent: 'unknown', item: null, reply: text ?? PHRASES.describe_nothing };
+      if (text === null) act(output, source);
+      last = { output, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'describe' };
+      return last;
+    }
     const r = transcript.length > 0
       ? await plan(transcript)
       : { output: parseIntentFallback('', []), planner: false, latencyMs: null };
-    act(r.output, source);
-    last = { output: r.output, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs };
+    const output = withUnclearPrompt(r.output);
+    act(output, source);
+    last = { output, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs };
     return last;
   };
 

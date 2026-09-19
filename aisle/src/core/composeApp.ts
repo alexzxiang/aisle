@@ -36,6 +36,9 @@ import { createAudioChannels, type AudioChannelBackend, type AudioChannels } fro
 import { createSensorService, type AisleSensorService, type SensorSources } from './sensors';
 import { createVoiceInput, type Recognizer, type VoiceInput, type VoiceInputOptions } from './voice';
 import { bindPrefs, createMemoryPrefsStorage, type PrefsBinding, type PrefsStorage } from './prefs';
+import { createConversationLog, type ConversationLog } from './conversation';
+import { createSceneDescriber, type SceneDescriber } from './describer';
+import { wirePrompts, type PromptsBinding } from './prompts';
 import { LatencyRing, liveMetrics, observePlanner, timedTransport, type LiveMetrics } from './metrics';
 import { createFixtureRouteClient, type FixtureTrack } from './fixtureRoute';
 import { withSpokenForms } from './speechFacade';
@@ -125,6 +128,11 @@ export interface AppComposition {
   voice: VoiceInput;
   trip: Trip;
   prefs: PrefsBinding;
+  /** The transcript blurb's data (also registered as the `conversation` service). */
+  conversation: ConversationLog;
+  /** "The voice sees more": Claude's free-form scene descriptions while walking. Runs from `start()`. */
+  describer: SceneDescriber;
+  prompts: PromptsBinding;
   metrics: LiveMetrics;
   harness: MockHarness | null;
   mockPerception: MockPerceptionService | null;
@@ -183,6 +191,9 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   };
   const unsubs: Array<() => void> = [];
 
+  // --- A: the transcript blurb's log (every speaker below writes to it) -------------
+  const conversation = createConversationLog({ now });
+
   // --- A: sensors, haptics, speech, audio ------------------------------------
   const sensors: SensorService = mocks ? mocks.sensors : createSensorService({ sources: platform.sensorSources, store, now });
   const realSensors = isAisleSensorService(sensors) ? sensors : null;
@@ -197,7 +208,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     beaconActive: () => audioRef?.beacon.isActive() ?? false,
     now,
   });
-  const speech = createSpeechService({ backend: platform.speechBackend, store, bus, isCourseBuzzing: () => haptics.isCourseBuzzing(), now });
+  const speech = createSpeechService({ backend: platform.speechBackend, store, bus, isCourseBuzzing: () => haptics.isCourseBuzzing(), now, conversation });
   speechRef = speech;
   const audio = createAudioChannels({
     backend: platform.audioBackend,
@@ -270,6 +281,19 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   });
   const indoor = createIndoorController({ bus, store, speech, haptics, sensors, perception, vision, resolver, now });
 
+  // --- A: scene descriptions and proactive prompts ------------------------------------
+  const describer = createSceneDescriber({
+    vision,
+    speech,
+    store,
+    bus,
+    conversation,
+    perception,
+    enabled: () => store.getState().describeSurroundings,
+    now,
+  });
+  const prompts = wirePrompts({ bus, store, conversation });
+
   // --- A: push-to-talk ---------------------------------------------------------
   const knownItems = (): string[] => {
     const map = resolver.getMap();
@@ -290,6 +314,8 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     sttUpload: platform.sttUpload,
     fetchImpl: mocks ? plannerFetch(planner) : platform.fetchImpl,
     now,
+    conversation,
+    describe: () => describer.describeNow(),
   });
 
   // --- A: persisted prefs ----------------------------------------------------------
@@ -332,6 +358,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     },
     onTripEnd: () => wsTransport?.close(),
     onManualSignal: (state: SignalState | null) => audio.ticker.setState(state ?? 'UNKNOWN'),
+    conversation,
     now,
     fixTimeoutMs: opts.fixTimeoutMs,
   });
@@ -346,7 +373,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     if (trip.getManualSignal() === null) audio.ticker.setState(e.state);
   }));
 
-  services.setAll({ haptics, speech, sensors, perception, bus, store });
+  services.setAll({ haptics, speech, sensors, perception, bus, store, conversation });
 
   const metrics = liveMetrics({
     tier0FrameToEventMs: () => perception.getStats().frameToEventMs,
@@ -380,6 +407,9 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     voice,
     trip,
     prefs,
+    conversation,
+    describer,
+    prompts,
     metrics,
     harness: mocks?.harness ?? null,
     mockPerception: mocks?.perception ?? null,
@@ -399,6 +429,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
       mocks?.harness.start();
       void resolver.ensureMap();
       await prefs.hydrated;
+      describer.start();
       // The first-launch disclaimer has one owner: OnboardingScreen step 0
       // (cacheKey 'disclaimer', firstRunOnly), reached by IDLE → ONBOARDING on the
       // first ITEM_REQUESTED (01 §1). Speaking it here too recited it twice.
@@ -408,6 +439,8 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
       if (disposed) return;
       disposed = true;
       for (const u of unsubs.splice(0)) u();
+      describer.stop();
+      prompts.dispose();
       trip.dispose();
       voice.cancel();
       indoor.dispose();

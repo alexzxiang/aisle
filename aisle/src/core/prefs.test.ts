@@ -65,8 +65,33 @@ describe('bindPrefs', () => {
     store.getState().setTrainingMode(true);
     expect(storage.current()).toBe(before); // nothing yet: debounced
     await jest.advanceTimersByTimeAsync(100);
-    expect(parsePrefs(storage.current())).toEqual({ firstRun: false, trainingMode: true, speechRate: 1.4, bodyOffsetDeg: 7 });
+    expect(parsePrefs(storage.current())).toEqual({ firstRun: false, trainingMode: true, describeSurroundings: true, speechRate: 1.4, bodyOffsetDeg: 7 });
     binding.dispose();
+  });
+
+  it('describeSurroundings (round 3) defaults to true, is absent-tolerant on read and persisted on change', async () => {
+    expect(DEFAULT_PREFS.describeSurroundings).toBe(true);
+    expect(parsePrefs(JSON.stringify({ describeSurroundings: false }))).toEqual({ describeSurroundings: false });
+    expect(parsePrefs(JSON.stringify({ describeSurroundings: 'no' }))).toEqual({});
+
+    // A file written before the key existed leaves the store default in place.
+    const storage = createMemoryPrefsStorage(serializePrefs({ firstRun: false, trainingMode: true, speechRate: 1, bodyOffsetDeg: 0 }));
+    const store = createAppStore({ warn: () => undefined });
+    const binding = bindPrefs(store, storage, { debounceMs: 50 });
+    await binding.hydrated;
+    expect(store.getState().describeSurroundings).toBe(true);
+
+    store.getState().setDescribeSurroundings(false);
+    await jest.advanceTimersByTimeAsync(50);
+    expect(parsePrefs(storage.current()).describeSurroundings).toBe(false);
+
+    // And it comes back on the next launch.
+    const store2 = createAppStore({ warn: () => undefined });
+    const binding2 = bindPrefs(store2, storage, { debounceMs: 50 });
+    await binding2.hydrated;
+    expect(store2.getState().describeSurroundings).toBe(false);
+    binding.dispose();
+    binding2.dispose();
   });
 
   it('an empty or unreadable store means first launch and writes nothing until something changes', async () => {

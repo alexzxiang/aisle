@@ -12,6 +12,7 @@
  */
 import type { HapticService, PerceptionService, SensorService, SpeechService } from './contracts';
 import type { AppEventBus } from './bus';
+import type { ConversationLog } from './conversation';
 import type { AppStore } from './store';
 
 export interface ServiceMap {
@@ -21,6 +22,8 @@ export interface ServiceMap {
   perception: PerceptionService;
   bus: AppEventBus;
   store: AppStore;
+  /** The transcript blurb's data: what the user said and what Aisle said. */
+  conversation: ConversationLog;
 }
 
 export type ServiceName = keyof ServiceMap;

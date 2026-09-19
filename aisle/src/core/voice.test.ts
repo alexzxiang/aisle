@@ -2,9 +2,12 @@ import type { ParseIntentOutput, SpeechRequest } from './contracts';
 import { createEventBus, type AppEventBus } from './bus';
 import { createAppStore, type AppStore } from './store';
 import { PHRASES, checkPhrase } from './phrases';
+import { createConversationLog, type ConversationLog } from './conversation';
 import {
   FALLBACK_REPLY,
   MAX_KEYTERMS,
+  UNCLEAR_TRIES_BEFORE_ONE_WORD,
+  isDescribeRequest,
   bestTranscript,
   coerceParseIntentOutput,
   createVoiceInput,
@@ -388,5 +391,107 @@ describe('createVoiceInput', () => {
     const out = await v.end();
     expect(out.sttPath).toBe('none');
     expect(audioModes).toEqual([true, false]);
+  });
+
+  // --- round 3: the conversation log, "describe", two unclear tries ------------------
+
+  describe('conversation log and local intents (round 3)', () => {
+    let conversation: ConversationLog;
+    beforeEach(() => { conversation = createConversationLog({ collapseMs: 0 }); });
+    const lines = () => conversation.entries().map((e) => `${e.role}/${e.source}:${e.text}`);
+
+    it('pushes the transcript as "you" (voice or keyboard) and the reply as "aisle"; nothing heard pushes no user line', async () => {
+      const r = fakeRecognizer();
+      let v = make(r.rec, { conversation });
+      await v.begin();
+      r.final('I need eggs');
+      await v.end();
+      expect(lines()).toEqual(['you/voice:I need eggs', 'aisle/speech:Eggs. Route ready: two legs.']);
+
+      v = make(undefined, { conversation });
+      await v.submitText('I need eggs');
+      expect(lines()[2]).toBe('you/keyboard:I need eggs');
+
+      jest.useFakeTimers();
+      try {
+        const r2 = fakeRecognizer();
+        v = make(r2.rec, { conversation, finalTimeoutMs: 50 });
+        await v.begin();
+        const p = v.end();
+        jest.advanceTimersByTime(60);
+        await p;
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(lines().slice(4)).toEqual([`aisle/speech:${PHRASES.say_item_again}`]);
+    });
+
+    it('a canonical phrase reply carries its cache key so it plays from the bundle', async () => {
+      fetchStatus = 500;
+      const v = make(undefined, { conversation });
+      await v.submitText('blorp');
+      expect(said[0]).toMatchObject({ text: PHRASES.say_item_again, cacheKey: 'say_item_again', priority: 'NAV' });
+      fetchStatus = 200;
+      await v.submitText('I need eggs');
+      expect(said[1].cacheKey).toBeUndefined();
+    });
+
+    it('two unclear tries in a row earn "Say the item again, one word."; any clear intent resets the streak', async () => {
+      fetchStatus = 500;                       // planner down: the keyword fallback decides
+      const v = make(undefined, { conversation });
+      let out = await v.submitText('blorp');
+      expect(out.output.reply).toBe(PHRASES.say_item_again);
+      for (let i = 1; i < UNCLEAR_TRIES_BEFORE_ONE_WORD; i += 1) out = await v.submitText('fnarg');
+      expect(out.output.reply).toBe(PHRASES.say_item_one_word);
+      expect(said[said.length - 1]).toMatchObject({ text: PHRASES.say_item_one_word, cacheKey: 'say_item_one_word' });
+      out = await v.submitText('zzz');
+      expect(out.output.reply).toBe(PHRASES.say_item_one_word);   // stays on the short ask while unclear
+      out = await v.submitText('I need eggs');
+      expect(out.output.intent).toBe('find_item');
+      out = await v.submitText('blorp');
+      expect(out.output.reply).toBe(PHRASES.say_item_again);      // streak reset by the clear request
+      // A planner reply that is not the canonical fallback is never rewritten.
+      fetchStatus = 200;
+      fetchBody = { job: 'parseIntent', output: { intent: 'unknown', item: null, reply: 'Try a shorter word.' }, fallback: false, latencyMs: 100 };
+      await v.submitText('mumble');
+      out = await v.submitText('mumble');
+      expect(out.output.reply).toBe('Try a shorter word.');
+    });
+
+    it('isDescribeRequest matches the "what do you see" family only', () => {
+      for (const t of ["what's around me", 'What is around me?', 'what do you see', 'what can you see', 'describe', 'describe the scene', 'describe what you see', 'look around', "what's ahead"]) {
+        expect(isDescribeRequest(t)).toBe(true);
+      }
+      for (const t of ['I need eggs', 'where am I', 'describe eggs to me later', 'repeat', '']) {
+        expect(isDescribeRequest(t)).toBe(false);
+      }
+    });
+
+    it('a describe request is answered locally by the describer, before the planner, and marked localIntent', async () => {
+      const calls: number[] = [];
+      let v = make(undefined, { conversation, describe: async () => { calls.push(1); return 'Two people ahead, door on the right.'; } });
+      let out = await v.submitText('what do you see');
+      expect(calls).toEqual([1]);
+      expect(fetchCalls).toEqual([]);                     // the planner was never asked
+      expect(out).toMatchObject({ localIntent: 'describe', planner: false, output: { intent: 'unknown', item: null, reply: 'Two people ahead, door on the right.' } });
+      expect(said).toEqual([]);                           // the describer spoke its own words
+      expect(lines()).toEqual(['you/keyboard:what do you see']);
+
+      // Nothing to describe: the cached fallback line is spoken and logged.
+      v = make(undefined, { conversation, describe: async () => null });
+      out = await v.submitText('describe');
+      expect(out.output.reply).toBe(PHRASES.describe_nothing);
+      expect(said).toEqual([expect.objectContaining({ text: PHRASES.describe_nothing, cacheKey: 'describe_nothing', priority: 'NAV' })]);
+      expect(lines().slice(1)).toEqual(['you/keyboard:describe', `aisle/speech:${PHRASES.describe_nothing}`]);
+
+      // A throwing describer degrades the same way; without a describer the planner path runs as before.
+      v = make(undefined, { conversation, describe: async () => { throw new Error('vision'); } });
+      out = await v.submitText('look around');
+      expect(out.output.reply).toBe(PHRASES.describe_nothing);
+      v = make(undefined, { conversation });
+      out = await v.submitText('what do you see');
+      expect(out.localIntent).toBeUndefined();
+      expect(fetchCalls).toHaveLength(1);
+    });
   });
 });

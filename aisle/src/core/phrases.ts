@@ -127,7 +127,8 @@ export type ASideKey =
   | 'onboarding_this_is_okay' | 'onboarding_beacon' | 'onboarding_ticker_slow_fast'
   | 'onboarding_ticker_countdown' | 'onboarding_keep_cane' | 'onboarding_wear_phone'
   | 'onboarding_ring_switch' | 'onboarding_walk_straight' | 'onboarding_done'
-  | 'route_unavailable' | 'no_route_data';
+  | 'route_unavailable' | 'no_route_data'
+  | 'need_location' | 'no_store_nearby' | 'say_item_one_word' | 'describe_nothing';
 
 export type PhraseKey = CacheKey | ASideKey;
 
@@ -214,6 +215,11 @@ export const PHRASE_LIST: readonly Phrase[] = [
   P('offline_notice', 'Offline. Signal reading and directions still work.', 'always'),
   P('route_unavailable', 'Route unavailable. Try again shortly.', 'always', true),
   P('no_route_data', 'No route data. Heading straight to the store.', 'always', true),
+  // Proactive prompts when information is missing (round 3; flagged for 01 §3).
+  P('need_location', 'I need your location. Step outside.', 'always', true),
+  P('no_store_nearby', 'I cannot find a store nearby.', 'always', true),
+  P('say_item_one_word', 'Say the item again, one word.', 'reply', true),
+  P('describe_nothing', 'Nothing to describe right now.', 'reply', true),
   // --- A-side additions (flagged for 01 §3) ---
   P('course_hint_left', 'Bear left.', 'course_hint', true),
   P('course_hint_right', 'Bear right.', 'course_hint', true),
@@ -279,6 +285,13 @@ export function phraseText(key: PhraseKey): string {
 
 export function phraseCategory(key: string): PhraseCategory | null {
   return isPhraseKey(key) ? PHRASE_CATEGORY[key] : null;
+}
+
+const KEY_BY_TEXT: ReadonlyMap<string, PhraseKey> = new Map(PHRASE_LIST.map((p) => [p.text, p.key]));
+
+/** The cache key whose canonical wording is exactly `text`, or null (free text). */
+export function phraseKeyForText(text: string): PhraseKey | null {
+  return KEY_BY_TEXT.get(text) ?? null;
 }
 
 /** Violations for every phrase in the table (the lint script and the unit test share this). */

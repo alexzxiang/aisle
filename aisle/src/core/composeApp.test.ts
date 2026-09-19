@@ -133,7 +133,7 @@ describe('composeApp (mock mode)', () => {
     jest.useRealTimers();
   });
 
-  it('registers the six services, walks a trip from ITEM_REQUESTED to OUTDOOR_NAV off the fixtures, and tears down on abort', async () => {
+  it('registers the seven services, walks a trip from ITEM_REQUESTED to OUTDOOR_NAV off the fixtures, and tears down on abort', async () => {
     const { bus, store, unbind } = setupStore();
     const mocks = createMockServices({ bus, store: bridgeAppStore(store), latencyScale: 0 });
     const platform = fakePlatform();
@@ -141,7 +141,7 @@ describe('composeApp (mock mode)', () => {
     const outdoor = createOutdoorStore();
     const app = composeApp({ config: CONFIG, bus, store, platform, mocks, fixtureTrack: track, loadStoreMap: () => demoStore, outdoor });
 
-    expect(services.names().sort()).toEqual(['bus', 'haptics', 'perception', 'sensors', 'speech', 'store']);
+    expect(services.names().sort()).toEqual(['bus', 'conversation', 'haptics', 'perception', 'sensors', 'speech', 'store']);
     expect(services.get('store')).toBe(store);
     expect(services.get('perception')).toBe(mocks.perception);
     expect(services.get('sensors')).toBe(mocks.sensors);

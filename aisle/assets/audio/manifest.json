@@ -538,6 +538,38 @@
       "bytes": 16971,
       "estimatedMs": 2121,
       "generatedAt": "2026-09-19T01:00:19.940Z"
+    },
+    "say_item_one_word": {
+      "key": "say_item_one_word",
+      "file": "say_item_one_word.mp3",
+      "textSha1": "649be876b47f3185cfde64ff1a7e7cae60bfd6f6",
+      "bytes": 12373,
+      "estimatedMs": 1547,
+      "generatedAt": "2026-09-19T01:30:23.989Z"
+    },
+    "no_store_nearby": {
+      "key": "no_store_nearby",
+      "file": "no_store_nearby.mp3",
+      "textSha1": "d5cabb924451094177a1448049c2e72cc9c7b864",
+      "bytes": 12791,
+      "estimatedMs": 1599,
+      "generatedAt": "2026-09-19T01:30:23.989Z"
+    },
+    "need_location": {
+      "key": "need_location",
+      "file": "need_location.mp3",
+      "textSha1": "55c390403e7532ea773b36c480a9d637d5b5972e",
+      "bytes": 15090,
+      "estimatedMs": 1886,
+      "generatedAt": "2026-09-19T01:30:23.989Z"
+    },
+    "describe_nothing": {
+      "key": "describe_nothing",
+      "file": "describe_nothing.mp3",
+      "textSha1": "5de8bd3edcfa2aa1423682e3738700a1a0fd5919",
+      "bytes": 12164,
+      "estimatedMs": 1521,
+      "generatedAt": "2026-09-19T01:30:23.989Z"
     }
   }
 }

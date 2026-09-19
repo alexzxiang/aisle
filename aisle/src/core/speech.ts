@@ -35,6 +35,7 @@
  */
 import type { AppMode, SpeechPriority, SpeechRequest, SpeechService } from './contracts';
 import type { AppEventBus } from './bus';
+import type { ConversationLog } from './conversation';
 import type { AppStore } from './store';
 import {
   LONG_PHRASE_ALLOWLIST,
@@ -233,6 +234,12 @@ export interface SpeechServiceOptions {
   now?: () => number;
   /** Override the live-synthesis budget (tests). */
   liveSynthTimeoutMs?: number;
+  /**
+   * The transcript blurb: every utterance that actually starts playing is
+   * pushed as role 'aisle' (source 'speech'). Dropped requests never appear.
+   * Optional so fake-backend tests and stub shells run without one.
+   */
+  conversation?: Pick<ConversationLog, 'pushAisle'>;
 }
 
 interface QueueItem {
@@ -342,6 +349,14 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
     utteranceTimes.push(t);
     while (utteranceTimes.length > 0 && t - utteranceTimes[0] > 60_000) utteranceTimes.shift();
     c.watchdog = setTimeout(() => finish(c), watchdogMs);
+    // The blurb records what is being heard; a stream has no text to show.
+    if (opts.conversation && c.item.streamId === undefined && c.item.text.length > 0) {
+      try {
+        opts.conversation.pushAisle(c.item.text, 'speech');
+      } catch {
+        // the log must never take the queue down
+      }
+    }
   };
 
   const begin = (item: QueueItem): void => {

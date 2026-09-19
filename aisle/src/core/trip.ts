@@ -20,6 +20,7 @@
  */
 import type { AppMode, GeoFix, HapticService, SensorService, SignalState, SpeechService } from './contracts';
 import type { AppEventBus } from './bus';
+import type { ConversationLog } from './conversation';
 import type { AppStore } from './store';
 import { PHRASES } from './phrases';
 import type { VoiceOutcome } from './voice';
@@ -33,6 +34,8 @@ import type { OutdoorStore } from '../outdoor/store';
 import { announceStoreEntry, type AnnounceHandle } from '../transition/announce';
 
 export const FIX_TIMEOUT_MS = 8000;
+/** No GPS fix this long after the trip starts → "I need your location. Step outside." (round 3). */
+export const FIX_PROMPT_MS = 5000;
 
 /** Modes in which the runner answers "repeat / how far / where am I". */
 export const WALKING_MODES: ReadonlySet<AppMode> = new Set<AppMode>(['OUTDOOR_NAV', 'APPROACH_CROSSING']);
@@ -63,8 +66,11 @@ export interface TripDeps {
   onTripEnd?(): void;
   /** DebugPanel rung 4: the ticker follows the manual state while one is set. */
   onManualSignal?(state: SignalState | null): void;
+  /** Proactive prompts are also written to the transcript blurb (source 'prompt'). */
+  conversation?: Pick<ConversationLog, 'pushAisle'>;
   now?: () => number;
   fixTimeoutMs?: number;
+  fixPromptMs?: number;
   setTimeoutFn?: (fn: () => void, ms: number) => unknown;
   clearTimeoutFn?: (handle: unknown) => void;
 }
@@ -98,6 +104,7 @@ export function wireTrip(deps: TripDeps): Trip {
   const setT = deps.setTimeoutFn ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
   const clearT = deps.clearTimeoutFn ?? ((h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>));
   const fixTimeoutMs = deps.fixTimeoutMs ?? FIX_TIMEOUT_MS;
+  const fixPromptMs = deps.fixPromptMs ?? FIX_PROMPT_MS;
 
   let session: TripSession | null = null;
   let generation = 0;
@@ -127,6 +134,16 @@ export function wireTrip(deps: TripDeps): Trip {
     }
   };
 
+  /** A cached prompt, spoken and written to the blurb (the speech hook's copy collapses into this one). */
+  const prompt = (key: 'need_location' | 'no_store_nearby', cooldownMs: number): void => {
+    try {
+      deps.speech.say({ text: PHRASES[key], cacheKey: key, priority: 'NAV', dedupeKey: key, cooldownMs });
+    } catch (e) {
+      report('voice', e);
+    }
+    deps.conversation?.pushAisle(PHRASES[key], 'prompt');
+  };
+
   const awaitFix = (): Promise<GeoFix | null> => {
     const have = deps.sensors.getLastFix();
     if (have) return Promise.resolve(have);
@@ -134,10 +151,12 @@ export function wireTrip(deps: TripDeps): Trip {
       let done = false;
       let off: (() => void) | null = null;
       let timer: unknown = null;
+      let promptTimer: unknown = null;
       const finish = (fix: GeoFix | null): void => {
         if (done) return;
         done = true;
         if (timer !== null) clearT(timer);
+        if (promptTimer !== null) clearT(promptTimer);
         off?.();
         resolve(fix);
       };
@@ -145,6 +164,12 @@ export function wireTrip(deps: TripDeps): Trip {
       if (done) {
         off();
         return;
+      }
+      if (fixPromptMs < fixTimeoutMs) {
+        promptTimer = setT(() => {
+          promptTimer = null;
+          if (!done) prompt('need_location', 30_000);
+        }, fixPromptMs);
       }
       timer = setT(() => finish(null), fixTimeoutMs);
     });
@@ -154,6 +179,13 @@ export function wireTrip(deps: TripDeps): Trip {
     if (disposed || session) return;
     if (PAST_OUTDOOR.has(mode()) || store.getState().targetItem === null) return;
     const map = deps.resolver.getMap() ?? (await deps.resolver.ensureMap());
+    if (!map && !disposed && !session) {
+      // The resolver has one store map and no way to ask for another by name (C's
+      // resolver), so the honest prompt is that no store was found.
+      report('store-map', 'no store map loaded');
+      prompt('no_store_nearby', 30_000);
+      return;
+    }
     if (!map || disposed || session) return;
     if (PAST_OUTDOOR.has(mode()) || store.getState().targetItem === null) return;
 
@@ -241,6 +273,7 @@ export function wireTrip(deps: TripDeps): Trip {
 
   unsubs.push(deps.resolver.onTarget((_target, outcome) => {
     if (outcome.kind === 'resolved' || outcome.kind === 'unresolved') void beginTrip();
+    else if (outcome.kind === 'map_error' && !disposed) prompt('no_store_nearby', 30_000);
   }));
 
   unsubs.push(store.subscribe((s, prev) => {

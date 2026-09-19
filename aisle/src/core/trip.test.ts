@@ -6,6 +6,7 @@ import { validateStoreMap, type AisleStoreMap } from '../indoor/storeMap';
 import type { ResolveOutcome, ResolvedTarget } from '../indoor/storeResolver';
 import { RouteClientError } from '../outdoor/routeClient';
 import { createOutdoorStore } from '../outdoor/store';
+import { PHRASES } from './phrases';
 import { REACH_RE, wireTrip, type TripDeps, type TripSession } from './trip';
 
 const T0 = 1_700_000_000_000;
@@ -30,7 +31,7 @@ interface Harness {
   hooks: { onTransition: jest.Mock; onTripEnd: jest.Mock; onManualSignal: jest.Mock; startPickup: jest.Mock; stopPickup: jest.Mock };
 }
 
-function harness(opts: { firstRun?: boolean; map?: AisleStoreMap | null; lastFix?: GeoFix | null; startImpl?: () => Promise<unknown>; loadRouteImpl?: () => Promise<void> } = {}): Harness {
+function harness(opts: { firstRun?: boolean; map?: AisleStoreMap | null; lastFix?: GeoFix | null; startImpl?: () => Promise<unknown>; loadRouteImpl?: () => Promise<void>; fixPromptMs?: number; conversation?: TripDeps['conversation'] } = {}): Harness {
   const bus = createEventBus();
   const store = createAppStore({ bus, warn: () => undefined, initial: { firstRun: opts.firstRun ?? false } });
   bindStoreToBus(store, bus);
@@ -91,6 +92,8 @@ function harness(opts: { firstRun?: boolean; map?: AisleStoreMap | null; lastFix
     onTripEnd: hooks.onTripEnd,
     onManualSignal: hooks.onManualSignal,
     fixTimeoutMs: 1000,
+    ...(opts.fixPromptMs !== undefined ? { fixPromptMs: opts.fixPromptMs } : {}),
+    ...(opts.conversation ? { conversation: opts.conversation } : {}),
   };
   return {
     deps,
@@ -373,6 +376,66 @@ describe('wireTrip', () => {
     trip.dispose();
     trip.dispose();
     expect(h.hooks.onTripEnd).toHaveBeenCalledTimes(2);
+  });
+
+  // --- round 3: proactive prompts when information is missing --------------------------
+
+  it('no GPS fix five seconds into the trip → "I need your location. Step outside.", spoken and logged; a fix in time cancels it', async () => {
+    const logged: string[] = [];
+    const conversation = { pushAisle: (text: string, source?: string) => { logged.push(`${source}:${text}`); } };
+    const h = harness({ lastFix: null, fixPromptMs: 400, conversation });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'ITEM_REQUESTED', item: 'eggs', source: 'keyboard' });
+    h.fireTarget(resolved);
+    await flush(399);
+    expect(h.said).toEqual([]);
+    await flush(1);
+    expect(h.said).toEqual([expect.objectContaining({ text: PHRASES.need_location, cacheKey: 'need_location', priority: 'NAV' })]);
+    expect(logged).toEqual([`prompt:${PHRASES.need_location}`]);
+    await flush(600);                                    // the 1 s fix timeout: still the one prompt, then the error
+    expect(h.said).toHaveLength(1);
+    expect(h.deps.bus.history().filter((r) => r.event.type === 'ERROR').map((r) => (r.event as { scope: string }).scope)).toEqual(['location']);
+    trip.dispose();
+
+    const h2 = harness({ lastFix: null, fixPromptMs: 400, conversation });
+    const trip2 = wireTrip(h2.deps);
+    h2.deps.bus.emit({ type: 'ITEM_REQUESTED', item: 'eggs', source: 'keyboard' });
+    h2.fireTarget(resolved);
+    await flush(200);
+    h2.pushFix(fix(1, 2));
+    await flush(2000);
+    expect(h2.said).toEqual([]);                          // the fix arrived first: no prompt
+    expect(h2.sessions[0].start).toHaveBeenCalled();
+    trip2.dispose();
+
+    // The default prompt time sits inside the default fix timeout.
+    const h3 = harness({ lastFix: null, fixPromptMs: 5000 });   // prompt after the 1 s timeout: never fires
+    const trip3 = wireTrip(h3.deps);
+    h3.deps.bus.emit({ type: 'ITEM_REQUESTED', item: 'eggs', source: 'keyboard' });
+    h3.fireTarget(resolved);
+    await flush(6000);
+    expect(h3.said).toEqual([]);
+    trip3.dispose();
+  });
+
+  it('no store map → "I cannot find a store nearby.", on a resolver map_error and when the map never loads', async () => {
+    const logged: string[] = [];
+    const conversation = { pushAisle: (text: string, source?: string) => { logged.push(`${source}:${text}`); } };
+    const h = harness({ map: null, conversation });
+    const trip = wireTrip(h.deps);
+    h.deps.bus.emit({ type: 'ITEM_REQUESTED', item: 'eggs', source: 'keyboard' });
+    h.fireTarget({ kind: 'map_error', errors: ['no file'] });
+    await flush();
+    expect(h.said).toEqual([expect.objectContaining({ text: PHRASES.no_store_nearby, cacheKey: 'no_store_nearby' })]);
+    expect(logged).toEqual([`prompt:${PHRASES.no_store_nearby}`]);
+    expect(h.sessions).toHaveLength(0);
+
+    h.fireTarget({ kind: 'unresolved' });                 // beginTrip with no map
+    await flush();
+    expect(h.said).toHaveLength(2);
+    expect(h.deps.bus.history().filter((r) => r.event.type === 'ERROR').map((r) => (r.event as { scope: string }).scope)).toEqual(['store-map']);
+    expect(trip.isActive()).toBe(false);
+    trip.dispose();
   });
 
   it('REACH_RE matches the stretch-beat phrasings only', () => {

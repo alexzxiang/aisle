@@ -19,6 +19,7 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   course_hint_left: require('./course_hint_left.mp3') as number,
   course_hint_right: require('./course_hint_right.mp3') as number,
   crossing_ahead_signalized: require('./crossing_ahead_signalized.mp3') as number,
+  describe_nothing: require('./describe_nothing.mp3') as number,
   disclaimer: require('./disclaimer.mp3') as number,
   dont_walk: require('./dont_walk.mp3') as number,
   entering_store: require('./entering_store.mp3') as number,
@@ -32,8 +33,10 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   listen_then_cross: require('./listen_then_cross.mp3') as number,
   looking_for_signs: require('./looking_for_signs.mp3') as number,
   lower: require('./lower.mp3') as number,
+  need_location: require('./need_location.mp3') as number,
   no_route_data: require('./no_route_data.mp3') as number,
   no_signal_point_left: require('./no_signal_point_left.mp3') as number,
+  no_store_nearby: require('./no_store_nearby.mp3') as number,
   no_vehicles_left: require('./no_vehicles_left.mp3') as number,
   no_vehicles_right: require('./no_vehicles_right.mp3') as number,
   now_right: require('./now_right.mp3') as number,
@@ -60,6 +63,7 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   right: require('./right.mp3') as number,
   route_unavailable: require('./route_unavailable.mp3') as number,
   say_item_again: require('./say_item_again.mp3') as number,
+  say_item_one_word: require('./say_item_one_word.mp3') as number,
   signal_read_delayed: require('./signal_read_delayed.mp3') as number,
   tilt_camera_up: require('./tilt_camera_up.mp3') as number,
   touching: require('./touching.mp3') as number,
@@ -79,8 +83,8 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
 });
 
 export const AUDIO_MANIFEST_META = Object.freeze({
-  generatedAt: "2026-09-19T01:00:19.940Z",
+  generatedAt: "2026-09-19T01:30:23.989Z",
   voiceId: "77PfBlxcTFzlg9xS12zb",
   model: "eleven_flash_v2_5",
-  count: 67,
+  count: 71,
 });

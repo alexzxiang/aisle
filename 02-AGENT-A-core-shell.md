@@ -483,6 +483,43 @@ Connectivity loss: cached speech and haptics continue; say `offline_notice` once
 
 ---
 
+## Round 3 — the voice sees more, the screen shows the words (A-core)
+
+Added after the first live run ("it kinda works"), on top of Tasks 4 and 7. All of it is
+mode-driven through the store and runs on fakes under Jest.
+
+- **`src/core/conversation.ts`** — `ConversationLog` (`createConversationLog`, `useConversation`),
+  registered as the `conversation` service. The transcript blurb's data: `'you'` entries from
+  `voice.ts` (source `voice` | `keyboard`), `'aisle'` entries from the speech queue the moment an
+  utterance *starts playing* (source `speech`; dropped requests never appear), from the describer
+  (`describe`) and from the proactive prompts (`prompt`). Same role + same text inside 4 s is one
+  entry, so a prompt pushed by its producer and again by the queue is shown once.
+- **`src/core/describer.ts`** — `createSceneDescriber`. In OUTDOOR_NAV / INDOOR_NAV / AT_ITEM /
+  CHECKOUT_NAV, with the `describeSurroundings` pref on, asks C's SemanticVision the `free`
+  question (512-px still + facts, `userText` = the twelve-word prompt) on scene change, at most
+  every 8 s, and speaks the ≤ 12-word `speech` at INFO with `dedupeKey: 'describe'` — INFO is
+  dropped whenever guidance is queued, so directions always win. Never asks in
+  APPROACH_CROSSING / AT_CURB / CROSSING, and a result that lands after the mode changed into one
+  of them is dropped. `describeNow()` is the on-demand path at NAV priority.
+- **Voice "describe" intent** — 01 §9 freezes `ParseIntentOutput.intent`, so "what's around me /
+  what do you see / describe / look around" is mapped in `voice.ts` *before* the planner
+  (`isDescribeRequest`) to `describer.describeNow()`; the outcome carries `localIntent: 'describe'`
+  and `intent: 'unknown'`. Empty answer → cached `describe_nothing`.
+- **Proactive prompts (cached A-side keys, flagged for 01 §3):** `need_location` ("I need your
+  location. Step outside." — no GPS fix 5 s into the trip, `trip.ts`), `no_store_nearby` ("I cannot
+  find a store nearby." — resolver `map_error` or no map; C's resolver has no store-by-name, so the
+  "Which store?" wording is not used), `say_item_one_word` ("Say the item again, one word." — two
+  unclear tries in a row, `voice.ts`), `describe_nothing`. `src/core/prompts.ts` mirrors Claude's
+  `CAMERA_REQUEST` / `USER_ACTION` prompts and the indoor 20 s no-sign `keep_going` line into the
+  log (the spoken copies stay where they are: C's vision client and navigator).
+- **Prefs:** `describeSurroundings` (default true) in the store and `prefs.ts`; A-ui's Settings
+  toggle "Describe surroundings" writes it.
+- **composeApp:** the log is built first and handed to speech, voice, trip and the describer; the
+  describer starts in `start()` and stops in `dispose()`; `AppComposition` exposes `conversation`,
+  `describer`, `prompts`.
+
+---
+
 ## Order of work (relative to integration start; phase plan, not a clock)
 
 0–1 h contracts, stubs, bus, store skeleton pushed · 1–4 h haptics, speech queue, cached

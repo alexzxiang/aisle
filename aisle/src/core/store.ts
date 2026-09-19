@@ -60,6 +60,7 @@ export interface AppState {
   mode: AppMode;
   firstRun: boolean;            // gates ONBOARDING and the disclaimer
   trainingMode: boolean;        // default true: haptics are spoken too
+  describeSurroundings: boolean; // default true: the scene describer speaks while walking
   speechRate: number;           // 0.8–1.6
   targetItem: string | null;
   storeId: string | null;
@@ -90,6 +91,7 @@ export interface AppActions {
   nextFromItem(): void;
   setFirstRun(v: boolean): void;
   setTrainingMode(v: boolean): void;
+  setDescribeSurroundings(v: boolean): void;
   setSpeechRate(rate: number): void;
   setBodyOffsetDeg(deg: number): void;
   setTargetItem(item: string | null): void;
@@ -110,6 +112,7 @@ export const INITIAL_STATE: AppState = {
   mode: 'IDLE',
   firstRun: true,
   trainingMode: true,
+  describeSurroundings: true,
   speechRate: 1.0,
   targetItem: null,
   storeId: null,
@@ -201,6 +204,7 @@ export function createAppStore(opts: CreateAppStoreOptions = {}): AppStore {
 
     setFirstRun: (firstRun) => set({ firstRun }),
     setTrainingMode: (trainingMode) => set({ trainingMode }),
+    setDescribeSurroundings: (describeSurroundings) => set({ describeSurroundings }),
     setSpeechRate: (rate) => set({ speechRate: clampSpeechRate(rate) }),
     setBodyOffsetDeg: (bodyOffsetDeg) => set({ bodyOffsetDeg }),
     setTargetItem: (targetItem) => set({ targetItem }),
@@ -411,6 +415,7 @@ export const selectActiveCrossingId = (s: AppState): string | null => s.activeCr
 export const selectLastEvents = (s: AppState): StampedEvent[] => s.lastEvents;
 export const selectPreferences = (s: AppState) => ({
   trainingMode: s.trainingMode,
+  describeSurroundings: s.describeSurroundings,
   speechRate: s.speechRate,
   firstRun: s.firstRun,
 });
