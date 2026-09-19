@@ -46,16 +46,19 @@ const withCoreMLModels = (config) => {
     const groupName = 'CoreMLModels';
     const targetUuid = project.getFirstTarget().uuid;
     // A dedicated group keeps the references tidy and idempotent across prebuilds.
+    // The group's own path is `models` (relative to ios/), so each file is referenced by
+    // basename and resolves to ios/models/<file>. (A group without a path serialises as
+    // `path = undefined` and Xcode then looks in ios/undefined/.)
     let group = project.pbxGroupByName(groupName);
     if (!group) {
-      const created = project.addPbxGroup([], groupName, undefined);
+      const created = project.addPbxGroup([], groupName, MODELS_DIR, '"<group>"');
       const mainGroupKey = project.getFirstProject().firstProject.mainGroup;
       project.addToPbxGroup(created.uuid, mainGroupKey);
       group = project.pbxGroupByName(groupName);
     }
     for (const abs of files) {
-      // Reference the copy under ios/models/, relative to the project directory.
-      const rel = path.join(MODELS_DIR, path.basename(abs));
+      // Basename only: the CoreMLModels group already carries the `models` path.
+      const rel = path.basename(abs);
       const already = Object.values(project.pbxFileReferenceSection()).some(
         (r) => r && typeof r === 'object' && String(r.path || '').replace(/"/g, '') === rel,
       );
