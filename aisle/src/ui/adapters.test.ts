@@ -52,6 +52,8 @@ describe('voicePortFrom', () => {
     await port.start();
     expect(calls).toEqual(['begin', 'cancel']);
     expect(errors).toEqual(['start']);
+    await port.stop();
+    expect(calls).toEqual(['begin', 'cancel']); // no empty intent after failed capture
   });
 
   it('a rejected end is cancelled and reported, never thrown at the button', async () => {

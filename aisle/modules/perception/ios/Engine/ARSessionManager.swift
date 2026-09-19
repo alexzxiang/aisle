@@ -222,6 +222,9 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
   }
 
   public func run() {
+    // Preview views borrow this session; always reclaim callbacks on recovery.
+    session.delegate = self
+    session.delegateQueue = frameQueue
     guard ARWorldTrackingConfiguration.isSupported else {
       delegate?.sessionManager(self, didFail: ARSessionManagerError.worldTrackingUnsupported)
       return

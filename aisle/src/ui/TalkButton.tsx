@@ -53,6 +53,8 @@ try {
 
 export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, reduceMotion: reduceMotionProp }: TalkButtonProps): React.JSX.Element {
   const [held, setHeld] = useState(false);
+  const [ready, setReady] = useState(false);
+  const attempt = useRef(0);
   const heldRef = useLatest(held);
   const voiceRef = useLatest(voice);
   const systemScreenReader = useScreenReader();
@@ -62,7 +64,9 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, 
 
   const stop = useCallback(() => {
     if (!heldRef.current) return;
+    attempt.current += 1;
     setHeld(false);
+    setReady(false);
     try {
       void voiceRef.current?.stop();
     } catch {
@@ -83,12 +87,20 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, 
 
   const start = useCallback(() => {
     setHeld(true);
+    setReady(false);
+    const id = ++attempt.current;
+    const started = (): void => {
+      if (attempt.current !== id || unmounting.current) return;
+      setReady(true);
+      onStart?.();
+    };
     try {
-      void voiceRef.current?.start();
+      const promise = voiceRef.current?.start();
+      if (promise) void promise.then(started).catch(() => { if (attempt.current === id) setHeld(false); });
+      else started();
     } catch {
       // Same: never crash the one control the user can always find.
     }
-    onStart?.();
   }, [voiceRef, onStart]);
 
   const toggle = useCallback(() => {
@@ -138,7 +150,7 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, 
       stop();
     };
 
-  const label = toggleMode
+  const label = held && !ready ? 'Starting microphone' : toggleMode
     ? (held ? TALK_TOGGLE_HELD_LABEL : TALK_TOGGLE_LABEL)
     : (held ? TALK_HELD_LABEL : TALK_LABEL);
 

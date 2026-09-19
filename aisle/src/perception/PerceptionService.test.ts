@@ -121,7 +121,7 @@ describe('createNativePerceptionService', () => {
 });
 
 describe('bindPerceptionToApp', () => {
-  function rig() {
+  function rig(healthIntervalMs?: number, isForeground?: () => boolean) {
     const native = fakeNative();
     const perception = createNativePerceptionService(native);
     const bus = createEventBus();
@@ -137,9 +137,32 @@ describe('bindPerceptionToApp', () => {
       playStream: () => {}, clearQueue: () => {}, isSpeaking: () => false, setRate: () => {},
     };
     bus.onAny((r) => order.push(`bus:${r.event.type}`));
-    const binding = bindPerceptionToApp({ perception, bus, store, haptics: haptics as never, speech });
+    const binding = bindPerceptionToApp({ perception, bus, store, haptics: haptics as never, speech, healthIntervalMs, isForeground });
     return { native, perception, bus, events, store, played, said, order, binding };
   }
+
+  it('recovers a silent detector twice, then stops retrying; empty detections count as healthy', async () => {
+    jest.useFakeTimers();
+    const r = rig(5000, () => true);
+    await jest.advanceTimersByTimeAsync(10_000);
+    r.native.fire('onDetections', { items: [] });
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(r.native.calls.filter((c) => c[0] === 'start')).toHaveLength(1);
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(r.native.calls.filter((c) => c[0] === 'start')).toHaveLength(3);
+    expect(r.events.some((e) => e.type === 'ERROR' && e.scope === 'perception.recovery')).toBe(true);
+    r.binding.dispose();
+    jest.useRealTimers();
+  });
+
+  it('does not restart the camera while the app is backgrounded', async () => {
+    jest.useFakeTimers();
+    const r = rig(5000, () => false);
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(r.native.calls.filter((c) => c[0] === 'start')).toHaveLength(1);
+    r.binding.dispose();
+    jest.useRealTimers();
+  });
 
   it('starts at once (IDLE runs the AWARE schedule for the awareness loop) and follows the mode → profile table without anyone passing mode', async () => {
     const r = rig();

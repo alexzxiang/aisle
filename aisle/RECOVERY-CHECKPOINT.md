@@ -4,6 +4,36 @@ User: Alex (person A). Request: pull teammate changes, restore audible/fast spee
 expand prepared speech, and reliably carry "eggs from my fridge" through approach,
 opening, item identification, hand guidance and completion. Keep this file current.
 
+## Latest — detector stopped / reconciliation audit
+
+Trace: detector events stop after timestamp 1789846268367 (last frame had chair and
+table), while later cloud task requests continue. This is not merely the UI hiding
+boxes. No native detector-code changes between f2ed7ff and 1ba837a; the YOLO compiled
+model remains in the installed app bundle. The precise runtime cause of the stall
+is NOT established from the old trace (it lacked native heartbeat telemetry).
+
+Fixed concrete recovery defects: native restart reclaims ARSession delegate/queue;
+binding clears failed-start state; live app monitors detector events, logs FPS,
+model-load messages, profile and frame age, and attempts at most two restarts after
+15 seconds of silence. Empty detection arrays reset the heartbeat; backgrounded
+apps never recover the camera. Snapshot calls now reject stopped/stale frames
+instead of letting cloud vision describe the last room forever.
+
+Audit also found the dedicated TalkButton still signalled readiness before native
+capture (only the background hold gesture had been updated); both now wait for the
+start promise. Voice-port release no longer parses an empty recording after a
+failed microphone start. Existing trace contains an audio-capture startup error.
+
+App lint/typecheck + 1135 tests, server 202 tests, Swift 113 checks passed before
+the final voice-port regression. Native rebuild/install underway. See final handoff
+for launch result; detection recovery must be observed on the real phone before
+claiming resolution. Changes are local at this checkpoint.
+
+Native **BUILD SUCCEEDED** and installation succeeded. Launch failed because the
+iPhone was locked. Unlock and open Aisle to collect `perception_health` traces.
+Final voice-port regression passes (four adapter tests). No live detection recovery
+has yet been observed; do not describe this as a confirmed field fix.
+
 ## Latest — team reconciliation and recording readiness
 
 Checkpointed previous work at `1eba080`, merged origin/main through `de7b6b1`;

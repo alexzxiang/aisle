@@ -54,6 +54,7 @@ function composeOnce(): Composed {
   if (composed) return composed;
   try {
     const platform: AppPlatform = {
+      isForeground: () => AppState.currentState === 'active',
       hapticBackend: createExpoHapticBackend(),
       speechBackend: createExpoSpeechBackend({ proxyUrl: config.proxyUrl }),
       audioBackend: createExpoAudioChannelBackend(),

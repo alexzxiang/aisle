@@ -173,6 +173,10 @@ export interface BindPerceptionOptions {
   speech: SpeechService;
   /** Reported (not thrown) when `start`/`setProfile` reject. Default: ERROR on the bus. */
   onError?: (scope: string, err: unknown) => void;
+  /** Enable in the live app; no background camera recovery. */
+  isForeground?: () => boolean;
+  healthIntervalMs?: number;
+  onHealth?: (health: Record<string, unknown>) => void;
 }
 
 export interface PerceptionBinding {
@@ -198,6 +202,10 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
 
   let profile: ModeProfile = 'IDLE';
   let started = false;
+  let disposed = false;
+  let lastDetectionsAt = Date.now();
+  let recoveries = 0;
+  let recovering = false;
   let lastDepth: DepthSummary | null = null;
   const unsubs: Array<() => void> = [];
 
@@ -215,7 +223,7 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
           const format = lines.find((l) => l.includes('videoFormat'));
           if (format) console.log(`[perception] ${format}`);
         })
-        .catch((err: unknown) => report('perception.start', err));
+        .catch((err: unknown) => { started = false; report('perception.start', err); });
       return;
     }
     try {
@@ -285,10 +293,32 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
     bus.emit({ type: 'HAZARD', kind: e.kind, direction: e.direction });
   }));
 
+  // Empty arrays are heartbeats too: no objects is not a failed detector.
+  unsubs.push(perception.onDetections(() => { lastDetectionsAt = Date.now(); recoveries = 0; }));
+  const healthTimer = opts.healthIntervalMs ? setInterval(() => {
+    if (disposed || recovering || profile === 'IDLE') return;
+    if (opts.isForeground?.() === false) { lastDetectionsAt = Date.now(); return; }
+    const age = Date.now() - lastDetectionsAt;
+    opts.onHealth?.({ detectionAgeMs: age, recoveries, profile, stats: perception.getStats(), native: perception.debugLog?.() ?? [] });
+    if (age < 15_000 || recoveries >= 2) return;
+    recoveries += 1;
+    recovering = true;
+    lastDetectionsAt = Date.now();
+    report('perception.recovery', new Error('Detector events stopped. Restarting the camera pipeline.'));
+    try {
+      perception.stop();
+      void perception.start(profile).then(() => { started = true; })
+        .catch((err: unknown) => { started = false; report('perception.restart', err); })
+        .finally(() => { recovering = false; if (disposed) perception.stop(); });
+    } catch (err) { recovering = false; report('perception.restart', err); }
+  }, opts.healthIntervalMs) : null;
+
   return {
     getProfile: () => profile,
     getLastDepth: () => lastDepth,
     dispose() {
+      disposed = true;
+      if (healthTimer !== null) clearInterval(healthTimer);
       for (const u of unsubs.splice(0)) u();
       if (started) {
         started = false;

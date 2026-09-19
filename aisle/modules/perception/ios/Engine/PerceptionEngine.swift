@@ -187,13 +187,18 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   public func snapshotJPEG(maxWidth: Int, completion: @escaping (Result<SnapshotPayload, Error>) -> Void) {
     snapshots.snapshot(maxWidth: maxWidth, source: { [weak self] in
       guard let self else { return nil }
+      // A stopped AR session retains its last frame. Never send that old room
+      // to cloud vision as if it were current while detections have gone silent.
+      guard self.isRunning, self.session.isRunning,
+            let ctx = self.session.lastFrameContext,
+            ProcessInfo.processInfo.systemUptime - ctx.geometry.timestamp <= 2.0 else { return nil }
       // The sharpest recent frame when there is one (round 6); the live frame otherwise.
-      if let kept = self.session.sharpFrames.best {
+      if let kept = self.session.sharpFrames.best,
+         Date().timeIntervalSince1970 * 1000 - kept.timestampMs <= 1500 {
         return SnapshotSource(
           pixelBuffer: kept.pixelBuffer, orientation: kept.orientation,
           horizonRow: kept.horizonRow, timestampMs: kept.timestampMs)
       }
-      guard let ctx = self.session.lastFrameContext else { return nil }
       return SnapshotSource(
         pixelBuffer: ctx.pixelBuffer, orientation: ctx.orientation,
         horizonRow: ctx.geometry.horizonRow, timestampMs: ctx.timestampMs)
@@ -220,7 +225,9 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   }
 
   public func nativeLogLines() -> [String] {
-    ["videoFormat=\(session.chosenFormat)"] + registry.loadLog()
+    let frameAge = session.lastFrameContext.map { ProcessInfo.processInfo.systemUptime - $0.geometry.timestamp } ?? -1
+    return ["videoFormat=\(session.chosenFormat)",
+            "engineRunning=\(isRunning) sessionRunning=\(session.isRunning) profile=\(profile.rawValue) frameAgeSeconds=\(frameAge)"] + registry.loadLog()
   }
 
   // MARK: Profile (frameQueue)

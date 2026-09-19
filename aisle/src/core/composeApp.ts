@@ -79,6 +79,7 @@ export const STREAMED_SPEECH_RELAY_AVAILABLE = false;
 export const MOCK_PREFETCH_CAP_MS = 2500;
 
 export interface AppPlatform {
+  isForeground?: () => boolean;
   hapticBackend: HapticBackend;
   speechBackend: SpeechBackend;
   audioBackend: AudioChannelBackend;
@@ -236,7 +237,10 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   const perception: PerceptionService = mocks
     ? createPerceptionService({ mock: mocks.perception })
     : createPerceptionService({ native: platform.nativePerception });
-  const perceptionBinding = bindPerceptionToApp({ perception, bus, store, haptics, speech });
+  const perceptionBinding = bindPerceptionToApp({ perception, bus, store, haptics, speech,
+    isForeground: platform.isForeground, healthIntervalMs: config.mock ? undefined : 5000,
+    onHealth: (health) => trace('perception_health', health),
+  });
   realSensors?.attachPerception(perception);
 
   // --- Tier 1 (C) and Tier 2 (B) clients, measured for the DebugPanel ----------

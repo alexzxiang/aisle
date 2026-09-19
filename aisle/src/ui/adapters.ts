@@ -31,9 +31,12 @@ export interface VoicePortOptions {
  */
 export function voicePortFrom(input: VoiceInputLike, opts: VoicePortOptions = {}): VoicePort {
   let starting: Promise<void> | null = null;
+  let startFailed = false;
   return {
     start() {
+      startFailed = false;
       starting = input.begin().catch((err: unknown) => {
+        startFailed = true;
         opts.onError?.('start', err);
         input.cancel();
       });
@@ -45,6 +48,7 @@ export function voicePortFrom(input: VoiceInputLike, opts: VoicePortOptions = {}
         await starting;
         starting = null;
       }
+      if (startFailed) return; // don't parse an empty recording after audio-capture failed
       try {
         await input.end();
       } catch (err) {
