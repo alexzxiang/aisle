@@ -15,3 +15,6 @@ aisle/ios/Pods/
 aisle/server/node_modules/
 aisle/ios/
 aisle/android/
+aisle/training/.venv/
+aisle/training/runs/
+*.pt
