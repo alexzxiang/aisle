@@ -232,6 +232,7 @@ describe('mode-tagged instructions', () => {
 describe('errors', () => {
   it('user-facing scopes say what happened and what to do next; internal scopes stay in the panel', () => {
     expect(errorSentence('route', 'timeout')).toBe("Couldn't plan the route. Check the connection and try again.");
+    expect(errorSentence('route-degraded', 'http 502')).toBe('No route data. Heading straight to the store.');
     expect(errorSentence('voice', 'no-speech')).toBe("Didn't catch that. Hold to talk and try again.");
     expect(errorSentence('perception', 'denied')).toBe('The camera is not running. Check the camera permission.');
     expect(errorSentence('network', 'ECONNREFUSED')).toBe('Offline. Cached guidance continues.');

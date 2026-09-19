@@ -28,6 +28,7 @@ import type { IndoorController } from '../indoor/indoorController';
 import type { StoreResolver } from '../indoor/storeResolver';
 import type { LegRunner, LegRunnerDebugState } from '../outdoor/LegRunner';
 import { RouteClientError } from '../outdoor/routeClient';
+import { directRoute } from '../outdoor/directRoute';
 import type { OutdoorStore } from '../outdoor/store';
 import { announceStoreEntry, type AnnounceHandle } from '../transition/announce';
 
@@ -41,7 +42,7 @@ const PAST_OUTDOOR: ReadonlySet<AppMode> = new Set<AppMode>(['TRANSITION', 'INDO
 export const REACH_RE = /\b(?:reach(?: out)?|pick (?:it |this )?up|grab (?:it|this)|hand guidance)\b/i;
 
 export interface TripSession {
-  runner: Pick<LegRunner, 'start' | 'stop' | 'answer' | 'getDebugState'>;
+  runner: Pick<LegRunner, 'start' | 'stop' | 'answer' | 'getDebugState' | 'loadRoute'>;
   controller: Pick<AisleCrossingController, 'setManualSignal' | 'curbReached' | 'getDebugState'>;
   dispose(): void;
 }
@@ -169,13 +170,14 @@ export function wireTrip(deps: TripDeps): Trip {
       endSession();
       return;
     }
+    const startReq = {
+      storeId: map.storeId,
+      entrance: { lat: map.entrance.lat, lng: map.entrance.lng, radiusM: map.entrance.radiusM },
+      destName: map.displayName,
+      origin: { lat: fix.lat, lng: fix.lng },
+    };
     try {
-      await s.runner.start({
-        storeId: map.storeId,
-        entrance: { lat: map.entrance.lat, lng: map.entrance.lng, radiusM: map.entrance.radiusM },
-        destName: map.displayName,
-        origin: { lat: fix.lat, lng: fix.lng },
-      });
+      await s.runner.start(startReq);
       // B's installRoute has no `running` re-check after its prefetch await: a route
       // that finished installing after an abort must be stopped again.
       if (gen !== generation) s.runner.stop();
@@ -184,12 +186,26 @@ export function wireTrip(deps: TripDeps): Trip {
         s.runner.stop();
         return;
       }
+      if (e instanceof RouteClientError && (e.kind === 'http' || e.kind === 'shape')) {
+        // The proxy answered but had no route (Google disabled / 5xx / bad shape): degrade to a
+        // straight heading to the entrance so the trip — and everything after it — still runs.
+        report('route-degraded', e);
+        deps.speech.say({ text: PHRASES.no_route_data, cacheKey: 'no_route_data', priority: 'NAV', dedupeKey: 'no_route_data', cooldownMs: 60_000 });
+        try {
+          await s.runner.loadRoute(directRoute(startReq.origin, startReq.entrance, startReq.destName, deps.now?.() ?? Date.now()), startReq);
+          if (gen !== generation) s.runner.stop();
+          return;
+        } catch (e2) {
+          if (gen !== generation) { s.runner.stop(); return; }
+          report('route', e2);
+          deps.speech.say({ text: PHRASES.route_unavailable, cacheKey: 'route_unavailable', priority: 'NAV', dedupeKey: 'route_unavailable', cooldownMs: 15_000 });
+          endSession();
+          return;
+        }
+      }
       report('route', e);
       if (e instanceof RouteClientError && (e.kind === 'network' || e.kind === 'timeout')) {
         deps.speech.say({ text: PHRASES.offline_notice, cacheKey: 'offline_notice', priority: 'NAV', dedupeKey: 'offline', cooldownMs: 60_000 });
-      } else if (e instanceof RouteClientError) {
-        // The proxy answered but had no route (Google disabled / 5xx / bad shape): never silence.
-        deps.speech.say({ text: PHRASES.route_unavailable, cacheKey: 'route_unavailable', priority: 'NAV', dedupeKey: 'route_unavailable', cooldownMs: 15_000 });
       }
       endSession();
     }

@@ -127,7 +127,7 @@ export type ASideKey =
   | 'onboarding_this_is_okay' | 'onboarding_beacon' | 'onboarding_ticker_slow_fast'
   | 'onboarding_ticker_countdown' | 'onboarding_keep_cane' | 'onboarding_wear_phone'
   | 'onboarding_ring_switch' | 'onboarding_walk_straight' | 'onboarding_done'
-  | 'route_unavailable';
+  | 'route_unavailable' | 'no_route_data';
 
 export type PhraseKey = CacheKey | ASideKey;
 
@@ -213,6 +213,7 @@ export const PHRASE_LIST: readonly Phrase[] = [
   P('ask_staff', 'Ask staff for help finding it.', 'indoor'),
   P('offline_notice', 'Offline. Signal reading and directions still work.', 'always'),
   P('route_unavailable', 'Route unavailable. Try again shortly.', 'always', true),
+  P('no_route_data', 'No route data. Heading straight to the store.', 'always', true),
   // --- A-side additions (flagged for 01 §3) ---
   P('course_hint_left', 'Bear left.', 'course_hint', true),
   P('course_hint_right', 'Bear right.', 'course_hint', true),

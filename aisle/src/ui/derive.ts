@@ -336,6 +336,7 @@ export const ERROR_TTL_MS = INSTRUCTION_TTL_MS.error;
 export function errorSentence(scope: string, message: string): string | null {
   const s = scope.toLowerCase();
   if (s === 'store' || s === 'speech' || s === 'ui' || s === 'bus' || s === 'haptics') return null;
+  if (s === 'route-degraded') return 'No route data. Heading straight to the store.';
   if (s.startsWith('route') || s.startsWith('plan') || s === 'outdoor') return "Couldn't plan the route. Check the connection and try again.";
   if (s === 'voice' || s === 'stt' || s === 'mic') return "Didn't catch that. Hold to talk and try again.";
   if (s === 'perception' || s === 'camera') return 'The camera is not running. Check the camera permission.';
