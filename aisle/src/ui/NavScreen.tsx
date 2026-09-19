@@ -1,22 +1,29 @@
 /**
- * The trip screen: band / perception strip / push-to-talk / Repeat + Stop
- * guidance (DESIGN.md rule 6). It shows every mode from OUTDOOR_NAV to DONE;
- * the band colour and hero come from the store's mode and the bus.
+ * The trip screen (DESIGN.md, Layout): state band / camera panel with the
+ * perception strip / transcript with "Describe surroundings" / hold-to-talk /
+ * Repeat + Stop guidance. It shows every mode from OUTDOOR_NAV to DONE; the
+ * accent and hero come from the store's mode and the bus.
  *
  * "Stop guidance" is two taps or one two-second hold, never a single stray
  * tap -- it aborts the trip (02 Task 2: "big button hold 2 s").
+ *
+ * The conversation log and the describer arrive as props from the
+ * composition root (`Root` forwards them); without them the transcript shows
+ * its empty line and the pill is hidden.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { StateBand } from './StateBand';
-import { PerceptionStrip } from './PerceptionStrip';
+import { CameraPanel } from './CameraPanel';
+import { TranscriptPanel } from './TranscriptPanel';
 import { TalkButton } from './TalkButton';
 import { Button } from './Button';
+import { Backdrop } from './Glass';
 import { bandSignal, heroText, stripSlots } from './derive';
-import { useBus, useMode, useNow, useOptionalService, useStoreSlice, useUiFacts } from './hooks';
+import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
 import { assertUtterance } from './copy';
-import type { VoicePort } from './ports';
-import { colors, sizes, space } from './theme';
+import type { ConversationLogPort, DescribeNow, VoicePort } from './ports';
+import { accentFor, colors, sizes, space } from './theme';
 
 export const STOP_HOLD_MS = 2000;
 /** A first "Stop guidance" tap arms for this long; a second tap inside it aborts. */
@@ -24,16 +31,27 @@ export const STOP_ARM_MS = 5000;
 export const STOP_LABEL = 'Stop guidance';
 export const STOP_ARMED_LABEL = 'Tap again to stop';
 export const REPEAT_LABEL = 'Repeat';
+export const FINISH_LABEL = 'Finish';
+/** Transcript lines on the trip screen. */
+export const NAV_TRANSCRIPT_MAX = 4;
+/** The camera panel never takes more than this share of the window. */
+export const CAMERA_MAX_HEIGHT_SHARE = 0.34;
 
 export interface NavScreenProps {
   onOpenDebug?: () => void;
   voice?: VoicePort;
+  /** The conversation log (src/core/conversation.ts) the transcript follows. */
+  conversation?: ConversationLogPort;
+  /** The describer's `describeNow`; the "Describe surroundings" pill is hidden without it. */
+  describeNow?: DescribeNow;
   /** Tests: freeze the clock the "seen n s ago" ages are computed against. */
   now?: number;
   reduceMotion?: boolean;
 }
 
-export function NavScreen({ onOpenDebug, voice, now: nowOverride, reduceMotion }: NavScreenProps): React.JSX.Element {
+export function NavScreen(props: NavScreenProps): React.JSX.Element {
+  const { onOpenDebug, voice, conversation, describeNow, now: nowOverride } = props;
+  const reduceMotion = useResolvedReduceMotion(props.reduceMotion);
   const mode = useMode();
   const item = useStoreSlice((s) => s.targetItem);
   const side = useStoreSlice((s) => s.targetSide);
@@ -43,7 +61,11 @@ export function NavScreen({ onOpenDebug, voice, now: nowOverride, reduceMotion }
   const bus = useBus();
   const speech = useOptionalService('speech');
   const haptics = useOptionalService('haptics');
+  const entries = useConversationEntries(conversation);
+  const { height: windowHeight } = useWindowDimensions();
 
+  const signal = bandSignal(facts);
+  const accent = accentFor(mode, signal);
   const hero = heroText(mode, facts, now, { item, side });
   const slots = stripSlots(facts, now);
 
@@ -84,31 +106,41 @@ export function NavScreen({ onOpenDebug, voice, now: nowOverride, reduceMotion }
 
   return (
     <View style={styles.screen}>
+      <Backdrop accent={accent} reduceMotion={reduceMotion} />
       <StateBand
         mode={mode}
         hero={hero}
-        signal={bandSignal(facts)}
+        signal={signal}
         onLongPressMode={onOpenDebug}
         reduceMotion={reduceMotion}
         style={styles.band}
       />
-      <PerceptionStrip slots={slots} />
+      <CameraPanel slots={slots} accent={accent} maxHeight={Math.round(windowHeight * CAMERA_MAX_HEIGHT_SHARE)} reduceMotion={reduceMotion} style={styles.camera} />
+      <TranscriptPanel
+        entries={entries}
+        max={NAV_TRANSCRIPT_MAX}
+        onDescribe={describeNow}
+        reduceMotion={reduceMotion}
+        style={styles.transcript}
+      />
       <View style={styles.controls}>
-        <TalkButton voice={voice} />
+        <TalkButton voice={voice} reduceMotion={reduceMotion} />
         <View style={styles.row}>
           <Button
             label={REPEAT_LABEL}
             onPress={repeat}
             hint="Says the current instruction again"
+            reduceMotion={reduceMotion}
             style={styles.half}
           />
           <Button
-            label={isDone ? 'Finish' : armed ? STOP_ARMED_LABEL : STOP_LABEL}
+            label={isDone ? FINISH_LABEL : armed ? STOP_ARMED_LABEL : STOP_LABEL}
             onPress={isDone ? stopNow : onStopPress}
             onLongPress={stopNow}
             delayLongPress={STOP_HOLD_MS}
             hint={isDone ? 'Ends the trip' : 'Tap twice, or hold for two seconds, to end guidance'}
             selected={armed}
+            reduceMotion={reduceMotion}
             style={styles.half}
           />
         </View>
@@ -121,15 +153,25 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
+    paddingTop: Platform.OS === 'ios' ? 60 : space.xl,
+    gap: space.m,
   },
   band: {
+    flexGrow: 0,
+  },
+  camera: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  transcript: {
     flexGrow: 1,
     flexShrink: 1,
+    minHeight: 96,
   },
   controls: {
     paddingHorizontal: sizes.gutter,
-    paddingTop: space.l,
-    paddingBottom: space.xxl,
+    paddingTop: space.xs,
+    paddingBottom: space.xl,
     gap: space.m,
   },
   row: {

@@ -17,6 +17,13 @@ import { OnboardingScreen, DONE_LABEL, NEXT_LABEL, PLAY_AGAIN_LABEL, SKIP_LABEL 
 import { DebugPanel, DEBUG_CLOSE_LABEL } from './DebugPanel';
 import { SettingsSheet, CLOSE_LABEL, FASTER_LABEL, SLOWER_LABEL, TRAINING_LABEL } from './SettingsSheet';
 import { StateBand, DEBUG_LONG_PRESS_MS, HERO_ANNOUNCE_GRACE_MS, shouldAnnounceHero } from './StateBand';
+import { CAMERA_LABEL, CAMERA_PLACEHOLDER, CameraPanel, hasCameraPreview, setCameraPreviewForTests } from './CameraPanel';
+import { DESCRIBE_LABEL, TRANSCRIPT_EMPTY, TRANSCRIPT_LABEL, TranscriptPanel, visibleEntries } from './TranscriptPanel';
+import { DESCRIBE_SETTING_LABEL } from './SettingsSheet';
+import { GlassPanel, isBlurAvailable } from './Glass';
+import { stripSlots, EMPTY_FACTS } from './derive';
+import { accents, signalColors, tintOf } from './theme';
+import type { ConversationEntryLike, ConversationLogPort } from './ports';
 import { TalkButton, TALK_HELD_LABEL, TALK_HINT_HOLD, TALK_HINT_TOGGLE, TALK_LABEL, TALK_TOGGLE_HELD_LABEL, TALK_TOGGLE_LABEL } from './TalkButton';
 import { stepsFor } from './onboardingSteps';
 import { PHRASES, isPhraseKey } from '../core/phrases';
@@ -732,5 +739,274 @@ describe('Root', () => {
     expect(labelsOf(r)).toContain(CLOSE_LABEL);
     await press(byLabel(r, CLOSE_LABEL));
     expect(labelsOf(r)).not.toContain(CLOSE_LABEL);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The liquid-glass round: transcript, camera panel, describe pill, motion
+// ---------------------------------------------------------------------------
+
+/** A minimal in-memory conversation log with the contract's two read members. */
+function fakeLog(initial: ConversationEntryLike[] = []): ConversationLogPort & { push(e: ConversationEntryLike): void } {
+  let entries: ConversationEntryLike[] = initial;
+  const subs = new Set<(e: readonly ConversationEntryLike[]) => void>();
+  return {
+    entries: () => entries,
+    subscribe: (cb) => {
+      subs.add(cb);
+      return () => subs.delete(cb);
+    },
+    push: (e) => {
+      entries = [...entries, e];
+      for (const cb of subs) cb(entries);
+    },
+  };
+}
+
+const you = (id: string, text: string): ConversationEntryLike => ({ id, role: 'you', text, t: T0, source: 'voice' });
+const aisle = (id: string, text: string): ConversationEntryLike => ({ id, role: 'aisle', text, t: T0, source: 'speech' });
+
+describe('TranscriptPanel', () => {
+  it('shows the newest lines, oldest first, as a list of "You:" / "Aisle:" sentences', async () => {
+    setup('OUTDOOR_NAV');
+    const entries = [you('1', 'I need eggs'), aisle('2', 'Eggs. Planning the route.'), you('3', 'Where am I'), aisle('4', 'Forbes Avenue, near the crossing'), you('5', 'Okay'), aisle('6', 'Keep walking')];
+    expect(visibleEntries(entries, 4).map((e) => e.id)).toEqual(['3', '4', '5', '6']);
+    const r = await render(<TranscriptPanel entries={entries} max={4} reduceMotion />);
+    const list = r.root.findAll((n: ReactTestInstance) => n.props.accessibilityRole === 'list' && typeof n.type === 'string');
+    expect(list).toHaveLength(1);
+    expect(list[0].props.accessibilityLabel).toBe(TRANSCRIPT_LABEL);
+    const lines = r.root
+      .findAll((n: ReactTestInstance) => typeof n.type === 'string' && n.props.accessibilityRole === 'text' && typeof n.props.accessibilityLabel === 'string')
+      .map((n) => n.props.accessibilityLabel as string)
+      .filter((l) => l.startsWith('You: ') || l.startsWith('Aisle: '));
+    expect(lines).toEqual(['You: Where am I', 'Aisle: Forbes Avenue, near the crossing', 'You: Okay', 'Aisle: Keep walking']);
+    const strings = renderedStrings(r);
+    expect(strings).toContain('You');
+    expect(strings).toContain('Aisle');
+    expect(strings).not.toContain(TRANSCRIPT_EMPTY);
+    expect(labelsOf(r)).not.toContain(DESCRIBE_LABEL); // no describer wired
+    expectClean(r);
+  });
+
+  it('is never the live region and says so when empty', async () => {
+    setup('OUTDOOR_NAV');
+    const r = await render(<TranscriptPanel entries={[]} reduceMotion />);
+    expect(renderedStrings(r)).toContain(TRANSCRIPT_EMPTY);
+    expect(r.root.findAll((n: ReactTestInstance) => n.props.accessibilityLiveRegion !== undefined && typeof n.type === 'string')).toHaveLength(0);
+  });
+
+  it('the Describe surroundings pill calls describeNow, is busy until it settles, and survives a rejection', async () => {
+    setup('INDOOR_NAV');
+    let resolve!: (v: string | null) => void;
+    const describeNow = jest.fn(() => new Promise<string | null>((res) => { resolve = res; }));
+    const r = await render(<TranscriptPanel entries={[]} onDescribe={describeNow} reduceMotion />);
+    const pill = byLabel(r, DESCRIBE_LABEL);
+    expect(pill.props.accessibilityState.busy).toBe(false);
+    await press(pill);
+    expect(describeNow).toHaveBeenCalledTimes(1);
+    expect(byLabel(r, DESCRIBE_LABEL).props.accessibilityState.busy).toBe(true);
+    await press(byLabel(r, DESCRIBE_LABEL)); // ignored while busy
+    expect(describeNow).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolve('A shelf of cartons on the right');
+    });
+    expect(byLabel(r, DESCRIBE_LABEL).props.accessibilityState.busy).toBe(false);
+
+    const failing = jest.fn(() => Promise.reject(new Error('vision down')));
+    const r2 = await render(<TranscriptPanel entries={[]} onDescribe={failing} reduceMotion />);
+    await press(byLabel(r2, DESCRIBE_LABEL));
+    expect(byLabel(r2, DESCRIBE_LABEL).props.accessibilityState.busy).toBe(false);
+    expectClean(r);
+  });
+});
+
+describe('CameraPanel', () => {
+  afterEach(() => setCameraPreviewForTests(null));
+
+  it('renders the placeholder when no preview module is in the build, with the three strip sentences over it', async () => {
+    setup('OUTDOOR_NAV');
+    setCameraPreviewForTests(null);
+    expect(hasCameraPreview()).toBe(false);
+    const r = await render(<CameraPanel slots={stripSlots(EMPTY_FACTS, T0)} accent={accents.outdoor} reduceMotion />);
+    expect(renderedStrings(r)).toContain(CAMERA_PLACEHOLDER);
+    const labels = labelsOf(r);
+    expect(labels).toEqual(expect.arrayContaining([CAMERA_LABEL, 'Signal: not seen', 'Vehicles: none reported', 'Aisle: no sign read yet']));
+    expect(labels.indexOf(CAMERA_LABEL)).toBeLessThan(labels.indexOf('Signal: not seen'));
+    expectClean(r);
+  });
+
+  it("mounts Agent C's preview with detections on when it is present", async () => {
+    setup('OUTDOOR_NAV');
+    const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+    const seen: Array<Record<string, unknown>> = [];
+    setCameraPreviewForTests((p) => {
+      seen.push(p as Record<string, unknown>);
+      return <Text>LIVE PREVIEW</Text>;
+    });
+    expect(hasCameraPreview()).toBe(true);
+    const r = await render(<CameraPanel slots={stripSlots(EMPTY_FACTS, T0)} reduceMotion />);
+    expect(renderedStrings(r)).toContain('LIVE PREVIEW');
+    expect(renderedStrings(r)).not.toContain(CAMERA_PLACEHOLDER);
+    expect(seen[0]).toEqual(expect.objectContaining({ showDetections: true }));
+  });
+});
+
+describe('NavScreen with the conversation and the describer', () => {
+  it('renders the transcript from the log, follows new lines, and keeps the reading order band > camera > transcript > talk', async () => {
+    setup('INDOOR_NAV', { initial: { targetItem: 'eggs' } });
+    const log = fakeLog([you('1', 'I need eggs'), aisle('2', 'Eggs. Planning the route.')]);
+    const describeNow = jest.fn(async () => 'Shelves on both sides');
+    const r = await render(<NavScreen reduceMotion now={T0} conversation={log} describeNow={describeNow} />);
+    let labels = labelsOf(r);
+    const order = ['Mode: In the store', CAMERA_LABEL, 'Signal: not seen', 'You: I need eggs', 'Aisle: Eggs. Planning the route.', DESCRIBE_LABEL, TALK_LABEL, REPEAT_LABEL, STOP_LABEL];
+    const idx = order.map((l) => labels.indexOf(l));
+    expect(idx.every((i) => i >= 0)).toBe(true);
+    expect(idx).toEqual([...idx].sort((a, b) => a - b));
+    await act(async () => {
+      log.push(aisle('3', 'Aisle four is on your right'));
+    });
+    labels = labelsOf(r);
+    expect(labels).toContain('Aisle: Aisle four is on your right');
+    expect(labels.indexOf('Aisle: Aisle four is on your right')).toBeGreaterThan(labels.indexOf('You: I need eggs'));
+    await press(byLabel(r, DESCRIBE_LABEL));
+    expect(describeNow).toHaveBeenCalledTimes(1);
+    expectClean(r);
+  });
+
+  it('stands without a log or a describer: empty transcript line, no pill, camera placeholder', async () => {
+    setup('OUTDOOR_NAV');
+    const r = await render(<NavScreen reduceMotion now={T0} />);
+    expect(renderedStrings(r)).toContain(TRANSCRIPT_EMPTY);
+    expect(renderedStrings(r)).toContain(CAMERA_PLACEHOLDER);
+    expect(labelsOf(r)).not.toContain(DESCRIBE_LABEL);
+  });
+
+  it('tolerates a log whose entries() throws', async () => {
+    setup('OUTDOOR_NAV');
+    const broken: ConversationLogPort = { entries: () => { throw new Error('boom'); }, subscribe: () => () => undefined };
+    const r = await render(<NavScreen reduceMotion now={T0} conversation={broken} />);
+    expect(renderedStrings(r)).toContain(TRANSCRIPT_EMPTY);
+  });
+});
+
+describe('HomeScreen transcript', () => {
+  it('shows the last lines once there are any, without the describe pill', async () => {
+    setup('IDLE', { initial: { firstRun: false } });
+    const log = fakeLog([]);
+    const r = await render(<HomeScreen reduceMotion now={T0} conversation={log} />);
+    expect(renderedStrings(r)).not.toContain(TRANSCRIPT_EMPTY);
+    await act(async () => {
+      log.push(you('1', 'I need eggs'));
+      log.push(aisle('2', 'Eggs. Planning the route.'));
+    });
+    expect(labelsOf(r)).toEqual(expect.arrayContaining(['You: I need eggs', 'Aisle: Eggs. Planning the route.']));
+    expect(labelsOf(r)).not.toContain(DESCRIBE_LABEL);
+    expectClean(r);
+  });
+});
+
+describe('Root conversation wiring', () => {
+  it('uses a log registered under "conversation" when no prop is given', async () => {
+    setup('IDLE', { initial: { firstRun: false } });
+    const log = fakeLog([you('1', 'I need milk'), aisle('2', 'Milk. Planning the route.')]);
+    (services as unknown as { set(name: string, v: unknown): void }).set('conversation', log);
+    const r = await render(<Root reduceMotion now={T0} />);
+    expect(labelsOf(r)).toContain('You: I need milk');
+  });
+
+  it('ignores a registry value that is not a log', async () => {
+    setup('IDLE', { initial: { firstRun: false } });
+    (services as unknown as { set(name: string, v: unknown): void }).set('conversation', { nope: true });
+    const r = await render(<Root reduceMotion now={T0} />);
+    expect(labelsOf(r).some((l) => l.startsWith('You: '))).toBe(false);
+  });
+});
+
+describe('SettingsSheet describe surroundings', () => {
+  it('has the switch, default on, and writes describeSurroundings to the store', async () => {
+    setup('IDLE');
+    const r = await render(<SettingsSheet visible onClose={() => undefined} reduceMotion />);
+    const sw = r.root.findAll((n: ReactTestInstance) => n.props.accessibilityRole === 'switch' && n.props.accessibilityLabel === DESCRIBE_SETTING_LABEL)[0];
+    expect(sw.props.value).toBe(true);
+    await act(async () => {
+      (sw.props.onValueChange as (v: boolean) => void)(false);
+    });
+    expect((store.getState() as unknown as { describeSurroundings?: boolean }).describeSurroundings).toBe(false);
+    expect(r.root.findAll((n: ReactTestInstance) => n.props.accessibilityRole === 'switch' && n.props.accessibilityLabel === DESCRIBE_SETTING_LABEL)[0].props.value).toBe(false);
+    expectClean(r);
+  });
+
+  it("prefers the store's own setter when the core declares one", async () => {
+    setup('IDLE');
+    const setDescribeSurroundings = jest.fn();
+    (store.setState as unknown as (p: Record<string, unknown>) => void)({ describeSurroundings: true, setDescribeSurroundings });
+    const r = await render(<SettingsSheet visible onClose={() => undefined} reduceMotion />);
+    const sw = r.root.findAll((n: ReactTestInstance) => n.props.accessibilityRole === 'switch' && n.props.accessibilityLabel === DESCRIBE_SETTING_LABEL)[0];
+    await act(async () => {
+      (sw.props.onValueChange as (v: boolean) => void)(false);
+    });
+    expect(setDescribeSurroundings).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('motion and reduce-motion', () => {
+  it('the glass tint swaps instantly under reduce-motion and cross-fades otherwise', async () => {
+    setup('OUTDOOR_NAV');
+    const tintOfPanel = (r: ReactTestRenderer): string[] =>
+      r.root.findAll((n: ReactTestInstance) => n.props.testID === 'glass-tint' && typeof n.type === 'string').map((n) => {
+        const flat = ([] as Array<Record<string, unknown>>).concat(...[n.props.style as Array<Record<string, unknown>>].flat(2)).filter(Boolean);
+        return String(flat.map((x) => x.backgroundColor).filter(Boolean).pop());
+      });
+    const r = await render(<StateBand mode="OUTDOOR_NAV" hero="Keep walking" reduceMotion />);
+    expect(tintOfPanel(r)).toEqual([tintOf(accents.outdoor, 0.18)]);
+    await act(async () => {
+      r.update(<StateBand mode="CROSSING" signal="WALK" hero="Walk signal on" reduceMotion />);
+    });
+    expect(tintOfPanel(r)).toEqual([tintOf(signalColors.WALK, 0.18)]);
+
+    // Without reduce-motion the settled layer stays until the 250 ms fade finishes.
+    const r2 = await render(<StateBand mode="OUTDOOR_NAV" hero="Keep walking" reduceMotion={false} />);
+    await act(async () => {
+      r2.update(<StateBand mode="CROSSING" signal="WALK" hero="Walk signal on" reduceMotion={false} />);
+    });
+    expect(tintOfPanel(r2)).toEqual([tintOf(accents.outdoor, 0.18)]);
+  });
+
+  it('the listening ring is a still halo under reduce-motion and an animated pulse otherwise', async () => {
+    setup('IDLE');
+    const ring = (r: ReactTestRenderer): Record<string, unknown> => {
+      const n = r.root.findAll((x: ReactTestInstance) => x.props.testID === 'talk-ring')[0];
+      return Object.assign({}, ...([n.props.style].flat(3).filter(Boolean) as Array<Record<string, unknown>>));
+    };
+    const r = await render(<TalkButton screenReader={false} reduceMotion />);
+    expect(ring(r).opacity).toBe(0);
+    await act(async () => {
+      (byLabel(r, TALK_LABEL).props.onPressIn as () => void)();
+    });
+    expect(ring(r).opacity).toBe(0.35);
+    await act(async () => {
+      (byLabel(r, TALK_HELD_LABEL).props.onPressOut as () => void)();
+    });
+    expect(ring(r).opacity).toBe(0);
+
+    const r2 = await render(<TalkButton screenReader={false} reduceMotion={false} />);
+    await act(async () => {
+      (byLabel(r2, TALK_LABEL).props.onPressIn as () => void)();
+    });
+    expect(typeof ring(r2).opacity).toBe('object'); // an Animated interpolation, not a number
+    await act(async () => {
+      (byLabel(r2, TALK_HELD_LABEL).props.onPressOut as () => void)();
+    });
+  });
+
+  it('a glass panel mounts visible under reduce-motion and animated otherwise; blur is optional', async () => {
+    setup('IDLE');
+    const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+    const r = await render(<GlassPanel reduceMotion testID="p"><Text>inside</Text></GlassPanel>);
+    const outer = r.root.findAll((n: ReactTestInstance) => n.props.testID === 'p' && typeof n.type === 'string')[0];
+    const style = Object.assign({}, ...([outer.props.style].flat(3).filter(Boolean) as Array<Record<string, unknown>>));
+    expect(Number((style.opacity as { __getValue?: () => number }).__getValue?.() ?? style.opacity)).toBe(1);
+    expect(renderedStrings(r)).toContain('inside');
+    expect(typeof isBlurAvailable()).toBe('boolean');
   });
 });

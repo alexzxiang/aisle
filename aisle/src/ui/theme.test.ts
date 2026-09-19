@@ -2,18 +2,28 @@ import { APP_MODES } from '../core/store';
 import type { SignalState } from '../core/contracts';
 import {
   MIN_BAND_CONTRAST,
+  MIN_SECONDARY_CONTRAST,
+  accentFor,
+  accents,
+  backdropSurface,
   bandColorFor,
-  bandColors,
+  bandSurface,
+  blend,
   colors,
   contrastRatio,
+  glass,
+  glassSurface,
+  motion,
   relativeLuminance,
   signalColors,
+  sizes,
+  tintOf,
   type,
 } from './theme';
 
 const SIGNALS: SignalState[] = ['WALK', 'DONT_WALK', 'COUNTDOWN', 'UNKNOWN'];
 
-describe('theme contrast', () => {
+describe('colour arithmetic', () => {
   it('computes WCAG luminance and ratio', () => {
     expect(relativeLuminance('#FFFFFF')).toBeCloseTo(1, 5);
     expect(relativeLuminance('#000000')).toBeCloseTo(0, 5);
@@ -21,65 +31,119 @@ describe('theme contrast', () => {
     expect(() => relativeLuminance('#FFF')).toThrow();
   });
 
-  it.each(Object.entries(bandColors))('band %s carries hero text at >= 7:1', (_name, hex) => {
-    expect(contrastRatio(colors.text, hex)).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
+  it('composites the way the compositor does', () => {
+    expect(blend('#FFFFFF', '#000000', 1)).toBe('#FFFFFF');
+    expect(blend('#FFFFFF', '#000000', 0)).toBe('#000000');
+    expect(blend('#FFFFFF', '#000000', 0.5)).toBe('#808080');
+    expect(tintOf('#2563EB', 0.18)).toBe('rgba(37,99,235,0.18)');
+  });
+});
+
+describe('glass contrast', () => {
+  it('primary text on a plain glass panel clears 7:1', () => {
+    expect(contrastRatio(colors.text, glassSurface())).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
   });
 
-  it.each(SIGNALS)('signal colour %s carries hero text at >= 7:1', (s) => {
-    expect(contrastRatio(colors.text, signalColors[s])).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
-  });
-
-  it('every mode x signal resolves to a band that clears 7:1', () => {
+  it('primary text on every accent-tinted band clears 7:1 (every mode x signal)', () => {
     for (const mode of APP_MODES) {
       for (const s of SIGNALS) {
-        const hex = bandColorFor(mode, s);
-        expect(contrastRatio(colors.text, hex)).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
+        const surface = bandSurface(accentFor(mode, s));
+        expect({ mode, s, ratio: contrastRatio(colors.text, surface) }).toEqual({ mode, s, ratio: expect.any(Number) });
+        expect(contrastRatio(colors.text, surface)).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
       }
     }
   });
 
-  it('meta text on the page background clears 7:1 too', () => {
-    expect(contrastRatio(colors.meta, colors.bg)).toBeGreaterThanOrEqual(7);
-    expect(contrastRatio(colors.text, colors.bg)).toBeGreaterThanOrEqual(7);
+  it('a band over the tinted top of the page still clears 7:1', () => {
+    for (const hex of [...Object.values(accents), ...Object.values(signalColors)]) {
+      expect(contrastRatio(colors.text, bandSurface(hex, backdropSurface(hex)))).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
+    }
+  });
+
+  it('secondary text clears 4.5:1 on the page, on glass and on every band', () => {
+    expect(contrastRatio(colors.secondary, colors.bg)).toBeGreaterThanOrEqual(MIN_SECONDARY_CONTRAST);
+    expect(contrastRatio(colors.secondary, glassSurface())).toBeGreaterThanOrEqual(MIN_SECONDARY_CONTRAST);
+    for (const hex of [...Object.values(accents), ...Object.values(signalColors)]) {
+      expect(contrastRatio(colors.secondary, bandSurface(hex))).toBeGreaterThanOrEqual(MIN_SECONDARY_CONTRAST);
+      expect(contrastRatio(colors.secondary, backdropSurface(hex))).toBeGreaterThanOrEqual(MIN_SECONDARY_CONTRAST);
+    }
+  });
+
+  it('primary text on the page background and the viewfinder text on the viewfinder clear 7:1', () => {
+    expect(contrastRatio(colors.text, colors.bg)).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
+    expect(contrastRatio(colors.viewfinderText, colors.viewfinder)).toBeGreaterThanOrEqual(MIN_BAND_CONTRAST);
+  });
+
+  it('the glass recipe matches DESIGN.md', () => {
+    expect(glass.fillAlpha).toBe(0.58);
+    expect(glass.fill).toBe('rgba(255,255,255,0.58)');
+    expect(glass.blurIntensity).toBe(40);
+    expect(glass.blurTint).toBe('light');
+    expect(glass.border).toBe('rgba(255,255,255,0.75)');
+    expect(glass.radius).toBe(24);
+    expect(glass.shadow).toEqual({ color: '#0F172A', opacity: 0.08, offsetY: 8, blur: 24 });
   });
 });
 
-describe('bandColorFor', () => {
-  it('encodes mode: night-blue walking, amber curb, teal indoors', () => {
-    expect(bandColorFor('OUTDOOR_NAV')).toBe(bandColors.outdoor);
-    expect(bandColorFor('APPROACH_CROSSING')).toBe(bandColors.outdoor);
-    expect(bandColorFor('AT_CURB')).toBe(bandColors.curb);
-    expect(bandColorFor('INDOOR_NAV')).toBe(bandColors.indoor);
-    expect(bandColorFor('TRANSITION')).toBe(bandColors.indoor);
-    expect(bandColorFor('IDLE')).toBe(bandColors.idle);
-    expect(bandColorFor('DONE')).toBe(bandColors.done);
+describe('accentFor', () => {
+  it('encodes mode: blue walking, amber approach and curb, sky transition, violet indoors, cyan item, teal checkout, green done', () => {
+    expect(accentFor('OUTDOOR_NAV')).toBe(accents.outdoor);
+    expect(accentFor('APPROACH_CROSSING')).toBe(accents.curb);
+    expect(accentFor('AT_CURB')).toBe(accents.curb);
+    expect(accentFor('TRANSITION')).toBe(accents.transition);
+    expect(accentFor('INDOOR_NAV')).toBe(accents.indoor);
+    expect(accentFor('AT_ITEM')).toBe(accents.item);
+    expect(accentFor('ITEM_PICKUP')).toBe(accents.item);
+    expect(accentFor('CHECKOUT_NAV')).toBe(accents.checkout);
+    expect(accentFor('IDLE')).toBe(accents.idle);
+    expect(accentFor('ONBOARDING')).toBe(accents.idle);
+    expect(accentFor('DONE')).toBe(accents.done);
+    expect(bandColorFor).toBe(accentFor);
   });
 
   it("uses OKO's convention while crossing: green walk, red hand, orange countdown, grey unknown", () => {
-    expect(bandColorFor('CROSSING', 'WALK')).toBe(signalColors.WALK);
-    expect(bandColorFor('CROSSING', 'DONT_WALK')).toBe(signalColors.DONT_WALK);
-    expect(bandColorFor('CROSSING', 'COUNTDOWN')).toBe(signalColors.COUNTDOWN);
-    expect(bandColorFor('CROSSING', 'UNKNOWN')).toBe(signalColors.UNKNOWN);
-    expect(bandColorFor('CROSSING')).toBe(signalColors.UNKNOWN);
+    expect(accentFor('CROSSING', 'WALK')).toBe(signalColors.WALK);
+    expect(accentFor('CROSSING', 'DONT_WALK')).toBe(signalColors.DONT_WALK);
+    expect(accentFor('CROSSING', 'COUNTDOWN')).toBe(signalColors.COUNTDOWN);
+    expect(accentFor('CROSSING', 'UNKNOWN')).toBe(signalColors.UNKNOWN);
+    expect(accentFor('CROSSING')).toBe(signalColors.UNKNOWN);
+    expect(signalColors).toEqual({ WALK: '#16A34A', DONT_WALK: '#DC2626', COUNTDOWN: '#EA580C', UNKNOWN: '#6B7280' });
   });
 
   it('at the curb a known signal state takes over from amber', () => {
-    expect(bandColorFor('AT_CURB', 'WALK')).toBe(signalColors.WALK);
-    expect(bandColorFor('AT_CURB', 'UNKNOWN')).toBe(bandColors.curb);
+    expect(accentFor('AT_CURB', 'WALK')).toBe(signalColors.WALK);
+    expect(accentFor('AT_CURB', 'UNKNOWN')).toBe(accents.curb);
   });
 
   it('ignores the signal anywhere else', () => {
-    expect(bandColorFor('OUTDOOR_NAV', 'WALK')).toBe(bandColors.outdoor);
-    expect(bandColorFor('INDOOR_NAV', 'DONT_WALK')).toBe(bandColors.indoor);
+    expect(accentFor('OUTDOOR_NAV', 'WALK')).toBe(accents.outdoor);
+    expect(accentFor('INDOOR_NAV', 'DONT_WALK')).toBe(accents.indoor);
   });
 });
 
-describe('type scale', () => {
-  it('has exactly three sizes: hero 44, body 20, meta 16', () => {
-    expect(type.hero.fontSize).toBe(44);
+describe('type scale, targets and motion', () => {
+  it('has exactly three sizes: hero 36-40 at weight 800 with tight tracking, body 18-20, meta 15', () => {
+    expect(type.hero.fontSize).toBeGreaterThanOrEqual(36);
+    expect(type.hero.fontSize).toBeLessThanOrEqual(40);
     expect(type.hero.fontWeight).toBe('800');
-    expect(type.body.fontSize).toBe(20);
-    expect(type.meta.fontSize).toBe(16);
+    expect(type.hero.letterSpacing).toBeLessThan(0);
+    expect(type.body.fontSize).toBeGreaterThanOrEqual(18);
+    expect(type.body.fontSize).toBeLessThanOrEqual(20);
+    expect(type.meta.fontSize).toBe(15);
     expect(Object.keys(type)).toEqual(['hero', 'body', 'meta']);
+  });
+
+  it('nothing is smaller than 44 pt and the talk button is 88 pt round', () => {
+    expect(sizes.minTarget).toBe(44);
+    expect(sizes.secondaryHeight).toBeGreaterThanOrEqual(44);
+    expect(sizes.talkDiameter).toBe(88);
+    expect(sizes.cameraAspect).toBeCloseTo(4 / 3);
+  });
+
+  it('motion tokens match DESIGN.md', () => {
+    expect(motion.bandFadeMs).toBe(250);
+    expect(motion.panelSlidePx).toBe(8);
+    expect(motion.pressScale).toBe(0.96);
+    expect(motion.listenPulseMs).toBe(1200);
   });
 });

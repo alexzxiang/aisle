@@ -8,19 +8,21 @@
  * returns to IDLE through the abort edge, the only legal exit (01 section 1).
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StateBand } from './StateBand';
 import { Button } from './Button';
-import { useBus, useMode, useOptionalService, useStoreSlice } from './hooks';
+import { Backdrop, GlassPanel } from './Glass';
+import { useBus, useMode, useOptionalService, useResolvedReduceMotion, useStoreSlice } from './hooks';
 import { heroFor, spokenLines, stepsFor, type OnboardingStep, type StepServices } from './onboardingSteps';
 import type { OnboardingPorts } from './ports';
-import { colors, fontScaleCap, sizes, space, type } from './theme';
+import { accentFor, colors, fontScaleCap, sizes, space, tabular, type } from './theme';
 import { services } from '../core/services';
 
 export const PLAY_AGAIN_LABEL = 'Play it again';
 export const NEXT_LABEL = 'Next';
 export const DONE_LABEL = 'Done';
 export const SKIP_LABEL = 'Skip practice';
+export const WAITING_NOTE = 'When you press Done, guidance starts as soon as the route is ready.';
 
 export interface OnboardingScreenProps {
   onOpenDebug?: () => void;
@@ -28,7 +30,8 @@ export interface OnboardingScreenProps {
   reduceMotion?: boolean;
 }
 
-export function OnboardingScreen({ onOpenDebug, ports, reduceMotion }: OnboardingScreenProps): React.JSX.Element {
+export function OnboardingScreen({ onOpenDebug, ports, reduceMotion: reduceMotionProp }: OnboardingScreenProps): React.JSX.Element {
+  const reduceMotion = useResolvedReduceMotion(reduceMotionProp);
   const mode = useMode();
   const firstRun = useStoreSlice((s) => s.firstRun);
   const targetItem = useStoreSlice((s) => s.targetItem);
@@ -106,36 +109,38 @@ export function OnboardingScreen({ onOpenDebug, ports, reduceMotion }: Onboardin
 
   return (
     <View style={styles.screen}>
+      <Backdrop accent={accentFor(mode)} reduceMotion={reduceMotion} />
       <StateBand
         mode={mode}
         modeWord={step.modeWord}
         hero={heroFor(step)}
         onLongPressMode={onOpenDebug}
         reduceMotion={reduceMotion}
-        style={styles.band}
       />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        {step.detail ? (
-          <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.detail}>
-            {step.detail}
+        <GlassPanel key={step.id} reduceMotion={reduceMotion} contentStyle={styles.card}>
+          {step.detail ? (
+            <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.detail}>
+              {step.detail}
+            </Text>
+          ) : null}
+          <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.progress}>
+            {`Step ${index + 1} of ${steps.length}`}
           </Text>
-        ) : null}
-        <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.progress}>
-          {`Step ${index + 1} of ${steps.length}`}
-        </Text>
-        {waitingForRoute ? (
-          <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.detail}>
-            When you press Done, guidance starts as soon as the route is ready.
-          </Text>
-        ) : null}
+          {waitingForRoute ? (
+            <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.detail}>
+              {WAITING_NOTE}
+            </Text>
+          ) : null}
+        </GlassPanel>
       </ScrollView>
       <View style={styles.controls}>
         <View style={styles.row}>
-          <Button label={PLAY_AGAIN_LABEL} onPress={again} hint="Repeats this step" style={styles.half} />
-          <Button label={last ? DONE_LABEL : NEXT_LABEL} onPress={next} hint={last ? 'Finishes practice' : 'Moves to the next step'} style={styles.half} />
+          <Button label={PLAY_AGAIN_LABEL} onPress={again} hint="Repeats this step" reduceMotion={reduceMotion} style={styles.half} />
+          <Button label={last ? DONE_LABEL : NEXT_LABEL} onPress={next} hint={last ? 'Finishes practice' : 'Moves to the next step'} reduceMotion={reduceMotion} style={styles.half} />
         </View>
         {!firstRun ? (
-          <Button label={SKIP_LABEL} onPress={finish} size="compact" quiet hint="Leaves practice now" />
+          <Button label={SKIP_LABEL} onPress={finish} size="compact" quiet hint="Leaves practice now" reduceMotion={reduceMotion} />
         ) : null}
       </View>
     </View>
@@ -146,17 +151,20 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
-  },
-  band: {
-    flexGrow: 1,
-    flexShrink: 1,
+    paddingTop: Platform.OS === 'ios' ? 60 : space.xl,
   },
   scroll: {
-    flexGrow: 0,
+    flex: 1,
   },
   content: {
     paddingHorizontal: sizes.gutter,
-    paddingTop: space.l,
+    paddingTop: space.m,
+    paddingBottom: space.m,
+    gap: space.s,
+  },
+  card: {
+    paddingHorizontal: space.xl,
+    paddingVertical: space.l,
     gap: space.s,
   },
   detail: {
@@ -165,13 +173,13 @@ const styles = StyleSheet.create({
   },
   progress: {
     ...type.meta,
-    color: colors.meta,
-    fontVariant: ['tabular-nums'],
+    color: colors.secondary,
+    ...tabular,
   },
   controls: {
     paddingHorizontal: sizes.gutter,
-    paddingTop: space.l,
-    paddingBottom: space.xxl,
+    paddingTop: space.s,
+    paddingBottom: space.xl,
     gap: space.m,
   },
   row: {

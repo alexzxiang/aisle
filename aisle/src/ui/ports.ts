@@ -63,3 +63,25 @@ export interface DebugMetrics {
 
 /** What the onboarding demonstrations need: the same two channels. */
 export type OnboardingPorts = AudioPorts;
+
+/**
+ * One line of the conversation (src/core/conversation.ts `ConversationEntry`,
+ * restated structurally so the screens compile and test before that module
+ * lands and never import it).
+ */
+export interface ConversationEntryLike {
+  id: string;
+  role: 'you' | 'aisle';
+  text: string;
+  t: number;
+  source?: 'voice' | 'keyboard' | 'speech' | 'describe' | 'prompt';
+}
+
+/** src/core/conversation.ts `ConversationLog`, the two members the screens read. */
+export interface ConversationLogPort {
+  entries(): readonly ConversationEntryLike[];
+  subscribe(cb: (entries: readonly ConversationEntryLike[]) => void): () => void;
+}
+
+/** src/core/describer.ts `describeNow`: speaks and logs a description, resolves to it (or null when nothing was said). */
+export type DescribeNow = () => Promise<string | null> | void;

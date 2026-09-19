@@ -4,9 +4,12 @@
  * with whatever optional ports exist in that build:
  *
  *   <Root voice={voicePortFrom(voiceInput)} audio={audioPortsFrom(channels)}
+ *         conversation={services.get('conversation')} describeNow={describer.describeNow}
  *         metrics={metrics} mockControls={<MockControls/>} betaNotice={routeNotice} />
  *
- * (`adapters.ts` has the two helpers.)
+ * (`adapters.ts` has the two helpers.) When no `conversation` prop is given,
+ * Root looks for a log registered under 'conversation' in the service
+ * registry, so an App.tsx that registers it needs no extra wiring.
  *
  * IDLE -> HomeScreen; ONBOARDING -> OnboardingScreen; everything else,
  * including DONE, -> NavScreen. The DebugPanel is reachable from every screen
@@ -19,8 +22,8 @@ import { NavScreen } from './NavScreen';
 import { OnboardingScreen } from './OnboardingScreen';
 import { DebugPanel } from './DebugPanel';
 import { SettingsSheet } from './SettingsSheet';
-import { useMode } from './hooks';
-import type { AudioPorts, DebugMetrics, VoicePort } from './ports';
+import { useMode, useRegisteredConversation } from './hooks';
+import type { AudioPorts, ConversationLogPort, DebugMetrics, DescribeNow, VoicePort } from './ports';
 import { colors } from './theme';
 
 export interface RootProps {
@@ -30,17 +33,23 @@ export interface RootProps {
   voice?: VoicePort;
   /** Beacon and ticker: onboarding demonstrations (02 Task 5) and the DebugPanel mutes (Task 9). */
   audio?: AudioPorts;
+  /** The conversation log the transcript follows (src/core/conversation.ts). Falls back to the registry. */
+  conversation?: ConversationLogPort;
+  /** The scene describer's `describeNow` (src/core/describer.ts); drives the "Describe surroundings" pill. */
+  describeNow?: DescribeNow;
   /** Tier latencies and speech counters for the DebugPanel. */
   metrics?: DebugMetrics;
   /** Google's walking-routes beta sentence, supplied by B. */
   betaNotice?: string;
-  /** Tests: freeze the clock and skip the band animation. */
+  /** Tests: freeze the clock and skip the animations. */
   now?: number;
   reduceMotion?: boolean;
 }
 
 export function Root(props: RootProps): React.JSX.Element {
-  const { mockControls, voice, audio, metrics, betaNotice, now, reduceMotion } = props;
+  const { mockControls, voice, audio, describeNow, metrics, betaNotice, now, reduceMotion } = props;
+  const registered = useRegisteredConversation();
+  const conversation = props.conversation ?? registered;
   const mode = useMode();
   const [debugOpen, setDebugOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -57,22 +66,33 @@ export function Root(props: RootProps): React.JSX.Element {
         onOpenDebug={openDebug}
         onOpenSettings={openSettings}
         voice={voice}
+        conversation={conversation}
         betaNotice={betaNotice}
+        now={now}
         reduceMotion={reduceMotion}
       />
     );
   } else if (mode === 'ONBOARDING') {
     screen = <OnboardingScreen onOpenDebug={openDebug} ports={audio} reduceMotion={reduceMotion} />;
   } else {
-    screen = <NavScreen onOpenDebug={openDebug} voice={voice} now={now} reduceMotion={reduceMotion} />;
+    screen = (
+      <NavScreen
+        onOpenDebug={openDebug}
+        voice={voice}
+        conversation={conversation}
+        describeNow={describeNow}
+        now={now}
+        reduceMotion={reduceMotion}
+      />
+    );
   }
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       {screen}
       <DebugPanel visible={debugOpen} onClose={closeDebug} metrics={metrics} audio={audio} mockControls={mockControls} />
-      <SettingsSheet visible={settingsOpen} onClose={closeSettings} />
+      <SettingsSheet visible={settingsOpen} onClose={closeSettings} reduceMotion={reduceMotion} />
     </View>
   );
 }

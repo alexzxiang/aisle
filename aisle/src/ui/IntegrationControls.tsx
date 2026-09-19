@@ -67,6 +67,6 @@ export function IntegrationControls(props: IntegrationControlsProps): React.JSX.
 const styles = StyleSheet.create({
   root: { paddingVertical: space.m, gap: space.s },
   title: { fontSize: 18, fontWeight: '700', color: colors.text },
-  mono: { fontFamily: monoFontFamily, fontSize: 12, color: colors.meta },
+  mono: { fontFamily: monoFontFamily, fontSize: 12, color: colors.secondary },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
 });

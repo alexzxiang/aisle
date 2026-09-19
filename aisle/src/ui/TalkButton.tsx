@@ -1,22 +1,27 @@
 /**
- * Push-to-talk: full width, 96 pt, the largest target on the screen
- * (DESIGN.md rule 7). Held = "Listening"; released = "Hold to talk".
+ * Push-to-talk: an 88 pt round glass button with its label beneath, the
+ * largest and most recognisable target on the screen (DESIGN.md, Targets).
+ * Held = "Listening" with a pulsing ring; released = "Hold to talk".
  *
  * Two gestures, chosen by whether a screen reader is running:
  *   - Direct touch: press-in opens the mic, press-out closes it.
  *   - VoiceOver / TalkBack: a standard double-tap delivers press-in and
  *     press-out milliseconds apart, so the mic would open and close at once.
  *     The button becomes a toggle instead: activate to start, activate again
- *     to stop, with `accessibilityState.busy` while listening (DESIGN.md rule 7).
+ *     to stop, with `accessibilityState.busy` while listening.
+ *
+ * Motion: the press scales the disc to 0.96; while listening a ring pulses
+ * outward on a 1.2 s loop. Under reduce-motion the disc does not scale and
+ * the ring is a still halo, so the listening state is still visible.
  *
  * The mic is closed on unmount either way, so a screen change can never leave
  * a recording session (and therefore suppressed haptics) behind.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { colors, fontScaleCap, sizes, space, type } from './theme';
+import { Animated, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { colors, fontScaleCap, glass, motion, signalColors, sizes, space, type } from './theme';
 import type { VoicePort } from './ports';
-import { useLatest, useScreenReader } from './hooks';
+import { useLatest, usePressScale, useResolvedReduceMotion, useScreenReader } from './hooks';
 
 export const TALK_LABEL = 'Hold to talk';
 export const TALK_HELD_LABEL = 'Listening';
@@ -35,14 +40,24 @@ export interface TalkButtonProps {
   style?: StyleProp<ViewStyle>;
   /** Tests: force toggle (true) or hold (false) mode without stubbing AccessibilityInfo. */
   screenReader?: boolean;
+  reduceMotion?: boolean;
 }
 
-export function TalkButton({ voice, onStart, onStop, hint, style, screenReader }: TalkButtonProps): React.JSX.Element {
+let blurView: React.ComponentType<{ intensity?: number; tint?: string; style?: StyleProp<ViewStyle> }> | null = null;
+try {
+  blurView = (require('expo-blur') as { BlurView: typeof blurView }).BlurView;
+} catch {
+  blurView = null;
+}
+
+export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, reduceMotion: reduceMotionProp }: TalkButtonProps): React.JSX.Element {
   const [held, setHeld] = useState(false);
   const heldRef = useLatest(held);
   const voiceRef = useLatest(voice);
   const systemScreenReader = useScreenReader();
   const toggleMode = screenReader ?? systemScreenReader;
+  const reduceMotion = useResolvedReduceMotion(reduceMotionProp);
+  const press = usePressScale(reduceMotion);
 
   const stop = useCallback(() => {
     if (!heldRef.current) return;
@@ -86,48 +101,147 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader }
     stopRef.current();
   }, [toggleMode, stopRef]);
 
+  // ---- The listening ring: one 1.2 s loop while held ----
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!held || reduceMotion) {
+      pulse.stopAnimation();
+      pulse.setValue(0);
+      return undefined;
+    }
+    const loop = Animated.loop(
+      Animated.timing(pulse, { toValue: 1, duration: motion.listenPulseMs, useNativeDriver: true }),
+      { resetBeforeIteration: true },
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [held, reduceMotion, pulse]);
+
+  const ringStyle = reduceMotion
+    ? { opacity: held ? 0.35 : 0, transform: [{ scale: 1.18 }] }
+    : {
+      opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
+      transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.55] }) }],
+    };
+
+  const onPressIn = toggleMode
+    ? press.onPressIn
+    : () => {
+      press.onPressIn();
+      start();
+    };
+  const onPressOut = toggleMode
+    ? press.onPressOut
+    : () => {
+      press.onPressOut();
+      stop();
+    };
+
   const label = toggleMode
     ? (held ? TALK_TOGGLE_HELD_LABEL : TALK_TOGGLE_LABEL)
     : (held ? TALK_HELD_LABEL : TALK_LABEL);
 
+  const Blur = blurView;
+
   return (
     <Pressable
-      onPressIn={toggleMode ? undefined : start}
-      onPressOut={toggleMode ? undefined : stop}
+      onPressIn={toggleMode ? undefined : onPressIn}
+      onPressOut={toggleMode ? undefined : onPressOut}
       onPress={toggleMode ? toggle : undefined}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ busy: held }}
       accessibilityHint={hint ?? (toggleMode ? TALK_HINT_TOGGLE : TALK_HINT_HOLD)}
-      style={({ pressed }) => [styles.button, (pressed || held) && styles.held, style]}
+      style={[styles.wrap, style]}
     >
-      <View style={styles.inner}>
-        <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.label}>
-          {label}
-        </Text>
+      <View style={styles.discArea}>
+        <Animated.View pointerEvents="none" style={[styles.ring, held && styles.ringHeld, ringStyle]} testID="talk-ring" />
+        <Animated.View style={[styles.discShadow, { transform: [{ scale: press.scale }] }]}>
+          <View style={[styles.disc, held && styles.discHeld]}>
+            {Blur ? <Blur intensity={glass.blurIntensity} tint={glass.blurTint} style={StyleSheet.absoluteFill} /> : null}
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.discFill, held && styles.discFillHeld]} />
+            <View style={[styles.dot, held && styles.dotHeld]} />
+          </View>
+        </Animated.View>
       </View>
+      <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.label}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
+const RING_PAD = 18;
+
 const styles = StyleSheet.create({
-  button: {
-    width: '100%',
-    height: sizes.talkHeight,
-    backgroundColor: colors.talk,
-    borderRadius: sizes.radius,
+  wrap: {
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.l,
+    paddingVertical: space.s,
+    gap: space.s,
   },
-  held: {
-    backgroundColor: colors.talkHeld,
-  },
-  inner: {
+  discArea: {
+    width: sizes.talkDiameter + RING_PAD * 2,
+    height: sizes.talkDiameter + RING_PAD * 2,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  ring: {
+    position: 'absolute',
+    width: sizes.talkDiameter,
+    height: sizes.talkDiameter,
+    borderRadius: sizes.talkDiameter / 2,
+    borderWidth: 3,
+    borderColor: colors.text,
+    opacity: 0,
+  },
+  ringHeld: {
+    borderColor: signalColors.DONT_WALK,
+  },
+  discShadow: {
+    shadowColor: glass.shadow.color,
+    shadowOpacity: glass.shadow.opacity * 1.5,
+    shadowOffset: { width: 0, height: glass.shadow.offsetY },
+    shadowRadius: glass.shadow.blur / 2,
+    elevation: 6,
+    borderRadius: sizes.talkDiameter / 2,
+  },
+  disc: {
+    width: sizes.talkDiameter,
+    height: sizes.talkDiameter,
+    borderRadius: sizes.talkDiameter / 2,
+    overflow: 'hidden',
+    borderWidth: glass.borderWidth,
+    borderColor: glass.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  discHeld: {
+    borderColor: signalColors.DONT_WALK,
+    borderWidth: 2,
+  },
+  discFill: {
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
+  discFillHeld: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  dot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.text,
+  },
+  dotHeld: {
+    backgroundColor: signalColors.DONT_WALK,
+    width: 26,
+    height: 26,
+    borderRadius: 6,
   },
   label: {
     ...type.body,
     fontWeight: '700',
     color: colors.text,
+    textAlign: 'center',
   },
 });

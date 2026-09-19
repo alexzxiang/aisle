@@ -17,7 +17,7 @@ import { useBus, useNow, useOptionalService, useStoreSlice, useUiFacts } from '.
 import { DASH, eventLines, fmtDeg, fmtFix, fmtFps, fmtHeading, fmtMs, fmtNum } from './debugFormat';
 import { ageText } from './derive';
 import type { AudioPorts, DebugMetrics } from './ports';
-import { colors, monoFontFamily, sizes, space } from './theme';
+import { colors, glass, monoFontFamily, sizes, space } from './theme';
 
 export const DEBUG_TITLE = 'Debug';
 export const DEBUG_CLOSE_LABEL = 'Close debug panel';
@@ -322,15 +322,22 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: sizes.gutter,
     paddingVertical: space.l,
-    gap: space.l,
+    gap: space.m,
   },
   section: {
     gap: space.xs,
+    backgroundColor: colors.control,
+    borderWidth: glass.borderWidth,
+    borderColor: glass.border,
+    borderRadius: sizes.radiusControl,
+    paddingHorizontal: space.l,
+    paddingVertical: space.m,
   },
   sectionTitle: {
     fontFamily: monoFontFamily,
     fontSize: 13,
-    color: colors.meta,
+    fontWeight: '700',
+    color: colors.secondary,
     marginBottom: space.xs,
   },
   mono: {

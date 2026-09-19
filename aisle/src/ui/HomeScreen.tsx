@@ -1,19 +1,22 @@
 /**
  * Home: one question, "What do you need?", answered by voice or by a text
  * field (keyboard dictation is the zero-risk fallback that always ships,
- * 02 Task 7). Below it, practice and settings, then the three sentences the
- * first launch owes the user: disclaimer, privacy, walking-routes beta.
+ * 02 Task 7). Below it, practice and settings, the conversation so far, then
+ * the three sentences the first launch owes the user: disclaimer, privacy,
+ * walking-routes beta.
  */
 import React, { useCallback, useState } from 'react';
-import { Keyboard, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { StateBand } from './StateBand';
 import { TalkButton } from './TalkButton';
+import { TranscriptPanel } from './TranscriptPanel';
 import { Button } from './Button';
+import { Backdrop, GlassPanel } from './Glass';
 import { heroText, visibleError } from './derive';
-import { useBus, useMode, useNow, useOptionalService, useStoreSlice, useUiFacts } from './hooks';
+import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
 import { DISCLAIMER_TEXT, PRIVACY_TEXT, WALKING_BETA_FALLBACK, itemAcknowledgement, normalizeTypedItem } from './copy';
-import type { VoicePort } from './ports';
-import { colors, fontScaleCap, sizes, space, type } from './theme';
+import type { ConversationLogPort, VoicePort } from './ports';
+import { accentFor, colors, fontScaleCap, sizes, space, type } from './theme';
 
 export const ITEM_FIELD_LABEL = 'What do you need';
 export const ITEM_FIELD_PLACEHOLDER = 'For example, eggs';
@@ -22,11 +25,14 @@ export const PRACTICE_LABEL = 'Practice the vibrations';
 export const SETTINGS_LABEL = 'Settings';
 export const CANCEL_LABEL = 'Cancel';
 export const PENDING_NOTE = 'Guidance starts when the route is ready.';
+export const HOME_TRANSCRIPT_MAX = 3;
 
 export interface HomeScreenProps {
   onOpenDebug?: () => void;
   onOpenSettings?: () => void;
   voice?: VoicePort;
+  /** The conversation log; the last lines show once there are any. */
+  conversation?: ConversationLogPort;
   /** Google's walking-routes beta sentence; B supplies it, we display it. */
   betaNotice?: string;
   /** Tests: freeze the clock the error line's age is computed against. */
@@ -35,7 +41,8 @@ export interface HomeScreenProps {
 }
 
 export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
-  const { onOpenDebug, onOpenSettings, voice, betaNotice = WALKING_BETA_FALLBACK, now: nowOverride, reduceMotion } = props;
+  const { onOpenDebug, onOpenSettings, voice, conversation, betaNotice = WALKING_BETA_FALLBACK, now: nowOverride } = props;
+  const reduceMotion = useResolvedReduceMotion(props.reduceMotion);
   const mode = useMode();
   const setMode = useStoreSlice((s) => s.setMode);
   const abort = useStoreSlice((s) => s.abort);
@@ -45,6 +52,7 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const speech = useOptionalService('speech');
   const facts = useUiFacts();
   const now = useNow(1000, nowOverride);
+  const entries = useConversationEntries(conversation);
   const [draft, setDraft] = useState('');
 
   const submit = useCallback(() => {
@@ -67,9 +75,11 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const pending = mode === 'IDLE' && targetItem !== null;
   const hero = heroText(mode, facts, now, { item: targetItem, side: null });
   const error = visibleError(facts, now);
+  const accent = accentFor(mode);
 
   return (
     <View style={styles.screen}>
+      <Backdrop accent={accent} reduceMotion={reduceMotion} />
       <StateBand mode={mode} hero={hero} onLongPressMode={onOpenDebug} reduceMotion={reduceMotion} />
       <ScrollView
         style={styles.scroll}
@@ -77,13 +87,13 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        <View style={styles.fieldRow}>
+        <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.fieldRow}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={submit}
             placeholder={ITEM_FIELD_PLACEHOLDER}
-            placeholderTextColor={colors.meta}
+            placeholderTextColor={colors.placeholder}
             returnKeyType="done"
             autoCapitalize="none"
             autoCorrect
@@ -93,8 +103,8 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
             maxFontSizeMultiplier={fontScaleCap.body}
             style={styles.field}
           />
-          <Button label={FIND_LABEL} onPress={submit} size="compact" disabled={normalizeTypedItem(draft) === null} style={styles.find} />
-        </View>
+          <Button label={FIND_LABEL} onPress={submit} size="compact" primary disabled={normalizeTypedItem(draft) === null} reduceMotion={reduceMotion} style={styles.find} />
+        </GlassPanel>
 
         {error ? (
           <Text accessibilityRole="alert" allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.error}>
@@ -102,21 +112,25 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
           </Text>
         ) : null}
 
-        <TalkButton voice={voice} />
+        <TalkButton voice={voice} reduceMotion={reduceMotion} />
 
         {pending ? (
-          <View style={styles.row}>
+          <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.pendingRow}>
             <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={[styles.detail, styles.half]}>
               {PENDING_NOTE}
             </Text>
-            <Button label={CANCEL_LABEL} onPress={abort} size="compact" quiet hint="Drops this request" />
-          </View>
+            <Button label={CANCEL_LABEL} onPress={abort} size="compact" quiet hint="Drops this request" reduceMotion={reduceMotion} />
+          </GlassPanel>
         ) : null}
 
         <View style={styles.row}>
-          <Button label={PRACTICE_LABEL} onPress={practice} hint="Replays the one-minute vibration lesson" style={styles.half} />
-          <Button label={SETTINGS_LABEL} onPress={onOpenSettings} hint="Speaking rate, training mode, headphones" style={styles.half} />
+          <Button label={PRACTICE_LABEL} onPress={practice} hint="Replays the one-minute vibration lesson" reduceMotion={reduceMotion} style={styles.half} />
+          <Button label={SETTINGS_LABEL} onPress={onOpenSettings} hint="Speaking rate, training mode, describing, headphones" reduceMotion={reduceMotion} style={styles.half} />
         </View>
+
+        {entries.length > 0 ? (
+          <TranscriptPanel entries={entries} max={HOME_TRANSCRIPT_MAX} showDescribe={false} reduceMotion={reduceMotion} style={styles.transcript} />
+        ) : null}
 
         <View style={styles.notes} accessibilityRole="summary">
           <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.note}>
@@ -138,31 +152,41 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
+    paddingTop: Platform.OS === 'ios' ? 60 : space.xl,
   },
   scroll: {
     flex: 1,
   },
   content: {
     paddingHorizontal: sizes.gutter,
-    paddingTop: space.l,
+    paddingTop: space.m,
     paddingBottom: space.xxl,
     gap: space.m,
   },
   fieldRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: space.s,
+    padding: space.s,
   },
   field: {
     flex: 1,
     minHeight: sizes.secondaryHeight,
     ...type.body,
     color: colors.text,
-    backgroundColor: colors.control,
-    borderRadius: sizes.radius,
+    backgroundColor: colors.field,
+    borderRadius: sizes.radiusControl,
     paddingHorizontal: space.l,
   },
   find: {
     minHeight: sizes.secondaryHeight,
+  },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.m,
+    paddingVertical: space.s,
+    paddingHorizontal: space.l,
   },
   row: {
     flexDirection: 'row',
@@ -171,24 +195,27 @@ const styles = StyleSheet.create({
   half: {
     flex: 1,
   },
+  transcript: {
+    marginHorizontal: 0,
+  },
   notes: {
     paddingTop: space.l,
+    paddingHorizontal: space.xs,
     gap: space.s,
   },
   detail: {
     ...type.body,
     color: colors.text,
-    alignSelf: 'center',
   },
   error: {
     ...type.body,
     color: colors.text,
     paddingVertical: space.s,
+    paddingHorizontal: space.xs,
   },
   note: {
     ...type.meta,
     fontWeight: '400',
-    color: colors.meta,
-    lineHeight: 22,
+    color: colors.secondary,
   },
 });

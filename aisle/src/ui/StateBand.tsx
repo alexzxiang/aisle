@@ -1,11 +1,11 @@
 /**
- * The state band: the one memorable element (src/ui/DESIGN.md rules 1-3).
+ * The state band: the one memorable element (src/ui/DESIGN.md, "The band").
  *
- * Full-bleed, colour-coded by mode (and by signal state while crossing), with
- * the mode word above and the current instruction as the hero. The hero is the
- * single live region in the app, so a screen reader announces exactly one
- * changing thing. The only animation in Aisle is this band's 250 ms colour
- * cross-fade, and it is skipped under reduce-motion.
+ * An accent-tinted glass panel, colour-coded by mode (and by signal state
+ * while crossing), with the mode word above and the current instruction as
+ * the hero. The hero is the single live region in the app, so a screen reader
+ * announces exactly one changing thing. The accent cross-fades over 250 ms on
+ * a mode or signal change (inside `GlassPanel`), skipped under reduce-motion.
  *
  * Screen readers (DESIGN.md rule 9): `accessibilityLiveRegion` is honoured by
  * TalkBack only. On iOS the app's own speech carries the meaning, and reading
@@ -19,12 +19,13 @@
  * The mode word is also the DebugPanel's door: a 1.5 s long-press, never a
  * three-finger tap (VoiceOver) or a shake (Expo dev menu).
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { AppMode, SignalState } from '../core/contracts';
-import { bandColorFor, colors, fontScaleCap, motion, sizes, space, type } from './theme';
+import { accentFor, colors, fontScaleCap, sizes, space, type } from './theme';
 import { modeWord as modeWordFor } from './derive';
-import { useLatest, useOptionalService, useReduceMotion, useScreenReader } from './hooks';
+import { GlassPanel } from './Glass';
+import { useLatest, useOptionalService, useResolvedReduceMotion, useScreenReader } from './hooks';
 
 export const DEBUG_LONG_PRESS_MS = 1500;
 /** How long app speech gets to pick up a hero change before VoiceOver reads it. */
@@ -115,108 +116,86 @@ export interface StateBandProps {
 export function StateBand(props: StateBandProps): React.JSX.Element {
   const { mode, hero, signal = 'UNKNOWN', onLongPressMode, style } = props;
   const word = props.modeWord ?? modeWordFor(mode);
-  const target = bandColorFor(mode, signal);
+  const accent = accentFor(mode, signal);
 
-  const systemReduceMotion = useReduceMotion();
-  const reduceMotion = props.reduceMotion ?? systemReduceMotion;
+  const reduceMotion = useResolvedReduceMotion(props.reduceMotion);
   const systemScreenReader = useScreenReader();
   const screenReader = props.screenReader ?? systemScreenReader;
   const speech = useOptionalService('speech') as SpeechCarrier | undefined;
   useHeroAnnouncement(hero, { screenReader, speech, announce: props.announce });
 
-  // Two layers: the settled colour underneath, the incoming colour fading in.
-  const [base, setBase] = useState(target);
-  const [incoming, setIncoming] = useState<string | null>(null);
-  const fade = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (target === base) return;
-    if (reduceMotion) {
-      setBase(target);
-      setIncoming(null);
-      fade.setValue(0);
-      return;
-    }
-    setIncoming(target);
-    fade.setValue(0);
-    const anim = Animated.timing(fade, {
-      toValue: 1,
-      duration: motion.bandFadeMs,
-      useNativeDriver: false,
-    });
-    anim.start(({ finished }) => {
-      if (!finished) return;
-      setBase(target);
-      setIncoming(null);
-      fade.setValue(0);
-    });
-    return () => anim.stop();
-  }, [target, base, reduceMotion, fade]);
-
   return (
-    <View style={[styles.band, { backgroundColor: base }, style]}>
-      {incoming !== null ? (
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: incoming, opacity: fade }]}
-        />
-      ) : null}
-
-      <View style={styles.content}>
-        <Pressable
-          onLongPress={onLongPressMode}
-          delayLongPress={DEBUG_LONG_PRESS_MS}
-          disabled={onLongPressMode === undefined}
-          accessibilityRole="button"
-          accessibilityLabel={`Mode: ${word}`}
-          accessibilityHint={onLongPressMode ? 'Press and hold to open the debug panel' : undefined}
-          style={styles.modeTarget}
-        >
-          <Text
-            allowFontScaling
-            maxFontSizeMultiplier={fontScaleCap.body}
-            style={styles.modeWord}
-          >
-            {word}
-          </Text>
-        </Pressable>
-
+    <GlassPanel tint={accent} reduceMotion={reduceMotion} style={[styles.band, style]} contentStyle={styles.content} testID="state-band">
+      <View style={[styles.accentBar, { backgroundColor: accent }]} pointerEvents="none" />
+      <Pressable
+        onLongPress={onLongPressMode}
+        delayLongPress={DEBUG_LONG_PRESS_MS}
+        disabled={onLongPressMode === undefined}
+        accessibilityRole="button"
+        accessibilityLabel={`Mode: ${word}`}
+        accessibilityHint={onLongPressMode ? 'Press and hold to open the debug panel' : undefined}
+        style={styles.modeTarget}
+      >
+        <View style={[styles.modeDot, { backgroundColor: accent }]} />
         <Text
-          accessibilityRole="header"
-          accessibilityLiveRegion="polite"
-          accessible
           allowFontScaling
-          maxFontSizeMultiplier={fontScaleCap.hero}
-          style={styles.hero}
+          maxFontSizeMultiplier={fontScaleCap.body}
+          style={styles.modeWord}
         >
-          {hero}
+          {word}
         </Text>
-      </View>
-    </View>
+      </Pressable>
+
+      <Text
+        accessibilityRole="header"
+        accessibilityLiveRegion="polite"
+        accessible
+        allowFontScaling
+        maxFontSizeMultiplier={fontScaleCap.hero}
+        style={styles.hero}
+      >
+        {hero}
+      </Text>
+    </GlassPanel>
   );
 }
 
 const styles = StyleSheet.create({
   band: {
-    width: '100%',
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-    minHeight: 220,
-    paddingTop: space.xxl + space.xl,
-    paddingBottom: space.xl,
-    paddingHorizontal: sizes.gutter,
+    marginHorizontal: sizes.gutter,
   },
   content: {
-    width: '100%',
+    paddingTop: space.l,
+    paddingBottom: space.xl,
+    paddingHorizontal: space.xl,
+    justifyContent: 'flex-end',
+  },
+  accentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 5,
   },
   modeTarget: {
     minHeight: sizes.minTarget,
-    justifyContent: 'flex-end',
-    paddingBottom: space.s,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s,
+    alignSelf: 'flex-start',
+    paddingRight: space.m,
+  },
+  modeDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   modeWord: {
     ...type.meta,
+    fontWeight: '700',
     color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 1.1,
   },
   hero: {
     ...type.hero,

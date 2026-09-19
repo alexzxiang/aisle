@@ -5,4 +5,6 @@
  */
 export { Root, type RootProps } from './Root';
 export { voicePortFrom, audioPortsFrom, type VoiceInputLike } from './adapters';
-export type { AudioPorts, BeaconPort, DebugMetrics, MutablePort, OnboardingPorts, TickerPort, VoicePort } from './ports';
+export type {
+  AudioPorts, BeaconPort, ConversationEntryLike, ConversationLogPort, DebugMetrics, DescribeNow, MutablePort, OnboardingPorts, TickerPort, VoicePort,
+} from './ports';
