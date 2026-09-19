@@ -35,8 +35,8 @@ export const SITUATE_ASK_INTERVAL_MS = 4000;
 /** Narration ("You are looking at a wall.") no more often than this, and never the same words twice within the suppress window. */
 export const SITUATE_NARRATE_GAP_MS = 5000;
 export const SITUATE_NARRATE_REPEAT_MS = 30_000;
-export const SITUATE_PROMPT_INTERVAL_MS = 30_000;
-export const SITUATE_QUESTION_GAP_MS = 45_000;
+export const SITUATE_PROMPT_INTERVAL_MS = 20_000;
+export const SITUATE_QUESTION_GAP_MS = 30_000;
 export const SITUATE_QUESTION_TTL_MS = 20_000;
 /** After the voice becomes free again (a trip or task ended), hold prompts this long so their last line is not clobbered. */
 export const SITUATE_REENTRY_MS = 8000;

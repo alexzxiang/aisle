@@ -150,11 +150,25 @@ export function coerceParseIntentOutput(raw: unknown, fallback: ParseIntentOutpu
   return { intent, item, destination, goal, reply: sanitizeReply(o.reply, fallback.reply) };
 }
 
-/** Keyterms for Scribe: item + aisle vocabulary, capped so billing stays sane (07 §2). */
+/**
+ * Words the recognisers should expect beyond the store's items: the commands, the
+ * answers to the app's questions, home goals and the demo's places. Biases both
+ * Apple's recogniser (contextualStrings) and Scribe (keyterms); nothing is forced.
+ */
+export const VOICE_VOCABULARY: readonly string[] = [
+  'take me to', 'bring me to', 'walk me to', 'find', 'where is', 'how far', 'repeat', 'stop', 'cancel', 'help',
+  'yes', 'no', 'correct', 'next', 'done', 'skip', 'describe', 'what do you see', 'look around',
+  'fridge', 'refrigerator', 'kitchen', 'living room', 'bedroom', 'bathroom', 'hallway', 'door', 'door frame', 'couch', 'my keys', 'my phone',
+  'CVS', 'Walgreens', 'Rite Aid', 'Giant Eagle', "Trader Joe's", 'Target', 'Whole Foods', 'pharmacy', 'grocery store',
+  'Forbes Avenue', 'Fifth Avenue', 'Craig Street', 'Murray Avenue', 'Penn Avenue', 'Centre Avenue', 'Oakland', 'Squirrel Hill', 'Shadyside',
+  'I am in the kitchen', "I'm on the sidewalk", 'in front of my fridge',
+];
+
+/** Keyterms for the recognisers: the fixed vocabulary, then the store's items, capped so Scribe billing stays sane (07 §2). */
 export function keytermsFrom(words: readonly string[], max: number = MAX_KEYTERMS): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const w of words) {
+  for (const w of [...VOICE_VOCABULARY, ...words]) {
     const k = w.trim();
     if (!k || seen.has(k.toLowerCase())) continue;
     seen.add(k.toLowerCase());
@@ -226,6 +240,8 @@ export interface VoiceInputOptions {
   intercept?: (transcript: string) => boolean;
   /** The awareness loop's view of where the user is (home / store / street), or null. */
   sceneContext?: () => TaskContext | null;
+  /** Force Apple's on-device recogniser (privacy / no network). Default false: the server recogniser is more accurate. */
+  preferOnDeviceStt?: boolean;
 }
 
 export type VoiceSource = 'voice' | 'keyboard';
@@ -444,7 +460,9 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       }
       if (session !== s) return; // cancelled while asking
       s.handle = rec.listen(
-        { lang: 'en-US', onDevice: rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()), persistAudio },
+        // Apple's server recogniser is markedly more accurate than the on-device one; the
+        // on-device path is for no network, where Scribe would be unreachable too.
+        { lang: 'en-US', onDevice: opts.preferOnDeviceStt === true && rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()), persistAudio },
         {
           onResult(e) {
             s.results = e.results;

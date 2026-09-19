@@ -12,6 +12,7 @@ import {
   coerceParseIntentOutput,
   createVoiceInput,
   keytermsFrom,
+  VOICE_VOCABULARY,
   parseIntentFallback,
   sanitizeReply,
   type ListenOptions,
@@ -86,7 +87,10 @@ describe('bestTranscript / sanitizeReply / coerceParseIntentOutput / keytermsFro
   });
 
   it('keytermsFrom dedupes case-insensitively and caps at 100 (billing cliff)', () => {
-    expect(keytermsFrom(['Eggs', 'eggs', ' milk ', '', 'Milk'])).toEqual(['Eggs', 'milk']);
+    // The fixed vocabulary leads; the store's items follow, deduped case-insensitively.
+    expect(keytermsFrom(['Eggs', 'eggs', ' milk ', '', 'Milk']).slice(-2)).toEqual(['Eggs', 'milk']);
+    expect(keytermsFrom(['Eggs']).slice(0, VOICE_VOCABULARY.length)).toEqual([...VOICE_VOCABULARY]);
+    expect(keytermsFrom(['yes', 'CVS'])).toHaveLength(VOICE_VOCABULARY.length);   // already in the vocabulary
     const many = Array.from({ length: 150 }, (_, i) => `item${i}`);
     expect(keytermsFrom(many)).toHaveLength(MAX_KEYTERMS);
   });
@@ -173,7 +177,8 @@ describe('createVoiceInput', () => {
     expect(audioModes).toEqual([true]);
     expect(suspended).toEqual([true]);
     expect(v.isListening()).toBe(true);
-    expect(r.listenOpts()).toMatchObject({ lang: 'en-US', onDevice: true, contextualStrings: KNOWN });
+    // Apple's server recogniser by default (more accurate); the store's items ride along with the fixed vocabulary.
+    expect(r.listenOpts()).toMatchObject({ lang: 'en-US', onDevice: false, contextualStrings: [...VOICE_VOCABULARY, ...KNOWN] });
 
     r.partial('I need');
     r.final('I need eggs');
@@ -239,7 +244,7 @@ describe('createVoiceInput', () => {
     r.audio('file:///rec.wav');
     r.end();
     const out = await v.end();
-    expect(uploads).toEqual([`file:///rec.wav|${KNOWN.length}`]);
+    expect(uploads).toEqual([`file:///rec.wav|${VOICE_VOCABULARY.length + KNOWN.length}`]);
     expect(out).toMatchObject({ transcript: 'I need butter', sttPath: 'scribe' });
     expect(events).toEqual(['butter@voice']);
   });

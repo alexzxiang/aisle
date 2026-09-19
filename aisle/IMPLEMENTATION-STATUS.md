@@ -446,3 +446,35 @@ camera" — the round-3 native preview view still needs the signed rebuild.
 
 Gates: app typecheck, 1023 Jest tests (70 suites), phrase + deps lint; server tsc + 157
 vitest. 81 cached phrases.
+
+## Round 5b — 2026-09-19: narration, record keeping, places by street, recognition
+
+- **Narration.** The awareness loop asks `situate` every 4 s (a still frame is skipped by
+  the scene gate) and speaks what the camera faces at INFO — "You are looking at a person
+  opening a refrigerator in a kitchen.", "You are standing at a street crossing with tall
+  buildings ahead.", "You are looking at a red hand symbol." — at most every 5 s, never
+  the same words twice in 30 s, off with the Describe-surroundings setting. The shared
+  vision prompt's "Do not describe the scene" no longer applies to `situate` / `free` (it
+  was blanking the narration). "Turn slowly. Show me your surroundings." now every 20 s
+  while nothing is known; a new place is asked about after 30 s (was 45).
+- **The chat "locking".** Both screens showed only the last three or four lines. The
+  transcript is now the whole 50-line log, scrollable, following the newest line.
+- **Camera.** Portrait (3:4), up to 46 % of the window on the Nav screen, 42 % on Home.
+- **Places.** "The CVS on Forbes Ave" → name `CVS` + street `Forbes Ave`; the proxy ranks
+  `addr:street` matches first (live from CMU: Forbes CVS at 1.5 km ahead of Centre Ave at
+  1.2 km and Wilkins at 1.4 km). Apostrophes join in matching, so "trader joes" finds
+  Trader Joe's (Penn Avenue, 2.7 km). The walk itself still needs Google Routes enabled
+  on project 188682982044 (degraded straight-line leg until then).
+- **Recognition.** Apple's server recogniser by default (on-device only when asked: it is
+  markedly less accurate); a fixed vocabulary (commands, yes / no / next, home words, the
+  demo's chains and streets) biases both Apple and Scribe, ahead of the store's items.
+- **Signals.** The Claude curb path read real photos correctly: DON'T WALK 0.85 and
+  COUNTDOWN 0.85 (Sonnet, 2.8–3.5 s at 1024 px). There is still no on-device ped-signal
+  model (no weights, no data); the crossing flow uses the Claude reading with the n-of-m
+  debounce. Training one is a multi-hour job (data → YOLO11n → CoreML → rebuild).
+- **Haptics.** Reviewed, unchanged: silence inside the dead zone (12° at compass tier 3,
+  18° at tier 2), pulse interval 600 → 150 ms and Light → Medium → Heavy as the error
+  grows, roadward drift needs two agreeing signals, no buzz below tier 2 (spoken
+  "compass uncertain" instead). Body offset is set in Settings.
+- **Images.** Snapshots are JPEG in memory for one request; the proxy keeps none (the
+  only file writes are the route cache and data scripts). `situate` uses 512 px.
