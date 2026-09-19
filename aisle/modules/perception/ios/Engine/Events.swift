@@ -135,6 +135,31 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
   case stopSign = "stop_sign"
   case hydrant
   case bench
+  // Round 6b: food and kitchen things (a task like "find the eggs" lives among them).
+  case banana
+  case apple
+  case sandwich
+  case orange
+  case broccoli
+  case carrot
+  case pizza
+  case donut
+  case cake
+  case wineGlass = "wine_glass"
+  case fork
+  case knife
+  case spoon
+  case remote
+  case keyboard
+  case cellPhone = "cell_phone"
+  case toaster
+  case vase
+  case scissors
+  case teddyBear = "teddy_bear"
+  case toothbrush
+  case hairDrier = "hair_drier"
+  case mouse
+  case tie
 
   /// Classes 09 §5.2 treats as vehicles for the looming filter.
   public static let vehicleClasses: Set<DetectionClass> = [.car, .bus, .truck, .motorcycle, .bicycle]
@@ -147,6 +172,8 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
     .chair, .couch, .bed, .table, .tv, .laptop, .fridge, .oven, .microwave, .sink, .toilet,
     .bottle, .cup, .bowl, .plant, .book, .clock, .dog, .cat, .backpack, .handbag, .suitcase,
     .umbrella, .trafficLight, .stopSign, .hydrant, .bench,
+    .banana, .apple, .sandwich, .orange, .broccoli, .carrot, .pizza, .donut, .cake, .wineGlass, .fork, .knife,
+    .spoon, .remote, .keyboard, .cellPhone, .toaster, .vase, .scissors, .teddyBear, .toothbrush, .hairDrier, .mouse, .tie,
   ]
 
   /// The signal state a per-frame signal detection votes for; `nil` for
@@ -324,16 +351,21 @@ public struct DetectionPayload: PerceptionPayload, Equatable {
   public var box: NormalizedBox
   public var score: Double
   public var trackId: Int
+  /// Round 6b: relative nearness at the box centre from the depth grid (0 far … 1 near), when a grid is fresh.
+  public var near: Double?
 
-  public init(cls: DetectionClass, box: NormalizedBox, score: Double, trackId: Int) {
+  public init(cls: DetectionClass, box: NormalizedBox, score: Double, trackId: Int, near: Double? = nil) {
     self.cls = cls
     self.box = box
     self.score = score
     self.trackId = trackId
+    self.near = near
   }
 
   public var dictionary: [String: Any] {
-    ["cls": cls.rawValue, "box": box.array, "score": score, "trackId": trackId]
+    var d: [String: Any] = ["cls": cls.rawValue, "box": box.array, "score": score, "trackId": trackId]
+    if let near { d["near"] = near }
+    return d
   }
 }
 

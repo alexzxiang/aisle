@@ -250,7 +250,9 @@ export type ModeProfile =
 
 /** Safety classes (vehicles, people, carts, signal heads) plus the scenery classes the room needs (round 6). */
 export const SAFETY_DETECTION_CLASSES = ['car', 'bus', 'truck', 'motorcycle', 'bicycle', 'person', 'cart', 'ped_walk', 'ped_hand', 'ped_countdown'] as const;
-export const SCENE_DETECTION_CLASSES = ['chair', 'couch', 'bed', 'table', 'tv', 'laptop', 'fridge', 'oven', 'microwave', 'sink', 'toilet', 'bottle', 'cup', 'bowl', 'plant', 'book', 'clock', 'dog', 'cat', 'backpack', 'handbag', 'suitcase', 'umbrella', 'traffic_light', 'stop_sign', 'hydrant', 'bench'] as const;
+/** Round 6b: food and kitchen things. */
+export const FOOD_DETECTION_CLASSES = ['banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'pizza', 'donut', 'cake', 'wine_glass', 'fork', 'knife', 'spoon', 'remote', 'keyboard', 'cell_phone', 'toaster', 'vase', 'scissors', 'teddy_bear', 'toothbrush', 'hair_drier', 'mouse', 'tie'] as const;
+export const SCENE_DETECTION_CLASSES = [...FOOD_DETECTION_CLASSES, 'chair', 'couch', 'bed', 'table', 'tv', 'laptop', 'fridge', 'oven', 'microwave', 'sink', 'toilet', 'bottle', 'cup', 'bowl', 'plant', 'book', 'clock', 'dog', 'cat', 'backpack', 'handbag', 'suitcase', 'umbrella', 'traffic_light', 'stop_sign', 'hydrant', 'bench'] as const;
 export const DETECTION_CLASSES = [...SAFETY_DETECTION_CLASSES, ...SCENE_DETECTION_CLASSES] as const;
 export type DetectionClass = (typeof DETECTION_CLASSES)[number];
 
@@ -259,6 +261,8 @@ export interface Detection {
   box: [x: number, y: number, w: number, h: number];  // normalized 0..1, upright frame
   score: number;
   trackId: number;
+  /** Relative nearness at the box centre from the depth grid, 0 far … 1 near; absent when no fresh depth. */
+  near?: number;
 }
 
 export interface SceneClassEvent {

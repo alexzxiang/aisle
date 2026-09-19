@@ -32,17 +32,22 @@ export const DEFAULT_HFOV_DEG = 56;
 export const MEMORY_MAX_ENTRIES = 24;
 
 export interface MemoryEntry {
-  cls: DetectionClass;
+  /** A detector class, or an Apple scene-classifier identifier ("egg", "milk_carton") seen image-wide. */
+  cls: DetectionClass | string;
+  /** 'detector' boxes have a side within the frame; 'classifier' labels only know the frame's bearing. */
+  source: 'detector' | 'classifier';
   /** Absolute bearing (0 = north) the thing was last seen at. */
   bearingDeg: number;
   /** Box area in the frame at the last sighting (0..1): a rough distance cue. */
   area: number;
+  /** Depth-grid nearness at the last sighting (0 far … 1 near), when the phone sent it. */
+  near?: number;
   lastSeenAt: number;
   sightings: number;
 }
 
 export interface WhereAnswer {
-  cls: DetectionClass;
+  cls: DetectionClass | string;
   /** Signed offset from the user's current facing: + = to the right. */
   relativeDeg: number;
   ageMs: number;
@@ -79,6 +84,12 @@ export function classForWords(words: string): DetectionClass | null {
     [/\b(traffic light|light|signal)\b/, 'traffic_light'], [/\b(stop sign)\b/, 'stop_sign'], [/\b(hydrant)\b/, 'hydrant'],
     [/\b(bench)\b/, 'bench'], [/\b(person|someone|people|man|woman)\b/, 'person'], [/\b(car)\b/, 'car'], [/\b(bus)\b/, 'bus'],
     [/\b(bike|bicycle)\b/, 'bicycle'], [/\b(cart|trolley)\b/, 'cart'],
+    [/\b(bananas?)\b/, 'banana'], [/\b(apples?)\b/, 'apple'], [/\b(sandwich)\b/, 'sandwich'], [/\b(oranges?)\b/, 'orange'],
+    [/\b(broccoli)\b/, 'broccoli'], [/\b(carrots?)\b/, 'carrot'], [/\b(pizza)\b/, 'pizza'], [/\b(donuts?|doughnuts?)\b/, 'donut'],
+    [/\b(cake)\b/, 'cake'], [/\b(wine glass|wine)\b/, 'wine_glass'], [/\b(fork)\b/, 'fork'], [/\b(knife|knives)\b/, 'knife'],
+    [/\b(spoon)\b/, 'spoon'], [/\b(remote|remote control)\b/, 'remote'], [/\b(keyboard)\b/, 'keyboard'], [/\b(phone|cell phone|cellphone)\b/, 'cell_phone'],
+    [/\b(toaster)\b/, 'toaster'], [/\b(vase)\b/, 'vase'], [/\b(scissors)\b/, 'scissors'], [/\b(teddy|teddy bear)\b/, 'teddy_bear'],
+    [/\b(toothbrush)\b/, 'toothbrush'], [/\b(hair ?dr[iy]er)\b/, 'hair_drier'], [/\b(mouse)\b/, 'mouse'], [/\b(tie)\b/, 'tie'],
   ];
   for (const [re, cls] of table) if (re.test(w)) return cls;
   return null;
@@ -87,8 +98,29 @@ export function classForWords(words: string): DetectionClass | null {
 const SPOKEN: Readonly<Partial<Record<DetectionClass, string>>> = {
   tv: 'TV', traffic_light: 'traffic light', stop_sign: 'stop sign', table: 'table', plant: 'plant',
 };
-export function spokenName(cls: DetectionClass): string {
-  return SPOKEN[cls] ?? cls.replace(/_/g, ' ');
+export function spokenName(cls: DetectionClass | string): string {
+  return SPOKEN[cls as DetectionClass] ?? cls.replace(/_/g, ' ');
+}
+
+/** Apple classifier labels below this never enter memory (the taxonomy is huge; the tail is noise). */
+export const CLASSIFIER_MIN_CONFIDENCE = 0.3;
+/** Scene / material labels that say where you are, not what is there — never "things". */
+const CLASSIFIER_NOT_A_THING = /^(indoor|outdoor|room|kitchen|living_room|bedroom|bathroom|hallway|corridor|office|street|sidewalk|building|city|urban|home|house|apartment|wall|floor|ceiling|carpet|wood|metal|glass|plastic|fabric|light|dark|day|night|sky|ground|interior|exterior|nature|landscape|text|document|screen|abstract|pattern|texture|color|black|white|blur)$/;
+
+/** "eggs" → "egg": a naive singular, enough to match Apple's identifiers. */
+export function singular(word: string): string {
+  const w = word.toLowerCase().trim();
+  if (w.endsWith('ies')) return `${w.slice(0, -3)}y`;
+  if (w.endsWith('ses') || w.endsWith('xes') || w.endsWith('ches') || w.endsWith('shes')) return w.slice(0, -2);
+  if (w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+
+/** Does an Apple identifier ("milk_carton", "egg") name what the user asked for ("eggs", "milk")? */
+export function labelMatches(id: string, words: string): boolean {
+  const parts = id.toLowerCase().split(/[_\s]+/);
+  const asked = words.toLowerCase().replace(/^(the|a|an|my|some|any)\s+/, '').split(/\s+/).map(singular).filter((w) => w.length > 2);
+  return asked.some((w) => parts.some((p) => singular(p) === w || p.startsWith(w) || w.startsWith(p)));
 }
 
 /** "ahead", "ahead to your left", "to your right", "behind you to the left", "behind you". */
@@ -102,29 +134,38 @@ export function directionPhrase(relativeDeg: number): string {
   return 'behind you';
 }
 
-export function distancePhrase(area: number): string {
+export function distancePhrase(area: number, near?: number): string {
+  if (typeof near === 'number') return near >= 0.66 ? 'close' : near >= 0.4 ? 'a few steps away' : 'far';
   if (area >= 0.2) return 'close';
   if (area >= 0.04) return 'a few steps away';
   return 'far';
 }
 
-/** The sentence for an answer; ≤ 12 words, no digits. */
-export function whereSentence(cls: DetectionClass, relativeDeg: number, area: number): string {
+/** The sentence for an answer; ≤ 12 words, no digits. A classifier sighting has no distance. */
+export function whereSentence(cls: DetectionClass | string, relativeDeg: number, area: number, near?: number, opts: { plural?: boolean; noDistance?: boolean } = {}): string {
   const name = spokenName(cls);
+  const verb = opts.plural ? 'are' : 'is';
   const dir = directionPhrase(relativeDeg);
-  const dist = distancePhrase(area);
-  if (dir === 'behind you') return `The ${name} is behind you. Turn around.`;
-  return `The ${name} is ${dir}, ${dist}.`;
+  if (dir === 'behind you') return `The ${name} ${verb} behind you. Turn around.`;
+  if (opts.noDistance) return `The ${name} ${verb} ${dir}.`;
+  return `The ${name} ${verb} ${dir}, ${distancePhrase(area, near)}.`;
 }
 
-const WHERE_IS_RE = /^(?:where(?:'s| is| are)|find|do you see|can you see|is there)\s+(?:the |a |an |my |any )?(.{2,40}?)\??$/i;
+const WHERE_IS_RE = /^(?:where(?:'s| is| are)|do you see|can you see|is there)\s+(?:the |a |an |my |any )?(.{2,40}?)\??$/i;
 
-/** "where's the fridge" → "fridge"; null when the sentence is not a where-question. */
+/**
+ * "where's the fridge" → "fridge"; null when the sentence is not a where-question.
+ * "find the eggs in my fridge" is a task, not a question, and "where are the eggs in
+ * my fridge" names a place — both are left to the planner.
+ */
 export function whereQuery(transcript: string): string | null {
   const t = transcript.trim().replace(/[.!?]+$/, '');
   if (/\bwhere am i\b|\bwhere are we\b/i.test(t)) return null;
   const m = t.match(WHERE_IS_RE);
-  return m ? m[1]!.trim() : null;
+  if (!m) return null;
+  const q = m[1]!.trim();
+  if (/\b(in|on|at|inside|near|next to|by)\s/i.test(q)) return null;
+  return q;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +173,7 @@ export function whereQuery(transcript: string): string | null {
 // ---------------------------------------------------------------------------
 
 export interface SceneMemoryDeps {
-  perception: Pick<PerceptionService, 'onDetections' | 'onPose'>;
+  perception: Pick<PerceptionService, 'onDetections' | 'onPose'> & Partial<Pick<PerceptionService, 'onSceneClass'>>;
   speech?: Pick<SpeechService, 'say'>;
   conversation?: Pick<ConversationLog, 'pushAisle'>;
   /** Fallback facing when no ARKit pose has arrived yet (the compass). */
@@ -196,25 +237,59 @@ export function createSceneMemory(deps: SceneMemoryDeps): SceneMemory {
       if (same) {
         same.bearingDeg = bearing;
         same.area = area;
+        same.near = d.near;
         same.lastSeenAt = t;
         same.sightings += 1;
       } else {
-        items.push({ cls: d.cls, bearingDeg: bearing, area, lastSeenAt: t, sightings: 1 });
+        items.push({ cls: d.cls, source: 'detector', bearingDeg: bearing, area, lastSeenAt: t, sightings: 1, ...(typeof d.near === 'number' ? { near: d.near } : {}) });
       }
     }
     prune(t);
   }));
 
+  // Apple's classifier names things the detector has no class for (egg, milk carton, cereal…),
+  // image-wide: the bearing is the camera's, the distance unknown.
+  if (deps.perception.onSceneClass) {
+    unsubs.push(deps.perception.onSceneClass((e) => {
+      const f = facing();
+      if (f === null) return;
+      const t = now();
+      for (const l of e.labels.slice(0, 5)) {
+        if (l.confidence < CLASSIFIER_MIN_CONFIDENCE) continue;
+        const id = l.id.toLowerCase();
+        if (CLASSIFIER_NOT_A_THING.test(id)) continue;
+        if (classForWords(id.replace(/_/g, ' '))) continue; // the detector's box is the better record
+        const same = items.find((x) => x.source === 'classifier' && x.cls === id && Math.abs(wrap180(x.bearingDeg - f)) <= MEMORY_MERGE_DEG);
+        if (same) {
+          same.bearingDeg = f;
+          same.lastSeenAt = t;
+          same.sightings += 1;
+        } else {
+          items.push({ cls: id, source: 'classifier', bearingDeg: f, area: 0, lastSeenAt: t, sightings: 1 });
+        }
+      }
+      prune(t);
+    }));
+  }
+
   const whereIs = (words: string): WhereAnswer | 'unseen' | 'unknown_thing' => {
-    const cls = classForWords(words);
-    if (!cls) return 'unknown_thing';
     prune(now());
     const f = facing();
-    const candidates = items.filter((e) => e.cls === cls).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
-    const e = candidates[0];
-    if (!e || f === null) return 'unseen';
-    const relativeDeg = wrap180(e.bearingDeg - f);
-    return { cls, relativeDeg, ageMs: now() - e.lastSeenAt, phrase: whereSentence(cls, relativeDeg, e.area) };
+    const cls = classForWords(words);
+    const asked = words.toLowerCase().replace(/^(the|a|an|my|some|any)\s+/, '').trim();
+    const plural = /s$/i.test(asked) && !/ss$/i.test(asked);
+    if (cls) {
+      const e = items.filter((x) => x.source === 'detector' && x.cls === cls).sort((a, b) => b.lastSeenAt - a.lastSeenAt)[0];
+      if (!e || f === null) return 'unseen';
+      const relativeDeg = wrap180(e.bearingDeg - f);
+      return { cls, relativeDeg, ageMs: now() - e.lastSeenAt, phrase: whereSentence(cls, relativeDeg, e.area, e.near) };
+    }
+    // Not a detector class: something the classifier may have named ("eggs" → "egg").
+    const seen = items.filter((x) => x.source === 'classifier' && labelMatches(x.cls, asked)).sort((a, b) => b.lastSeenAt - a.lastSeenAt)[0];
+    if (!seen) return asked.length >= 3 ? 'unseen' : 'unknown_thing';
+    if (f === null) return 'unseen';
+    const relativeDeg = wrap180(seen.bearingDeg - f);
+    return { cls: seen.cls, relativeDeg, ageMs: now() - seen.lastSeenAt, phrase: whereSentence(asked, relativeDeg, 0, undefined, { plural, noDistance: true }) };
   };
 
   const say = (text: string, cacheKey?: 'show_surroundings'): void => {
@@ -229,8 +304,10 @@ export function createSceneMemory(deps: SceneMemoryDeps): SceneMemory {
       const a = whereIs(q);
       if (a === 'unknown_thing') return false;          // let the planner / Claude have it
       if (a === 'unseen') {
-        const cls = classForWords(q)!;
-        say(`I have not seen a ${spokenName(cls)} yet.`);
+        const cls = classForWords(q);
+        const asked = q.toLowerCase().replace(/^(the|a|an|my|some|any)\s+/, '').trim();
+        const plural = !cls && /s$/i.test(asked) && !/ss$/i.test(asked);
+        say(cls ? `I have not seen a ${spokenName(cls)} yet.` : `I have not seen ${plural ? '' : 'a '}${asked} yet.`);
         say(PHRASES.show_surroundings, 'show_surroundings');
         return true;
       }

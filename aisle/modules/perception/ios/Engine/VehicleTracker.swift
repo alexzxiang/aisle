@@ -318,6 +318,7 @@ public enum CocoLabels {
     "car": .car, "bus": .bus, "truck": .truck, "motorcycle": .motorcycle,
     "bicycle": .bicycle, "person": .person,
     "chair": .chair, "couch": .couch, "bed": .bed, "dining table": .table, "tv": .tv, "laptop": .laptop, "refrigerator": .fridge, "oven": .oven, "microwave": .microwave, "sink": .sink, "toilet": .toilet, "bottle": .bottle, "cup": .cup, "bowl": .bowl, "potted plant": .plant, "book": .book, "clock": .clock, "dog": .dog, "cat": .cat, "backpack": .backpack, "handbag": .handbag, "suitcase": .suitcase, "umbrella": .umbrella, "traffic light": .trafficLight, "stop sign": .stopSign, "fire hydrant": .hydrant, "bench": .bench,
+    "banana": .banana, "apple": .apple, "sandwich": .sandwich, "orange": .orange, "broccoli": .broccoli, "carrot": .carrot, "pizza": .pizza, "donut": .donut, "cake": .cake, "wine glass": .wineGlass, "fork": .fork, "knife": .knife, "spoon": .spoon, "remote": .remote, "keyboard": .keyboard, "cell phone": .cellPhone, "toaster": .toaster, "vase": .vase, "scissors": .scissors, "teddy bear": .teddyBear, "toothbrush": .toothbrush, "hair drier": .hairDrier, "mouse": .mouse, "tie": .tie,
   ]
 
   public static func detectionClass(for label: String) -> DetectionClass? {

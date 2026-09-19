@@ -64,6 +64,9 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   private var looming = LoomingFilter()
   private var hazards = HazardFilter()
   private var obstacles = ObstacleEstimator()
+  /// The latest depth grid, for per-detection nearness (round 6b); stale after `depthGridFreshSeconds`.
+  private var lastDepthGrid: DepthGrid?
+  private let depthGridFreshSeconds: Double = 0.6
   private var thermal = ThermalWatcher()
 
   private var throttles: [PipelineStage: FrameThrottle] = Dictionary(
@@ -344,7 +347,16 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
           emit(.vehicleApproaching, approaching.dictionary, frameTime: frameTime)
         }
         if detectionsLimiter.allow(at: frameTime) {
-          emitArray(.detections, tracked.map { $0.dictionary }, frameTime: nil)
+          // Round 6b: each box gets the depth grid's nearness at its centre when the grid is fresh,
+          // so JS can say "table ahead, close" without a network call.
+          let grid = (lastDepthGrid.map { frameTime - $0.timestamp <= depthGridFreshSeconds } ?? false) ? lastDepthGrid : nil
+          let withDepth = tracked.map { d -> DetectionPayload in
+            guard let grid else { return d }
+            var out = d
+            out.near = grid.nearness(atNormalizedX: d.box.centerX, y: d.box.centerY)
+            return out
+          }
+          emitArray(.detections, withDepth.map { $0.dictionary }, frameTime: nil)
         }
       }
     }
@@ -389,6 +401,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
         throttles[.depth]?.markIdle()
         fpsMeters[.depth]?.tick(at: frameTime)
         guard let grid else { return }
+        lastDepthGrid = grid
         let outcome = obstacles.process(grid, indoor: indoor)
         if let depth = outcome.depth {
           emit(.depth, depth.dictionary, frameTime: nil)

@@ -82,11 +82,14 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
 export function describeDetections(dets: VisionRequest['facts']['detections']): string {
   const side = (cx: number): string => (cx < 0.36 ? 'left' : cx > 0.64 ? 'right' : 'ahead');
   const size = (area: number): string => (area > 0.25 ? ' (large, close)' : area < 0.02 ? ' (small, far)' : '');
+  // The depth grid's nearness beats box size when the phone sent it (round 6b).
+  const depth = (near: number): string => (near >= 0.66 ? ' (close)' : near >= 0.4 ? ' (a few steps)' : ' (far)');
   return dets
     .slice(0, 12)
     .map((d) => {
       const [x, , w, h] = d.box;
-      return `${d.cls} ${side(x + w / 2)}${size(w * h)}`;
+      const dist = typeof d.near === 'number' ? depth(d.near) : size(w * h);
+      return `${d.cls.replace(/_/g, ' ')} ${side(x + w / 2)}${dist}`;
     })
     .join(', ');
 }

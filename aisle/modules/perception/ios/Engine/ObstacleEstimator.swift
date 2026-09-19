@@ -45,6 +45,14 @@ public struct DepthGrid: Equatable, Sendable {
   public var leftMiddle: Double { cells[1][0] }
   public var rightMiddle: Double { cells[1][2] }
 
+  /// Relative nearness (0 far … 1 near) of the cell under a normalized upright point (round 6b).
+  /// Values are the model's relative inverse depth, clamped; the grid is 3×3 so this is coarse on purpose.
+  public func nearness(atNormalizedX x: Double, y: Double) -> Double {
+    let col = min(2, max(0, Int(x * 3)))
+    let row = min(2, max(0, Int(y * 3)))
+    return min(1, max(0, cells[row][col]))
+  }
+
   /// Which bottom third is nearest (largest relative depth).
   public var nearestBottomDirection: Direction {
     if leftBottom > centerBottom && leftBottom > rightBottom { return .left }

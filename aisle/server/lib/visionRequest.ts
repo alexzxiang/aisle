@@ -18,6 +18,7 @@ export const VISION_QUESTIONS: readonly VisionQuestion[] = [
 
 const detection = z.object({
   cls: z.enum(DETECTION_CLASSES as unknown as [string, ...string[]]),
+  near: z.number().min(0).max(1).optional(),
   box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
   score: z.number(),
   trackId: z.number(),

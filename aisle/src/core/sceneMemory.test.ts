@@ -5,6 +5,7 @@ import {
   classForWords,
   createSceneMemory,
   directionPhrase,
+  labelMatches,
   whereQuery,
   whereSentence,
   wrap180,
@@ -17,11 +18,13 @@ const pose = (yawDeg: number): Pose => ({ yawDeg, x: 0, y: 0, z: 0, trackingStat
 function rig(now: () => number) {
   const dets = new Set<(d: Detection[]) => void>();
   const poses = new Set<(p: Pose) => void>();
+  const scenes = new Set<(e: { labels: Array<{ id: string; confidence: number }>; timestamp: number }) => void>();
   const said: string[] = [];
   const mem = createSceneMemory({
     perception: {
       onDetections: (cb) => { dets.add(cb); return () => dets.delete(cb); },
       onPose: (cb) => { poses.add(cb); return () => poses.delete(cb); },
+      onSceneClass: (cb) => { scenes.add(cb); return () => scenes.delete(cb); },
     },
     speech: { say: (r) => { said.push(r.text); } },
     now,
@@ -30,6 +33,7 @@ function rig(now: () => number) {
     mem, said,
     see: (yaw: number, list: Detection[]) => { for (const p of Array.from(poses)) p(pose(yaw)); for (const d of Array.from(dets)) d(list); },
     face: (yaw: number) => { for (const p of Array.from(poses)) p(pose(yaw)); },
+    classify: (yaw: number, labels: Array<{ id: string; confidence: number }>) => { for (const p of Array.from(poses)) p(pose(yaw)); for (const s of Array.from(scenes)) s({ labels, timestamp: 0 }); },
   };
 }
 
@@ -53,6 +57,11 @@ describe('sceneMemory (pure)', () => {
     expect(whereQuery('do you see a dog')).toBe('dog');
     expect(whereQuery('where am I')).toBeNull();
     expect(whereQuery('take me to eggs')).toBeNull();
+    // Tasks and placed questions stay with the planner.
+    expect(whereQuery('find the eggs in my fridge')).toBeNull();
+    expect(whereQuery('where are the eggs in my fridge')).toBeNull();
+    expect(whereQuery('where are the bananas')).toBe('bananas');
+    expect(classForWords('bananas')).toBe('banana');
   });
 
   it('direction words and speakable sentences', () => {
@@ -87,7 +96,8 @@ describe('createSceneMemory', () => {
     expect(r.mem.whereIs('fridge')).toMatchObject({ phrase: 'The fridge is behind you. Turn around.' });
     expect(r.mem.describe()).toBe('couch to your left, fridge behind you');
     expect(r.mem.whereIs('dog')).toBe('unseen');
-    expect(r.mem.whereIs('dragon')).toBe('unknown_thing');
+    expect(r.mem.whereIs('dragon')).toBe('unseen');       // any named thing: 'unseen' rather than a store trip
+    expect(r.mem.whereIs('it')).toBe('unknown_thing');
     r.mem.dispose();
   });
 
@@ -107,13 +117,33 @@ describe('createSceneMemory', () => {
     r.mem.dispose();
   });
 
-  it('intercepts "where is the X": from memory, or asks for a look; leaves unknown things to the planner', () => {
+  it('things only the classifier names (eggs, milk) are remembered image-wide and answered without a distance', () => {
+    let t = 0;
+    const r = rig(() => t);
+    r.classify(0, [{ id: 'kitchen', confidence: 0.6 }, { id: 'egg', confidence: 0.45 }, { id: 'milk_carton', confidence: 0.35 }, { id: 'refrigerator', confidence: 0.5 }, { id: 'noise', confidence: 0.1 }]);
+    // 'kitchen' is a place, not a thing; 'refrigerator' is a detector class, left to the box path.
+    expect(r.mem.entries().filter((e) => e.source === 'classifier').map((e) => e.cls).sort()).toEqual(['egg', 'milk_carton']);
+    r.face(90);
+    expect(r.mem.whereIs('eggs')).toMatchObject({ cls: 'egg', relativeDeg: -90, phrase: 'The eggs are to your left.' });
+    expect(r.mem.whereIs('the milk')).toMatchObject({ cls: 'milk_carton', phrase: 'The milk is to your left.' });
+    expect(r.mem.whereIs('cereal')).toBe('unseen');
+    expect(r.mem.intercept('where are the eggs?')).toBe(true);
+    expect(r.said[r.said.length - 1]).toBe('The eggs are to your left.');
+    expect(r.mem.intercept('where is the cereal')).toBe(true);
+    expect(r.said.slice(-2)[0]).toBe('I have not seen a cereal yet.');
+    expect(labelMatches('milk_carton', 'milk')).toBe(true);
+    expect(labelMatches('egg', 'the eggs')).toBe(true);
+    r.mem.dispose();
+  });
+
+  it('intercepts "where is the X": from memory, or asks for a look; a thing it cannot name is still "unseen", never a store trip', () => {
     let t = 0;
     const r = rig(() => t);
     expect(r.mem.intercept('take me to the CVS')).toBe(false);
-    expect(r.mem.intercept('where is the dragon')).toBe(false);
+    expect(r.mem.intercept('where is the dragon')).toBe(true);
+    expect(r.said[r.said.length - 2]).toBe('I have not seen a dragon yet.');
     expect(r.mem.intercept("where's the fridge")).toBe(true);
-    expect(r.said).toEqual(['I have not seen a fridge yet.', PHRASES.show_surroundings]);
+    expect(r.said.slice(-2)).toEqual(['I have not seen a fridge yet.', PHRASES.show_surroundings]);
     r.see(30, [det('fridge', 0.5)]);
     r.face(30);
     expect(r.mem.intercept('where is the fridge?')).toBe(true);

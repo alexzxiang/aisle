@@ -51,6 +51,7 @@ export function isCameraPreviewAvailable(): boolean {
 // ---------------------------------------------------------------------------
 
 const SCENERY_COLOR = '#9CC3FF';
+const FOOD_COLOR = '#FFE08A';
 
 /** One colour per kept class (09 §3). Vehicles warm, people/carts cool, signals in OKO's convention, scenery pale. */
 export const DETECTION_COLORS: Readonly<Record<Detection['cls'], string>> = Object.freeze({
@@ -71,6 +72,11 @@ export const DETECTION_COLORS: Readonly<Record<Detection['cls'], string>> = Obje
   book: SCENERY_COLOR, clock: SCENERY_COLOR, dog: SCENERY_COLOR, cat: SCENERY_COLOR, backpack: SCENERY_COLOR,
   handbag: SCENERY_COLOR, suitcase: SCENERY_COLOR, umbrella: SCENERY_COLOR, traffic_light: '#FFD54F',
   stop_sign: '#FF6B6B', hydrant: SCENERY_COLOR, bench: SCENERY_COLOR,
+  banana: FOOD_COLOR, apple: FOOD_COLOR, sandwich: FOOD_COLOR, orange: FOOD_COLOR, broccoli: FOOD_COLOR, carrot: FOOD_COLOR,
+  pizza: FOOD_COLOR, donut: FOOD_COLOR, cake: FOOD_COLOR, wine_glass: SCENERY_COLOR, fork: SCENERY_COLOR, knife: SCENERY_COLOR,
+  spoon: SCENERY_COLOR, remote: SCENERY_COLOR, keyboard: SCENERY_COLOR, cell_phone: SCENERY_COLOR, toaster: SCENERY_COLOR,
+  vase: SCENERY_COLOR, scissors: SCENERY_COLOR, teddy_bear: SCENERY_COLOR, toothbrush: SCENERY_COLOR, hair_drier: SCENERY_COLOR,
+  mouse: SCENERY_COLOR, tie: SCENERY_COLOR,
 });
 
 /** Short names for the label; a class without an entry uses its own name. */
