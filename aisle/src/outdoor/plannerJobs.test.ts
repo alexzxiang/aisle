@@ -26,7 +26,7 @@ describe('navigate_to / guided_task intents (round 4)', () => {
     const o = templateFor('parseIntent', { transcript: 'take me to CVS', mode: 'IDLE', knownItems: known });
     expect(o.intent).toBe('navigate_to');
     expect(o.destination).toBe('CVS');
-    expect(o.reply).toBe('CVS. Planning a route.');
+    expect(o.reply).toBe('CVS. Got it.');
   });
   it('classifies home goals as guided_task with the goal text', () => {
     for (const t of ['take me to the eggs in my fridge', 'get to the living room', 'find my keys']) {

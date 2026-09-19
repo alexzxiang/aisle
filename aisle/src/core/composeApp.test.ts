@@ -189,6 +189,82 @@ describe('composeApp (mock mode)', () => {
     unbind();
   });
 
+  it('round 4 through the keyboard: "take me to the eggs in my fridge" runs a guided task; "take me to CVS" looks, plans, and reports no place with the proxy down', async () => {
+    const { bus, store, unbind } = setupStore();
+    const mocks = createMockServices({ bus, store: bridgeAppStore(store), latencyScale: 0 });
+    const platform = fakePlatform();
+    platform.prefsStorage = createMemoryPrefsStorage(serializePrefs({ firstRun: false, trainingMode: false, speechRate: 1, bodyOffsetDeg: 0 }));
+    const outdoor = createOutdoorStore();
+    const app = composeApp({ config: CONFIG, bus, store, platform, mocks, fixtureTrack: track, loadStoreMap: () => demoStore, outdoor });
+    await app.start();
+
+    // The mock planner's parseIntent replays fixtures; the local fallback parser classifies the goal.
+    await app.voice.submitText('take me to the eggs in my fridge');
+    await jest.advanceTimersByTimeAsync(3000);
+    expect(store.getState().mode).toBe('GUIDED_TASK');
+    expect(store.getState().taskGoal).toBe('eggs in my fridge');
+    // The echo plays at once; the speech queue holds one NAV item and keeps a
+    // four-second gap, so the look prompt follows it and the step comes after.
+    expect(platform.spoken).toEqual(['Eggs in my fridge. Got it.']);
+    await jest.advanceTimersByTimeAsync(4000);
+    expect(platform.spoken).toEqual(['Eggs in my fridge. Got it.', 'Walk to the kitchen door frame.']);
+    expect(app.guidedTask.isActive()).toBe(true);
+    const dbg = app.guidedTask.getDebugState();
+    expect(dbg.total).toBeGreaterThanOrEqual(3);
+    expect(dbg.context).toBe('home');
+    // The first step is spoken and sits on the band.
+    const stepEvents = bus.history().filter((r) => r.event.type === 'TASK_STEP');
+    expect(stepEvents).toHaveLength(1);
+    expect(app.conversation.entries().some((e) => e.role === 'aisle' && /^Plan: /.test(e.text))).toBe(true);
+    // Hands-free "next" walks the steps; the last one completes the task.
+    for (let i = 0; i < dbg.total; i += 1) {
+      await app.guidedTask.onVoiceOutcome({ output: { intent: 'unknown', item: null, reply: '' }, transcript: 'next' });
+      await jest.advanceTimersByTimeAsync(50);
+    }
+    expect(store.getState().mode).toBe('DONE');
+    expect(app.guidedTask.isActive()).toBe(false);
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(platform.spoken[platform.spoken.length - 1]).toBe('Done. Task complete.');
+    store.getState().abort();
+    await jest.advanceTimersByTimeAsync(50);
+    expect(store.getState().mode).toBe('IDLE');
+
+    // A place: the look and the planning prompt come first; the places lookup fails fast (no proxy) → no_place_found → IDLE.
+    platform.spoken.length = 0;
+    await app.voice.submitText('take me to CVS');
+    await jest.advanceTimersByTimeAsync(3000);
+    expect(platform.spoken).toEqual(['CVS. Got it.']);
+    // The transcript blurb keeps every line of both flows, spoken or skipped by the queue.
+    expect(app.conversation.entries().map((e) => `${e.role}:${e.text}`)).toEqual([
+      'you:take me to the eggs in my fridge',
+      'aisle:Eggs in my fridge. Got it.',
+      'aisle:Let me see your surroundings.',
+      'aisle:Shelves on both sides. Aisle sign ahead.',
+      'aisle:Plan: 5 steps to eggs in my fridge.',
+      'aisle:Walk to the kitchen door frame.',
+      'aisle:Next step.',
+      'aisle:Turn toward the kitchen counter.',
+      'aisle:Walk to the fridge.',
+      'aisle:Open the fridge door.',
+      'aisle:Look inside the fridge.',
+      'aisle:Done. Task complete.',
+      'you:take me to CVS',
+      'aisle:CVS. Got it.',
+      'aisle:Let me see your surroundings.',
+      'aisle:Planning your route.',
+      'aisle:I could not find that place nearby.',
+    ]);
+    // Newest NAV wins: by the time the gap ends the lookup has failed, so the queue speaks the outcome.
+    await jest.advanceTimersByTimeAsync(4000);
+    expect(platform.spoken).toEqual(['CVS. Got it.', 'I could not find that place nearby.']);
+    expect(store.getState().mode).toBe('IDLE');
+    expect(store.getState().targetItem).toBeNull();
+    expect(app.trip.isActive()).toBe(false);
+
+    app.dispose();
+    unbind();
+  });
+
   it('first launch: start() speaks nothing (OnboardingScreen step 0 owns the disclaimer); the manual-signal facade drives the ticker', async () => {
     const { bus, store, unbind } = setupStore();
     const mocks = createMockServices({ bus, store: bridgeAppStore(store), latencyScale: 0 });

@@ -81,7 +81,7 @@ export function parseIntentFallback(transcript: string, knownItems: readonly str
   // Round 4: home goals ("eggs in my fridge", "the living room") are never store items.
   const goal = classifyGoalPhrase(transcript);
   if (goal?.kind === 'guided_task') {
-    return { intent: 'guided_task', item: null, destination: null, goal: goal.goal, reply: `${titleCase(goal.goal)}. Let me see your surroundings.` };
+    return { intent: 'guided_task', item: null, destination: null, goal: goal.goal, reply: `${titleCase(goal.goal)}. Got it.` };
   }
 
   // Known vocabulary first: longest match wins ("egg noodles" over "egg").
@@ -99,7 +99,7 @@ export function parseIntentFallback(transcript: string, knownItems: readonly str
 
   // Round 4: "take me to CVS" → a place to walk to.
   if (goal?.kind === 'navigate_to') {
-    return { intent: 'navigate_to', item: null, destination: goal.destination, goal: null, reply: `${titleCase(goal.destination)}. Planning a route.` };
+    return { intent: 'navigate_to', item: null, destination: goal.destination, goal: null, reply: `${titleCase(goal.destination)}. Got it.` };
   }
 
   // Free-form "I need X" with the filler stripped.
@@ -340,20 +340,29 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   };
 
   const act = (output: ParseIntentOutput, source: VoiceSource): void => {
+    const reply = (): void => {
+      const cacheKey = phraseKeyForText(output.reply);
+      opts.speech.say({ text: output.reply, priority: 'NAV', dedupeKey: `voice-reply`, cooldownMs: 1000, ...(cacheKey ? { cacheKey } : {}) });
+      opts.conversation?.pushAisle(output.reply, 'speech');
+    };
     if (output.intent === 'find_item' && output.item) {
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
     } else if (output.intent === 'navigate_to' && output.destination) {
+      // Round 4: the echo ("CVS. Got it.") first, then the trip's own prompts
+      // ("Let me see your surroundings.", "Planning your route.") queue behind it.
+      reply();
       opts.bus.emit({ type: 'DESTINATION_REQUESTED', name: output.destination, source });
+      return;
     } else if (output.intent === 'guided_task' && output.goal) {
       const m = opts.store.getState().mode;
       const context: TaskContext = m === 'INDOOR_NAV' || m === 'AT_ITEM' || m === 'ITEM_PICKUP' || m === 'CHECKOUT_NAV' ? 'store' : m === 'OUTDOOR_NAV' ? 'street' : 'home';
+      reply();
       opts.bus.emit({ type: 'TASK_REQUESTED', goal: output.goal, context, source });
+      return;
     } else if (output.intent === 'abort') {
       opts.store.getState().abort();
     }
-    const cacheKey = phraseKeyForText(output.reply);
-    opts.speech.say({ text: output.reply, priority: 'NAV', dedupeKey: `voice-reply`, cooldownMs: 1000, ...(cacheKey ? { cacheKey } : {}) });
-    opts.conversation?.pushAisle(output.reply, 'speech');
+    reply();
   };
 
   const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource): Promise<VoiceOutcome> => {

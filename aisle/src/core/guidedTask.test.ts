@@ -98,7 +98,7 @@ describe('createGuidedTask', () => {
     expect(steps).toEqual([{ type: 'TASK_STEP', index: 0, total: 3, instruction: PLAN.steps[0].instruction }]);
     expect(h.deps.store.getState().taskStep).toBe(0);
     expect(h.deps.store.getState().taskStepCount).toBe(3);
-    expect(h.log).toEqual(['Plan: 3 steps to eggs in my fridge.']);
+    expect(h.log).toEqual([PHRASES.let_me_see, 'Plan: 3 steps to eggs in my fridge.', PLAN.steps[0].instruction]);
     expect(task.isActive()).toBe(true);
     expect(task.getDebugState()).toMatchObject({ goal: 'eggs in my fridge', context: 'home', step: 0, total: 3, plannerFallback: false });
     task.dispose();

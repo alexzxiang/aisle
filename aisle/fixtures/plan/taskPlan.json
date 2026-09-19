@@ -1,0 +1,9 @@
+{
+  "job": "taskPlan",
+  "note": "match.context picks the plan; '*' is the home plan. Steps are what Nemotron returned for 'eggs in my fridge' (2026-09-18), trimmed to twelve words.",
+  "entries": [
+    { "match": { "context": "store" }, "result": { "job": "taskPlan", "output": { "askFirst": "Let me see your surroundings.", "steps": [ { "instruction": "Turn slowly so I can see the aisle signs.", "lookFor": "an aisle sign" }, { "instruction": "Walk to the dairy aisle sign.", "lookFor": "the dairy aisle sign close ahead" }, { "instruction": "Face the shelf and reach out.", "lookFor": "the item within arm's reach" } ] }, "fallback": false, "latencyMs": 2200 } },
+    { "match": { "context": "street" }, "result": { "job": "taskPlan", "output": { "askFirst": "Let me see your surroundings.", "steps": [ { "instruction": "Turn slowly so I can see the street.", "lookFor": "the sidewalk and nearby doors" }, { "instruction": "Walk toward the entrance ahead.", "lookFor": "a door or entrance close in front" }, { "instruction": "Stop at the door and reach for it.", "lookFor": "the door within arm's reach" } ] }, "fallback": false, "latencyMs": 2100 } },
+    { "seq": "*", "result": { "job": "taskPlan", "output": { "askFirst": "Let me see your surroundings.", "steps": [ { "instruction": "Walk to the kitchen door frame.", "lookFor": "kitchen door frame" }, { "instruction": "Turn toward the kitchen counter.", "lookFor": "kitchen counter" }, { "instruction": "Walk to the fridge.", "lookFor": "fridge" }, { "instruction": "Open the fridge door.", "lookFor": "fridge door open" }, { "instruction": "Look inside the fridge.", "lookFor": "eggs" } ] }, "fallback": false, "latencyMs": 2400 } }
+  ]
+}

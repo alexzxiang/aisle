@@ -265,7 +265,7 @@ export const PARSE_INTENT_PROMPT = [
   'item: the matching entry from knownItems when intent is find_item, else null. Prefer a knownItems match even if the transcript is misspelled. If the transcript names something to buy that is NOT in knownItems and no place is named, intent is still find_item with item null.',
   'destination: for navigate_to, the place name as spoken, without "take me to" ("CVS", "the library"); else null. goal: for guided_task, the goal in the user\'s words ("eggs in my fridge"); else null.',
   'Decide by context words: a shop, pharmacy, store name, street or address means navigate_to; fridge, kitchen, living room, bedroom, door, couch, desk, keys, phone or "in my" means guided_task.',
-  'reply: at most twelve words, no digits, confirming what you understood, e.g. "Eggs. Finding a route." or "Say the item again."',
+  'reply: at most twelve words, no digits, confirming what you understood, e.g. "Eggs. Finding a route." or "Say the item again." For navigate_to and guided_task the reply is only the echo ("CVS. Got it."): the app speaks the next prompts itself.',
   'Never mention crossing, traffic or whether it is fine to proceed.',
   'Output JSON only.',
 ].join('\n');
@@ -348,10 +348,10 @@ export function templateParseIntent(input: ParseIntentInput): ParseIntentOutput 
   // Home words ("in my fridge", "living room") can never mean a store item, so they win
   // over a knownItems match ("eggs"); everything else lets the store vocabulary win first.
   const goal = classifyGoalPhrase(t);
-  if (goal?.kind === 'guided_task') return { intent: 'guided_task', item: null, destination: null, goal: goal.goal, reply: `${capitalize(goal.goal)}. Let me see your surroundings.` };
+  if (goal?.kind === 'guided_task') return { intent: 'guided_task', item: null, destination: null, goal: goal.goal, reply: `${capitalize(goal.goal)}. Got it.` };
   const item = matchKnownItem(t, input.knownItems ?? []);
   if (item) return { intent: 'find_item', item, reply: `${capitalize(item)}. Finding a route.` };
-  if (goal?.kind === 'navigate_to') return { intent: 'navigate_to', item: null, destination: goal.destination, goal: null, reply: `${capitalize(goal.destination)}. Planning a route.` };
+  if (goal?.kind === 'navigate_to') return { intent: 'navigate_to', item: null, destination: goal.destination, goal: null, reply: `${capitalize(goal.destination)}. Got it.` };
   return { intent: 'unknown', item: null, reply: 'Say the item again.' };
 }
 

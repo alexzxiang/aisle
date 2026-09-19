@@ -22,6 +22,7 @@ import planIntent from '../fixtures/plan/parseIntent.json';
 import planDisambiguate from '../fixtures/plan/disambiguate.json';
 import planCrossing from '../fixtures/plan/crossingAnnounce.json';
 import planAnswer from '../fixtures/plan/answer.json';
+import planTask from '../fixtures/plan/taskPlan.json';
 
 import type { FrameEntry } from './perception';
 import type { PlanFixtureFile } from './planner';
@@ -49,7 +50,7 @@ export const planFixtures: Record<PlannerJob, PlanFixtureFile> = {
   routeCompile: planRoute as PlanFixtureFile,
   parseIntent: planIntent as PlanFixtureFile,
   disambiguate: planDisambiguate as PlanFixtureFile,
-  taskPlan: planAnswer as PlanFixtureFile,
+  taskPlan: planTask as PlanFixtureFile,
   crossingAnnounce: planCrossing as PlanFixtureFile,
   answer: planAnswer as PlanFixtureFile,
 };

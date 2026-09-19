@@ -123,8 +123,11 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
 
   const mode = (): AppMode => store.getState().mode;
 
+  // The blurb keeps every prompt even when the queue's newest-wins rule skips it
+  // (same role + text inside the log's collapse window is one entry).
   const sayPhrase = (key: 'let_me_see' | 'task_done' | 'task_step_done' | 'task_next', cooldownMs = 2000): void => {
     speech.say({ text: phraseText(key), priority: 'NAV', cacheKey: key, dedupeKey: `task-${key}`, cooldownMs });
+    deps.conversation?.pushAisle(phraseText(key), 'prompt');
   };
 
   const clearTimers = (r: RunState): void => {
@@ -145,7 +148,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     const s = r.steps[r.step];
     if (!s) return;
     speech.say({ text: s.instruction, priority: 'NAV', dedupeKey: `task-step-${r.step}`, cooldownMs: reminder ? 0 : 1500 });
-    if (!reminder) bus.emit({ type: 'TASK_STEP', index: r.step, total: r.steps.length, instruction: s.instruction });
+    if (!reminder) {
+      deps.conversation?.pushAisle(s.instruction, 'prompt');
+      bus.emit({ type: 'TASK_STEP', index: r.step, total: r.steps.length, instruction: s.instruction });
+    }
     scheduleRemind(r);
   };
 
@@ -254,7 +260,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       plannerFallback = true;
     }
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
-    if (plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
+    if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
     const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, asking: false };
     run = r;
