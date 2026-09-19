@@ -57,6 +57,7 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
   curb_crop: [
     COMMON,
     'Question: this is a crop around a pedestrian signal head across the street. This is a fallback read; the on-device model could not read it.',
+    'Read only a pedestrian walking-figure or raised-hand signal facing this crossing. A vehicle traffic light, stop sign, or printed pedestrian sign cannot establish WALK. If the relevant pedestrian head cannot be distinguished from another crossing, return UNKNOWN.',
     'Set signal.state to WALK only if the walking-figure lens is clearly lit, DONT_WALK if the hand is lit without digits, COUNTDOWN if digits are lit, otherwise UNKNOWN. Use UNKNOWN unless you are confident.',
     'Keep speech empty; the app phrases the state itself and adds "Signal read is delayed."',
   ].join(' '),

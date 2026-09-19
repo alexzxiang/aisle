@@ -29,7 +29,6 @@ import type { IndoorController } from '../indoor/indoorController';
 import type { StoreResolver } from '../indoor/storeResolver';
 import type { LegRunner, LegRunnerDebugState } from '../outdoor/LegRunner';
 import { RouteClientError } from '../outdoor/routeClient';
-import { directRoute } from '../outdoor/directRoute';
 import { resolveDestination } from './destinations';
 import type { OutdoorStore } from '../outdoor/store';
 import { announceStoreEntry, type AnnounceHandle } from '../transition/announce';
@@ -224,21 +223,11 @@ export function wireTrip(deps: TripDeps): Trip {
         return;
       }
       if (e instanceof RouteClientError && (e.kind === 'http' || e.kind === 'shape')) {
-        // The proxy answered but had no route (Google disabled / 5xx / bad shape): degrade to a
-        // straight heading to the entrance so the trip — and everything after it — still runs.
-        report('route-degraded', e);
-        deps.speech.say({ text: PHRASES.no_route_data, cacheKey: 'no_route_data', priority: 'NAV', dedupeKey: 'no_route_data', cooldownMs: 60_000 });
-        try {
-          await s.runner.loadRoute(directRoute(startReq.origin, startReq.entrance, startReq.destName, deps.now?.() ?? Date.now()), startReq);
-          if (gen !== generation) s.runner.stop();
-          return;
-        } catch (e2) {
-          if (gen !== generation) { s.runner.stop(); return; }
-          report('route', e2);
-          deps.speech.say({ text: PHRASES.route_unavailable, cacheKey: 'route_unavailable', priority: 'NAV', dedupeKey: 'route_unavailable', cooldownMs: 15_000 });
-          endSession();
-          return;
-        }
+        // A bearing to the destination is not a walkable route or sidewalk.
+        report('route', e);
+        deps.speech.say({ text: PHRASES.route_unavailable, cacheKey: 'route_unavailable', priority: 'NAV', dedupeKey: 'route_unavailable', cooldownMs: 15_000 });
+        endSession();
+        return;
       }
       report('route', e);
       if (e instanceof RouteClientError && (e.kind === 'network' || e.kind === 'timeout')) {

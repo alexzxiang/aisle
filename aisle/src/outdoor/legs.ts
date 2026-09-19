@@ -43,6 +43,14 @@ export function advanceRadiusFor(accuracyM: number): number | null {
   return null;
 }
 
+/** Current GPS evidence only; poor fixes must not drive curb or turn decisions. */
+export function usableOutdoorFix(fix: GeoFix, now: number, maxAccuracyM = ACCURACY_FAIR_M): boolean {
+  return Number.isFinite(fix.lat) && Math.abs(fix.lat) <= 90
+    && Number.isFinite(fix.lng) && Math.abs(fix.lng) <= 180
+    && Number.isFinite(fix.accuracyM) && fix.accuracyM >= 0 && fix.accuracyM <= maxAccuracyM
+    && Number.isFinite(fix.timestamp) && now - fix.timestamp >= 0 && now - fix.timestamp <= 5000;
+}
+
 export interface LegProgressState {
   legIndex: number;
   insideCount: number;      // consecutive counting fixes inside the end radius
@@ -94,7 +102,7 @@ export function stepLegProgress(prev: LegProgressState, fix: GeoFix, legs: reado
 
   const radius = advanceRadiusFor(fix.accuracyM);
   if (radius === null) {
-    return { state: prev, events: [], counted: false, distToEndM, alongM, crossTrackM, remainingM };
+    return { state: { ...prev, insideCount: 0, overshootCount: 0, offRouteCount: 0 }, events: [], counted: false, distToEndM, alongM, crossTrackM, remainingM };
   }
 
   const inside = distToEndM <= radius;

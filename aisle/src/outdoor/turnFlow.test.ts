@@ -55,6 +55,8 @@ describe('turn flow', () => {
     expect(r.actions).toEqual([]);
     // Inside the 12° dead zone: the next leg's confirm.
     r = stepTurnFlow(r.state, { type: 'HEADING', headingDeg: 322, accuracy: 3, now: 3000 }, legs, script);
+    expect(r.actions).toEqual([]);
+    r = stepTurnFlow(r.state, { type: 'HEADING', headingDeg: 322, accuracy: 3, now: 4000 }, legs, script);
     expect(kinds(r.actions)).toEqual(['SAY:Continue on South Bouquet Street, two hundred feet.']);
     expect(r.state.phase).toBe('WALKING');
     // Never twice.
@@ -62,14 +64,17 @@ describe('turn flow', () => {
     expect(r.actions).toEqual([]);
   });
 
-  it('a poor compass never confirms on heading; the 8 s timeout does', () => {
+  it('a poor compass never confirms alignment, even after the timeout', () => {
     let r = stepTurnFlow(initialTurnFlow(0), { type: 'ADVANCED', toLegIndex: 1, now: 0 }, legs, script);
     r = stepTurnFlow(r.state, { type: 'HEADING', headingDeg: 330, accuracy: 1, now: 500 }, legs, script);
     expect(r.actions).toEqual([]);
     r = stepTurnFlow(r.state, { type: 'TICK', now: ALIGN_TIMEOUT_MS - 1 }, legs, script);
     expect(r.actions).toEqual([]);
     r = stepTurnFlow(r.state, { type: 'TICK', now: ALIGN_TIMEOUT_MS }, legs, script);
-    expect(kinds(r.actions)).toEqual(['SAY:Continue on South Bouquet Street, two hundred feet.']);
+    expect(kinds(r.actions)).toEqual(['SAY:Pause. Hold the phone steady to check your direction.']);
+    expect(r.state.phase).toBe('ALIGNING');
+    r = stepTurnFlow(r.state, { type: 'TICK', now: ALIGN_TIMEOUT_MS * 2 }, legs, script);
+    expect(r.actions).toEqual([]);
   });
 
   it('a STRAIGHT maneuver gets no now, no TURN, and an immediate confirm', () => {
@@ -89,4 +94,23 @@ describe('turn flow', () => {
     expect(deadZoneFor(1)).toBeNull();
     expect(deadZoneFor(0)).toBeNull();
   });
+});
+
+it('heading jitter resets the alignment dwell instead of confirming early', () => {
+  let r = stepTurnFlow(initialTurnFlow(0), { type: 'ADVANCED', toLegIndex: 1, now: 0 }, legs, script);
+  for (const [now, headingDeg] of [[100, 330], [900, 290], [1100, 330], [1900, 330]]) {
+    r = stepTurnFlow(r.state, { type: 'HEADING', headingDeg, accuracy: 3, now }, legs, script);
+    expect(r.state.phase).toBe('ALIGNING');
+    expect(r.actions).toEqual([]);
+  }
+  r = stepTurnFlow(r.state, { type: 'HEADING', headingDeg: 330, accuracy: 3, now: 2200 }, legs, script);
+  expect(r.state.phase).toBe('WALKING');
+});
+
+it('does not count a gap in heading updates as stable alignment', () => {
+  let r = stepTurnFlow(initialTurnFlow(0), { type: 'ADVANCED', toLegIndex: 1, now: 0 }, legs, script);
+  r = stepTurnFlow(r.state, { type: 'HEADING', headingDeg: 330, accuracy: 3, now: 100 }, legs, script);
+  r = stepTurnFlow(r.state, { type: 'HEADING', headingDeg: 330, accuracy: 3, now: 5000 }, legs, script);
+  expect(r.state.phase).toBe('ALIGNING');
+  expect(r.actions).toEqual([]);
 });

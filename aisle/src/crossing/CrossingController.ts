@@ -1,3 +1,4 @@
+import { usableOutdoorFix } from '../outdoor/legs';
 /**
  * CrossingController (01 §10, 03 Task 6). One instance; signalized and
  * unsignalized crossings.
@@ -219,7 +220,8 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
   const headingDeg = (): number | null => {
     const fused = sensors.getFusedHeadingDeg();
     if (fused !== null) return fused;
-    return sensors.getHeading()?.trueHeadingDeg ?? null;
+    const raw = sensors.getHeading();
+    return raw && raw.accuracy >= 2 && now() >= raw.timestamp && now() - raw.timestamp <= 2000 ? raw.trueHeadingDeg : null;
   };
 
   const modeNow = (): AppMode => deps.getMode?.() ?? 'AT_CURB';
@@ -245,6 +247,9 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
 
   const curbCropOnce = async (): Promise<void> => {
     if (!deps.vision || !crossing || curbCropInFlight >= CURB_CROP_MAX_IN_FLIGHT || state !== 'READING') return;
+    const facing = headingDeg();
+    if (facing === null || (sensors.getHeading()?.accuracy ?? 0) < 2
+      || Math.abs(angularError(facing, crossing.bearingDeg)) > 20) return;
     curbCropInFlight += 1;
     const mySeq = ++seq;
     const sentAt = now();
@@ -260,6 +265,8 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
       const res = await deps.vision.ask(req);
       if (now() - sentAt > VISION_FRESHNESS_CROSSING_MS) return;           // stale: dropped, never spoken
       if (mySeq < curbCropSeqApplied || state !== 'READING' || ladderRung !== 2) return;
+      const currentFacing = headingDeg();
+      if (!crossing || currentFacing === null || Math.abs(angularError(currentFacing, crossing.bearingDeg)) > 20) return;
       curbCropSeqApplied = mySeq;
       const confident = res.confidence >= CURB_CROP_MIN_CONFIDENCE && res.signal.confidence >= CURB_CROP_MIN_CONFIDENCE;
       const st: SignalState = confident ? res.signal.state : 'UNKNOWN';
@@ -295,6 +302,12 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
     signalTrack = decision.track;
     if (e.state !== 'UNKNOWN') {
       setSource(source);
+      if (unknownTimer) clearTimeout(unknownTimer);
+      // Native heartbeats arrive every two seconds. Silence invalidates the old state.
+      unknownTimer = source === 'manual' ? null : setTimeout(() => {
+        unknownTimer = null;
+        applySignal({ state: 'UNKNOWN', fresh: false }, source);
+      }, 4500);
       if (source === 'live' && ladderRung === 2) {
         // The live stream is back: rung 2 stops the moment it returns a state.
         stopCurbCrop();
@@ -400,7 +413,8 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
 
     armedUnsubs.push(bus.on('SIGNAL_STATE', (e) => {
       if (manualSignal !== null) return;
-      applySignal({ state: e.state, fresh: e.fresh }, 'live');
+      const reliable = Number.isFinite(e.confidence) && e.confidence >= 0.5;
+      applySignal({ state: reliable ? e.state : 'UNKNOWN', fresh: reliable && e.fresh }, 'live');
     }));
     armedUnsubs.push(sensors.subscribeHeading(() => onHeadingWhileAligning()));
     armedUnsubs.push(sensors.subscribeSteps(() => {
@@ -430,8 +444,13 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
 
   const observeFix = (fix: GeoFix): void => {
     if (!crossing || state === 'IDLE' || state === 'DONE') return;
-    const here: LatLng = { lat: fix.lat, lng: fix.lng };
     const t = now();
+    if (!usableOutdoorFix(fix, t, 20)) {
+      goodFixesNearFar = 0;
+      stillness = initialStillness(t);
+      return;
+    }
+    const here: LatLng = { lat: fix.lat, lng: fix.lng };
     stillness = noteFixMotion(stillness, fix, t);
     if (state === 'ARMED') {
       if (walkedPast(here, crossing.nearCurb, crossing.farCurb)) {
@@ -487,18 +506,21 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
 
   // --- unsignalized scan -------------------------------------------------------
 
-  const waitForHeading = async (target: number, generation: number): Promise<void> => {
+  const waitForHeading = async (target: number, generation: number): Promise<boolean> => {
     const deadline = now() + SCAN_TURN_TIMEOUT_MS;
     while (now() < deadline && generation === scanGeneration) {
       const h = headingDeg();
-      if (h !== null && Math.abs(angularError(h, target)) <= SCAN_HEADING_TOLERANCE_DEG) return;
+      if (h !== null && (sensors.getHeading()?.accuracy ?? 0) >= 2 && Math.abs(angularError(h, target)) <= SCAN_HEADING_TOLERANCE_DEG) return true;
       await sleep(SCAN_HEADING_POLL_MS);
     }
+    return false;
   };
 
   const scanWindow = async (side: Side, generation: number): Promise<VehiclesSeen> => {
     if (!crossing) return 'unclear';
     let approaching = false;
+    let detectorFrames = 0;
+    const stopFrames = perception.onDetections(() => { detectorFrames += 1; });
     const unsub = bus.on('VEHICLE_APPROACHING', () => {
       approaching = true;
     });
@@ -542,9 +564,10 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
       await sleep(SCAN_WINDOW_MS - SCAN_STILL_AT_MS);
     } finally {
       unsub();
+      stopFrames();
     }
     if (generation !== scanGeneration) return 'unclear';
-    const detector: VehiclesSeen = approaching ? 'approaching' : 'none';
+    const detector: VehiclesSeen = approaching ? 'approaching' : detectorFrames >= 2 ? 'none' : 'unclear';
     bus.emit({ type: 'SCAN_RESULT', side, vehiclesSeen: detector, source: 'detector' });
     if (claudePromise) {
       await claudePromise;
@@ -567,15 +590,15 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
     }
     try {
       sayKey('no_signal_point_left', { cooldownMs: 1000, dedupeKey: `scan-left-${scanRuns}` });
-      await waitForHeading(scanBearingFor(crossing.bearingDeg, 'LEFT'), generation);
+      const facingLeft = await waitForHeading(scanBearingFor(crossing.bearingDeg, 'LEFT'), generation);
       if (generation !== scanGeneration || state !== 'SCANNING') return;
-      const left = await scanWindow('LEFT', generation);
+      const left = facingLeft ? await scanWindow('LEFT', generation) : 'unclear';
       if (generation !== scanGeneration || state !== 'SCANNING') return;
       scanVerdicts = { left, right: null };
       sayKey('now_right', { cooldownMs: 1000, dedupeKey: `scan-right-${scanRuns}` });
-      await waitForHeading(scanBearingFor(crossing.bearingDeg, 'RIGHT'), generation);
+      const facingRight = await waitForHeading(scanBearingFor(crossing.bearingDeg, 'RIGHT'), generation);
       if (generation !== scanGeneration || state !== 'SCANNING') return;
-      const right = await scanWindow('RIGHT', generation);
+      const right = facingRight ? await scanWindow('RIGHT', generation) : 'unclear';
       if (generation !== scanGeneration || state !== 'SCANNING') return;
       scanVerdicts = { left, right };
       outdoor.getState().setCrossingDebug({ scanVerdicts: { left, right } });

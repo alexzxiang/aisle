@@ -132,8 +132,8 @@ describe('buildRoute on the recorded Forbes / Bouquet route', () => {
     expect(r.legs.every((l) => l.roadSide === 'NONE')).toBe(true);
   });
 
-  it('Google failing (403: API disabled) → the recorded route stands in when both ends match', async () => {
-    const d = deps({}, { googleStatus: 403 });
+  it('an explicitly supplied replay route can stand in when both ends match', async () => {
+    const d = deps({ routeFixture: async () => google }, { googleStatus: 403 });
     const r = await buildRoute(query, d);
     expect(r.sources.google).toBe('fixture');
     expect(d.calls.some((c) => c.url.includes('routes.googleapis.com'))).toBe(true); // Google was tried first
@@ -146,7 +146,7 @@ describe('buildRoute on the recorded Forbes / Bouquet route', () => {
   });
 
   it('no Google key: the recorded route stands in when both ends match, else 503', async () => {
-    const d = deps({ config: testConfig({ googleMapsApiKey: null, nvidiaApiKey: null, openRouterApiKey: null }) });
+    const d = deps({ routeFixture: async () => google, config: testConfig({ googleMapsApiKey: null, nvidiaApiKey: null, openRouterApiKey: null }) });
     const r = await buildRoute(query, d);
     expect(r.sources.google).toBe('fixture');
     expect(d.calls.some((c) => c.url.includes('routes.googleapis.com'))).toBe(false);
@@ -211,4 +211,19 @@ describe('GET /api/route', () => {
     const bad = await fetch(`${base}/api/route?originLat=abc`);
     expect(bad.status).toBe(400);
   });
+});
+
+it('does not silently substitute a bundled demo route when live Google fails', async () => {
+  await expect(buildRoute(query, deps({}, { googleStatus: 403 }))).rejects.toMatchObject({ status: 502 });
+});
+
+it('does not revive an expired disk route after Google fails', async () => {
+  const dir = path.join(HERE, 'cache', `expired-${process.pid}`);
+  try {
+    await buildRoute(query, deps({ cacheDir: dir, now: () => 1000 }));
+    clearRouteCache();
+    await expect(buildRoute(query, deps({ cacheDir: dir, now: () => 1000 + 31 * 60000 }, { googleStatus: 500 }))).rejects.toMatchObject({ status: 502 });
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });

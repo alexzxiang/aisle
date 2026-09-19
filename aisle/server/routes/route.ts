@@ -92,10 +92,12 @@ export function clearRouteCache(): void {
   memory.clear();
 }
 
-async function readDisk(dir: string | null, key: string): Promise<RouteResponseWithSources | null> {
+async function readDisk(dir: string | null, key: string, now: number): Promise<RouteResponseWithSources | null> {
   if (!dir) return null;
   try {
-    return JSON.parse(await fs.readFile(path.join(dir, `${key}.json`), 'utf8')) as RouteResponseWithSources;
+    const route = JSON.parse(await fs.readFile(path.join(dir, `${key}.json`), 'utf8')) as RouteResponseWithSources;
+    if (!Number.isFinite(route.fetchedAt) || now < route.fetchedAt || now - route.fetchedAt > ROUTE_CACHE_MS || route.sources?.google !== 'live') return null;
+    return route;
   } catch {
     return null;
   }
@@ -163,7 +165,7 @@ async function fetchGoogle(origin: LatLng, dest: LatLng, deps: RouteDeps, config
       clearTimeout(timer);
     }
   }
-  const fixture = await (deps.routeFixture ?? loadRouteFixture)();
+  const fixture = await deps.routeFixture?.();
   if (fixture && fixtureMatches(fixture, origin, dest)) return { raw: fixture, source: 'fixture' };
   throw new RouteError('GOOGLE_MAPS_API_KEY is not set and no recorded route matches this origin/destination', 503);
 }
@@ -203,21 +205,20 @@ export async function buildRoute(q: RouteQuery, deps: RouteDeps = {}): Promise<R
   const cacheDir = deps.cacheDir === undefined ? CACHE_DIR : deps.cacheDir;
 
   const hit = memory.get(key);
-  if (hit && now() - hit.at <= ROUTE_CACHE_MS) return { ...hit.value, sources: { ...hit.value.sources, cache: 'memory' } };
+  if (hit && now() - hit.value.fetchedAt >= 0 && now() - hit.value.fetchedAt <= ROUTE_CACHE_MS) return { ...hit.value, sources: { ...hit.value.sources, cache: 'memory' } };
 
   let google: { raw: RawComputeRoutesResponse; source: GoogleSource };
   try {
     google = await fetchGoogle(origin, dest, deps, config);
   } catch (e) {
-    const disk = await readDisk(cacheDir, key);
+    const disk = await readDisk(cacheDir, key, now());
     if (disk) {
       memory.set(key, { at: now(), value: disk });
       return { ...disk, sources: { ...disk.sources, cache: 'disk' } };
     }
-    // Google failed (API disabled, 403, 5xx, network, timeout) and nothing is cached: a
-    // recorded route that starts and ends near this query stands in, honestly labelled —
-    // the demo must survive a Google outage. Otherwise the error propagates (never a guess).
-    const fixture = await (deps.routeFixture ?? loadRouteFixture)();
+    // Recorded routes require explicit injection for tests or replay. Production never
+    // replaces a failed live walking route with a nearby demonstration route.
+    const fixture = await deps.routeFixture?.();
     if (fixture && fixtureMatches(fixture, origin, dest)) {
       google = { raw: fixture, source: 'fixture' };
     } else {

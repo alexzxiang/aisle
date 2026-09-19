@@ -17,6 +17,7 @@ import { angularError } from './legs';
 import type { RouteLeg } from './types';
 
 export const ALIGN_TIMEOUT_MS = 8000;
+export const ALIGN_STABLE_MS = 1000;
 export const DEAD_ZONE_ACC3_DEG = 12;
 export const DEAD_ZONE_ACC2_DEG = 18;
 
@@ -26,9 +27,12 @@ export interface TurnFlowState {
   legIndex: number;
   phase: TurnPhase;
   soonSaid: boolean;
-  /** When the TURN fired; the alignment wait times out 8 s later. */
+  /** When TURN fired; after eight seconds ask for help without confirming alignment. */
   turnedAt: number | null;
   confirmSaid: boolean;
+  alignedSince: number | null;
+  lastHeadingAt: number | null;
+  alignmentHelpSaid: boolean;
 }
 
 export type TurnAction =
@@ -45,7 +49,7 @@ export type TurnEvent =
   | { type: 'REPLANNED' };
 
 export function initialTurnFlow(legIndex = 0): TurnFlowState {
-  return { legIndex, phase: 'WALKING', soonSaid: false, turnedAt: null, confirmSaid: false };
+  return { legIndex, phase: 'WALKING', soonSaid: false, turnedAt: null, confirmSaid: false, alignedSince: null, lastHeadingAt: null, alignmentHelpSaid: false };
 }
 
 export function isTurnManeuver(leg: RouteLeg | undefined): boolean {
@@ -111,16 +115,19 @@ export function stepTurnFlow(
     case 'HEADING': {
       if (state.phase !== 'ALIGNING' || !leg) return { state, actions };
       const zone = deadZoneFor(event.accuracy);
-      const aligned = zone !== null && Math.abs(angularError(event.headingDeg, leg.startBearingDeg)) <= zone;
-      const timedOut = state.turnedAt !== null && event.now - state.turnedAt >= ALIGN_TIMEOUT_MS;
-      if (!aligned && !timedOut) return { state, actions };
-      return finishAlignment(state, leg, script, actions);
+      const aligned = zone !== null && Number.isFinite(event.headingDeg)
+        && Math.abs(angularError(event.headingDeg, leg.startBearingDeg)) <= zone;
+      const continuous = state.lastHeadingAt !== null && event.now > state.lastHeadingAt && event.now - state.lastHeadingAt <= 2000;
+      const alignedSince = aligned ? (continuous ? state.alignedSince ?? event.now : event.now) : null;
+      if (alignedSince !== null && event.now - alignedSince >= ALIGN_STABLE_MS) {
+        return finishAlignment({ ...state, alignedSince }, leg, script, actions);
+      }
+      return alignmentHelp({ ...state, alignedSince, lastHeadingAt: event.now }, event.now, actions);
     }
 
     case 'TICK': {
       if (state.phase !== 'ALIGNING' || !leg) return { state, actions };
-      if (state.turnedAt === null || event.now - state.turnedAt < ALIGN_TIMEOUT_MS) return { state, actions };
-      return finishAlignment(state, leg, script, actions);
+      return alignmentHelp(state, event.now, actions);
     }
 
     default:
@@ -137,4 +144,13 @@ function finishAlignment(
   const confirm = legConfirmRequest(leg, script);
   if (confirm && !state.confirmSaid) actions.push({ kind: 'SAY', req: confirm });
   return { state: { ...state, phase: 'WALKING', turnedAt: null, confirmSaid: true }, actions };
+}
+
+/** A timeout asks for a stable heading; it cannot prove a turn completed. */
+function alignmentHelp(state: TurnFlowState, now: number, actions: TurnAction[]): { state: TurnFlowState; actions: TurnAction[] } {
+  if (!state.alignmentHelpSaid && state.turnedAt !== null && now - state.turnedAt >= ALIGN_TIMEOUT_MS) {
+    actions.push({ kind: 'SAY', req: { text: 'Pause. Hold the phone steady to check your direction.', priority: 'NAV', dedupeKey: `alignment-${state.legIndex}`, cooldownMs: 8000 } });
+    return { state: { ...state, alignmentHelpSaid: true }, actions };
+  }
+  return { state, actions };
 }

@@ -195,35 +195,14 @@ describe('wireTrip', () => {
     trip.dispose();
   });
 
-  it('a server-side route failure (proxy 502: Google disabled) degrades to a direct heading: says no_route_data and loads a one-leg route', async () => {
-    const h = harness({ startImpl: async () => { throw new RouteClientError('route: http 502', 'http', 502); } });
+  it.each(['http', 'shape'] as const)('a %s route failure stops instead of guiding a straight line', async (kind) => {
+    const h = harness({ startImpl: async () => { throw new RouteClientError('route unavailable', kind, 502); } });
     const trip = wireTrip(h.deps);
     h.deps.bus.emit({ type: 'ITEM_REQUESTED', item: 'eggs', source: 'keyboard' });
     h.fireTarget(resolved);
     await flush();
-    expect(h.said.map((r) => r.cacheKey)).toEqual(['no_route_data']);
-    expect(h.sessions[0].loadRoute).toHaveBeenCalledTimes(1);
-    const [route, req] = (h.sessions[0].loadRoute as jest.Mock).mock.calls[0] as [{ legs: unknown[]; attribution: string; crossings: unknown[] }, { destName: string }];
-    expect(route.legs).toHaveLength(1);
-    expect(route.crossings).toEqual([]);
-    expect(route.attribution).toMatch(/no route data/i);
-    expect(req.destName).toBeTruthy();
-    expect(trip.isActive()).toBe(true);
-    const degraded = h.deps.bus.history().filter((r) => r.event.type === 'ERROR').map((r) => (r.event as { scope: string }).scope);
-    expect(degraded).toEqual(['route-degraded']);
-    trip.dispose();
-  });
-
-  it('when even the direct route cannot be installed, says route_unavailable and ends the session', async () => {
-    const h = harness({
-      startImpl: async () => { throw new RouteClientError('route: http 502', 'http', 502); },
-      loadRouteImpl: async () => { throw new Error('install failed'); },
-    });
-    const trip = wireTrip(h.deps);
-    h.deps.bus.emit({ type: 'ITEM_REQUESTED', item: 'eggs', source: 'keyboard' });
-    h.fireTarget(resolved);
-    await flush();
-    expect(h.said.map((r) => r.cacheKey)).toEqual(['no_route_data', 'route_unavailable']);
+    expect(h.said.map((r) => r.cacheKey)).toEqual(['route_unavailable']);
+    expect(h.sessions[0].loadRoute).not.toHaveBeenCalled();
     expect(trip.isActive()).toBe(false);
     expect(h.deps.store.getState().mode).toBe('IDLE');
     trip.dispose();

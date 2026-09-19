@@ -124,6 +124,8 @@ describe('LegRunner', () => {
     expect(h.perception.calls.slice(-1)).toEqual([{ method: 'setCourseReference', args: [{ bearingDeg: 330 }] }]);
     expect(h.runner.getDebugState().turnPhase).toBe('ALIGNING');
     h.sensors.emitHeading({ trueHeadingDeg: 335, accuracy: 3, timestamp: Date.now() });
+    jest.advanceTimersByTime(1000);
+    h.sensors.emitHeading({ trueHeadingDeg: 335, accuracy: 3, timestamp: Date.now() });
     expect(h.speech.texts().slice(-1)).toEqual(['Continue on South Bouquet Street, about two hundred feet.']);
     expect(h.runner.getDebugState().legIndex).toBe(1);
   });
@@ -344,4 +346,18 @@ describe('reviewer must-fixes (seams with the store)', () => {
     jest.advanceTimersByTime(1);
     expect(h.runner.getDebugState().running).toBe(false);
   });
+});
+
+it('ignores stale and inaccurate GPS when arming crossings or advancing legs', async () => {
+  const h = harness();
+  await h.runner.loadRoute(buildRoute(), { storeId: 's', entrance, destName: 'd', origin: START });
+  const end = buildRoute().legs[0];
+  for (const over of [{ accuracyM: 100 }, { timestamp: Date.now() - 6000 }]) {
+    h.sensors.emitFix(fix(end.endLat, end.endLng, over));
+    h.sensors.emitFix(fix(end.endLat, end.endLng, over));
+  }
+  expect(h.events).not.toContain('CROSSING_AHEAD');
+  expect(h.events).not.toContain('OUTDOOR_LEG_ADVANCED');
+  expect(h.runner.getDebugState().legIndex).toBe(0);
+  h.runner.stop();
 });

@@ -28,7 +28,7 @@ import { buildRouteLine, crossingLengthM, projectOntoRoute, toCrossing, type Rou
 import { type LatLng } from './geo';
 import { CROSSING_AHEAD_M, crossingAheadRequests, offlineNoticeRequest, prefetchPhrases, prefetchPortOf, replanRequest, variablePhrases } from './guidance';
 import { DIRECT_ROUTE_ATTRIBUTION, directRoute } from './directRoute';
-import { initialLegProgress, stepLegProgress, type LegProgressState } from './legs';
+import { initialLegProgress, stepLegProgress, usableOutdoorFix, type LegProgressState } from './legs';
 import type { PlannerClient } from './planner';
 import { templateAnswer } from './plannerJobs';
 import { RouteClientError, type RouteClient, type RouteRequest } from './routeClient';
@@ -232,6 +232,11 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
 
   const onFix = (fix: GeoFix): void => {
     if (!running || !route || !line) return;
+    if (!usableOutdoorFix(fix, now())) {
+      progress = { ...progress, insideCount: 0, overshootCount: 0, offRouteCount: 0 };
+      outdoor.getState().setProgress({ lastFixCounted: false });
+      return;
+    }
     controller.observeFix(fix);
 
     const step = stepLegProgress(progress, fix, route.legs);
@@ -355,7 +360,10 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
     running = true;
     unsubs.push(sensors.subscribeLocation(onFix));
     unsubs.push(sensors.subscribeHeading((h) => {
-      if (WALKING_MODES.has(deps.getMode())) applyTurn({ type: 'HEADING', headingDeg: h.trueHeadingDeg, accuracy: h.accuracy, now: h.timestamp });
+      const heading = sensors.getFusedHeadingDeg();
+      if (WALKING_MODES.has(deps.getMode()) && heading !== null && now() >= h.timestamp && now() - h.timestamp <= 2000) {
+        applyTurn({ type: 'HEADING', headingDeg: heading, accuracy: h.accuracy, now: now() });
+      }
     }));
     unsubs.push(bus.on('FAR_CURB_REACHED', (e) => onCrossingReleased(e.crossingId)));
     unsubs.push(bus.on('CROSSING_ABORTED', (e) => onCrossingReleased(e.crossingId)));

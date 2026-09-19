@@ -108,6 +108,7 @@ describe('stepLegProgress', () => {
     const far = destinationPoint(O, 0, 30);
     expect(run([fix(near, 50), fix(near, 50), fix(near, 50)]).events).toEqual([]);
     expect(run([fix(near), fix(far), fix(near)]).events).toEqual([]);
+    expect(run([fix(near), fix(near, 100), fix(near)]).events).toEqual([]);
     expect(run([fix(near, 50), fix(near), fix(near)]).events).toEqual(['ADVANCED']);
   });
 

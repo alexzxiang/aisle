@@ -46,6 +46,7 @@ export const STRIDE_M = 0.7;
 export const GPS_ANCHOR_MAX_ACCURACY_M = 10;
 export const LATERAL_FRESH_MS = 1000;
 export const POSE_FRESH_MS = 500;
+export const HEADING_FRESH_MS = 2000;
 export const OFFSET_WINDOW_MS = 10_000;
 export const OFFSET_HOLD_MS = 30_000;
 export const OFFSET_PAIR_MAX_SKEW_MS = 250;
@@ -130,7 +131,8 @@ export class HeadingFuser {
     const h = this.heading;
     const p = this.pose;
     const poseFresh = p !== null && this.tracking === 'NORMAL' && now - p.timestamp <= POSE_FRESH_MS;
-    const compassOk = h !== null && h.accuracy >= 2;
+    const compassOk = h !== null && h.accuracy >= 2 && Number.isFinite(h.trueHeadingDeg)
+      && now >= h.timestamp && now - h.timestamp <= HEADING_FRESH_MS;
 
     if (poseFresh && p && this.lastOffset && (compassOk || now - this.lastOffset.ts <= OFFSET_HOLD_MS)) {
       return {
@@ -510,7 +512,7 @@ export function createSensorService(opts: SensorServiceOptions = {}): AisleSenso
       if (fused) {
         headingErrorDeg = wrapDeg180(fused.deg - bearing);
         compassAccuracy = fused.accuracy;
-      } else if (raw) {
+      } else if (raw && t >= raw.timestamp && t - raw.timestamp <= HEADING_FRESH_MS && Number.isFinite(raw.trueHeadingDeg)) {
         headingErrorDeg = wrapDeg180(raw.trueHeadingDeg - fuser.getBodyOffsetDeg() - bearing);
         compassAccuracy = raw.accuracy; // 0 or 1 here → the COURSE rule suppresses the buzz
       }

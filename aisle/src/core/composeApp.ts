@@ -492,9 +492,17 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     if (s.beaconTarget !== prev.beaconTarget) audio.beacon.setTarget(s.beaconTarget);
   }));
   // The ticker follows SIGNAL_STATE (01 §3) unless a manual override is set.
+  let signalExpiry: ReturnType<typeof setTimeout> | null = null;
   unsubs.push(bus.on('SIGNAL_STATE', (e) => {
-    if (trip.getManualSignal() === null) audio.ticker.setState(e.state);
+    if (trip.getManualSignal() !== null) return;
+    if (signalExpiry) clearTimeout(signalExpiry);
+    audio.ticker.setState(Number.isFinite(e.confidence) && e.confidence >= 0.5 ? e.state : 'UNKNOWN');
+    signalExpiry = setTimeout(() => {
+      signalExpiry = null;
+      if (trip.getManualSignal() === null) audio.ticker.setState('UNKNOWN');
+    }, 4500);
   }));
+  unsubs.push(() => { if (signalExpiry) clearTimeout(signalExpiry); });
 
   services.setAll({ haptics, speech, sensors, perception, bus, store, conversation });
 

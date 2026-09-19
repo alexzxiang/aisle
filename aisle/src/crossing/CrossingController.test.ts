@@ -14,13 +14,15 @@ function crossing(overrides: Partial<Crossing> = {}): Crossing {
   return { crossingId: 'x1', street: 'Forbes Ave', signalized: true, pushButtonLikely: false, bearingDeg: BEARING, nearCurb: NEAR, farCurb: FAR, roadSide: 'RIGHT', ...overrides };
 }
 
-function harness(opts: { vision?: boolean; mode?: AppMode } = {}) {
+function harness(opts: { vision?: boolean; mode?: AppMode; detector?: boolean } = {}) {
   const bus = createEventBus();
   const haptics = createFakeHaptics();
   const speech = createFakeSpeech();
   const sensors = createFakeSensors();
   const perception = createFakePerception();
   const outdoor = createOutdoorStore();
+  // A running detector emits empty frames even when no vehicles are visible.
+  if (opts.detector !== false) setInterval(() => perception.emitDetections([]), 100);
   const vision = createFakeVision();
   const events: string[] = [];
   bus.onAny((r) => events.push(r.event.type));
@@ -463,4 +465,60 @@ describe('language', () => {
       expect(/\d/.test(req.text)).toBe(false);
     }
   });
+});
+
+it('detector silence cannot become a no-vehicles report', async () => {
+  const h = harness({ vision: false, detector: false });
+  h.controller.arm(crossing({ signalized: false }));
+  h.sensors.setHeading(BEARING, 3);
+  h.controller.curbReached();
+  h.sensors.setHeading(BEARING - 90, 3);
+  await jest.advanceTimersByTimeAsync(2800);
+  h.sensors.setHeading(BEARING + 90, 3);
+  await jest.advanceTimersByTimeAsync(2800 + 2100 + 2 * SCAN_REPORT_LINE_GAP_MS + 100);
+  expect(h.controller.getDebugState().scanVerdicts).toEqual({ left: 'unclear', right: 'unclear' });
+  expect(h.speech.keys()).not.toContain('listen_then_cross');
+  h.controller.dispose();
+});
+
+it('expires a signal state when native heartbeats stop', async () => {
+  const h = await toReading(harness({ vision: false }));
+  h.bus.emit({ type: 'SIGNAL_STATE', state: 'WALK', fresh: true, confidence: 0.9 });
+  await jest.advanceTimersByTimeAsync(4600);
+  expect(h.controller.getDebugState().lastSignal?.state).toBe('UNKNOWN');
+  await jest.advanceTimersByTimeAsync(10200);
+  expect(h.speech.keys()).toContain('cant_see_signal');
+  h.controller.dispose();
+});
+
+it('does not reach or pass a curb using inaccurate GPS', () => {
+  const h = harness();
+  h.controller.arm(crossing());
+  h.controller.observeFix(fix(FAR.lat, FAR.lng, { accuracyM: 100 }));
+  h.controller.observeFix(fix(NEAR.lat, NEAR.lng, { accuracyM: 100, speedMps: 0 }));
+  jest.advanceTimersByTime(3000);
+  h.controller.observeFix(fix(NEAR.lat, NEAR.lng, { accuracyM: 100, speedMps: 0 }));
+  expect(h.controller.getState()).toBe('ARMED');
+  h.controller.dispose();
+});
+
+it('does not read a pedestrian signal from a camera facing a different crossing', async () => {
+  const h = await toReading(harness());
+  h.sensors.setHeading(BEARING + 90, 3);
+  await jest.advanceTimersByTimeAsync(15000);
+  expect(h.vision.requests).toHaveLength(0);
+  expect(h.speech.keys()).not.toContain('walk_signal_on');
+  h.controller.dispose();
+});
+
+it('reports unclear when side-scan heading was never established', async () => {
+  const h = harness({ vision: false });
+  h.controller.arm(crossing({ signalized: false }));
+  h.sensors.setHeading(BEARING, 3);
+  h.controller.curbReached();
+  await jest.advanceTimersByTimeAsync(40000);
+  expect(h.controller.getDebugState().scanVerdicts).toEqual({ left: 'unclear', right: 'unclear' });
+  expect(h.speech.keys()).not.toContain('no_vehicles_left');
+  expect(h.speech.keys()).not.toContain('no_vehicles_right');
+  h.controller.dispose();
 });

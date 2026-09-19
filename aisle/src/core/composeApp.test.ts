@@ -312,6 +312,11 @@ describe('composeApp (mock mode)', () => {
     expect(app.audio.ticker.getState()).toBe('UNKNOWN');
     bus.emit({ type: 'SIGNAL_STATE', state: 'COUNTDOWN', fresh: false, confidence: 1 });
     expect(app.audio.ticker.getState()).toBe('COUNTDOWN');
+    bus.emit({ type: 'SIGNAL_STATE', state: 'WALK', fresh: true, confidence: 0.2 });
+    expect(app.audio.ticker.getState()).toBe('UNKNOWN');
+    bus.emit({ type: 'SIGNAL_STATE', state: 'WALK', fresh: true, confidence: 0.9 });
+    await jest.advanceTimersByTimeAsync(4501);
+    expect(app.audio.ticker.getState()).toBe('UNKNOWN');
 
     // forceEnter is wired even before any trip (the store drops the illegal edge, loudly).
     app.transitionPort.forceEnter();

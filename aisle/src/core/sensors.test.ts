@@ -447,3 +447,10 @@ describe('createSensorService', () => {
     expect(seen).toEqual([10]);
   });
 });
+
+it('does not use an expired compass sample for course guidance', () => {
+  const f = new HeadingFuser();
+  f.pushHeading(H(90, 3, 1000));
+  expect(f.fused(1000)?.deg).toBe(90);
+  expect(f.fused(3001)).toBeNull();
+});
