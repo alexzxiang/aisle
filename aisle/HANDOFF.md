@@ -117,6 +117,16 @@ Done in code, compiled (`ios:check` green), installed on Alex's iPhone 16 at 12:
    the same words within 30 s. The proxy now repairs long / digit speech instead of
    blanking it (`server/lib/language.ts`, verdict `repaired`).
 
+Added later on 09-19 (round 6b, all Stream A): 24 food / kitchen COCO classes (51 scenery
+classes in all — `FOOD_DETECTION_CLASSES` in contracts.ts); every detection carries `near`
+from the depth grid's cell under it; the depth summary carries the grid's left / right bottom
+cells and Claude reads `path: ahead blocked, left open`; scene memory (`sceneMemory.ts`) keeps
+bearings for everything seen — detector boxes and Apple-classifier things like `egg` /
+`milk_carton` — and answers "where's the X?" before the planner ("The eggs are to your
+left." / "I have not seen a cereal yet."). Note there is no on-device *box* for eggs: COCO has
+none; Claude's task_step reads them from the 768-px still, and Apple's classifier says
+"egg 0.4" image-wide.
+
 Not done / next for A: verify 1 on the device (one DebugPanel line), the ultra-wide
 capture path if needed, the heading-tagged scene memory ("where's the couch?" answered
 from the last minute of detections + ARKit yaw — `Geometry.yawDeg` is already per frame),

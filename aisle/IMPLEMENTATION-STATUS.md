@@ -502,3 +502,11 @@ a refrigerator on your right.", scene `kitchen / in a kitchen by a fridge / 0.82
 Not yet read from the device: the chosen video format / lens (DebugPanel `videoFormat=`).
 
 Gates: app typecheck + lints + 1031 Jest; server tsc + 162 vitest; Swift compiles; CI green.
+
+### Round 6b (Stream A) — 2026-09-19 afternoon
+After the living-room test ("recognises backpack, table; still weak"): 24 more COCO classes
+(food and kitchen), per-detection `near` from the depth grid, the grid's left / right bottom
+cells as a `path:` fact, scene memory extended to Apple-classifier things (eggs, milk) with
+image-wide bearings, "where's the X?" answered from memory for anything named, the "Sees:"
+strip tagging the closest thing. Native changes compiled (`ios:check`); the phone was
+unplugged, so the rebuild is pending — `npm run ios:device` when it is back.
