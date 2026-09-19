@@ -8,6 +8,7 @@ import express, { type Express, type Router } from 'express';
 import type { AppDeps } from './deps';
 import { info, warn } from './lib/log';
 import { createHealthRouter } from './routes/health';
+import { createPlacesRouter } from './routes/places';
 import { createSttRouter } from './routes/stt';
 import { createTtsRouter } from './routes/tts';
 import { createVisionRouter } from './routes/vision';
@@ -38,13 +39,14 @@ export async function createApp(opts: CreateAppOptions): Promise<MountedApp> {
   app.use(express.json({ limit: JSON_LIMIT }));
 
   app.get('/', (_req, res) => {
-    res.json({ name: 'aisle-proxy', routes: ['/api/vision', '/api/plan', '/api/tts', '/api/stt', '/api/route', '/api/health', '/ws'] });
+    res.json({ name: 'aisle-proxy', routes: ['/api/vision', '/api/plan', '/api/tts', '/api/stt', '/api/route', '/api/places', '/api/health', '/ws'] });
   });
 
   app.use('/api/vision', createVisionRouter(opts.deps));
   app.use('/api/tts', createTtsRouter(opts.deps));
   app.use('/api/stt', createSttRouter(opts.deps));
   app.use('/api/health', createHealthRouter(opts.deps));
+  app.use('/api/places', createPlacesRouter());
 
   const external: Record<string, boolean> = {};
   for (const ext of opts.externalRoutes ?? DEFAULT_EXTERNAL_ROUTES ?? []) {
