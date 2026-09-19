@@ -25,6 +25,9 @@ import { type Semaphore, elevenLabsSlots } from './lib/semaphore';
 import { type WarmupRegistry, createWarmupRegistry, loadJobSchemas } from './lib/warmup';
 import { withFirstTokenDeadline } from './lib/deadline';
 
+/** Warm-up only: the schema grammar compiles on first use and can exceed the 4 s hot-path cap. */
+export const WARM_VISION_TIMEOUT_MS = 25_000;
+
 export interface TtsPort {
   flash(text: string, opts?: TtsOptions): Promise<Buffer>;
   stream(text: string, opts?: TtsOptions): Promise<ReadableStream<Uint8Array>>;
@@ -65,7 +68,9 @@ export async function createDefaultDeps(opts: CreateDepsOptions = {}): Promise<A
     runners: {
       async vision(model) {
         const req = emptyVisionRequest(model === 'sonnet' ? 'curb_crop' : 'storefront');
-        const r = await runVision(req, {}, anthropicDeps);
+        // Warm-up is off the hot path: allow the first-use structured-output grammar compile
+        // (several seconds on a cold schema) instead of the 4 s VISION_TIMEOUT_MS.
+        const r = await runVision(req, {}, { ...anthropicDeps, timeoutMs: WARM_VISION_TIMEOUT_MS });
         if (r.error && r.error !== 'invalid_json') throw new Error(r.error);
         return `${buildVisionParams(req).model} stop=${r.stopReason ?? '?'} ${r.totalMs}ms`;
       },

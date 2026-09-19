@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ProxyConfig } from '../config';
 import { listAnthropicModels } from './anthropic';
-import { sttScribe, subscription } from './elevenlabs';
+import { sttScribe, subscription, ttsFlash } from './elevenlabs';
 import { listNimModels } from './nim';
 
 export type UpstreamName = 'anthropic' | 'nvidia' | 'openrouter' | 'elevenlabs_tts' | 'elevenlabs_stt' | 'google_routes';
@@ -45,7 +45,15 @@ export interface HealthReport {
 }
 
 export const HEALTH_TIMEOUT_MS = 10_000;
+
+/** 401/403 from an ElevenLabs endpoint: the key exists but lacks that scope. */
+function isScopeDenied(e: unknown): boolean {
+  const status = (e as { status?: unknown } | null)?.status;
+  return status === 401 || status === 403;
+}
 export const HEALTH_CACHE_MS = 30_000;
+export const OVERPASS_USER_AGENT = 'Aisle/0.1 (SteelHacks)';
+export const OVERPASS_STATUS_URLS = ['https://overpass-api.de/api/status', 'https://overpass.kumi.systems/api/status'] as const;
 export const HEALTH_SLOW_CACHE_MS = 5 * 60_000;
 
 export type CheckFn = (signal: AbortSignal) => Promise<Partial<Pick<UpstreamStatus, 'modelSeen' | 'creditsLeft'>> | void>;
@@ -104,7 +112,7 @@ export function createHealthService(deps: HealthDeps): HealthService {
   const counters = deps.counters ?? http429;
   const cache = new Map<string, CacheEntry>();
   const ttl = (name: UpstreamName | 'overpass'): number =>
-    deps.cacheMs?.[name] ?? (name === 'elevenlabs_stt' || name === 'google_routes' || name === 'overpass' ? HEALTH_SLOW_CACHE_MS : HEALTH_CACHE_MS);
+    deps.cacheMs?.[name] ?? (name === 'elevenlabs_tts' || name === 'elevenlabs_stt' || name === 'google_routes' || name === 'overpass' ? HEALTH_SLOW_CACHE_MS : HEALTH_CACHE_MS);
 
   const runCheck = async (name: UpstreamName | 'overpass', fn: CheckFn, force: boolean): Promise<UpstreamStatus> => {
     const cached = cache.get(name);
@@ -184,8 +192,23 @@ export function defaultHealthChecks(cfg: ProxyConfig, fetchFn: typeof fetch = fe
       return { modelSeen: (j.data ?? []).some((m) => m.id === cfg.openRouterModel) };
     },
     async elevenlabs_tts(signal) {
-      const s = await subscription({ config: cfg, fetchFn }, signal);
-      return { creditsLeft: s.creditsLeft };
+      // Scoped API keys may lack `user:read` (subscription) or `voices:read`; TTS itself can
+      // still be permitted. Probe from cheapest/most-informative to the actual capability.
+      try {
+        const s = await subscription({ config: cfg, fetchFn }, signal);
+        return { creditsLeft: s.creditsLeft };
+      } catch (e) {
+        if (!isScopeDenied(e)) throw e;
+      }
+      const key = need(cfg.elevenLabsApiKey, 'ELEVENLABS_API_KEY');
+      const voice = need(cfg.elevenLabsVoiceId, 'ELEVENLABS_VOICE_ID');
+      const v = await fetchFn(`${cfg.elevenLabsBaseUrl}/v1/voices/${voice}`, { headers: { 'xi-api-key': key }, signal });
+      if (v.ok) return {};
+      if (v.status !== 401 && v.status !== 403) throw Object.assign(new Error(`elevenlabs voices ${v.status}`), { status: v.status });
+      // Last rung: one-character synthesis proves the TTS scope (≈ 0.5 credit; this check
+      // runs on the slow cache so it costs at most a few credits per hour).
+      await ttsFlash('.', { config: cfg, fetchFn }, { signal });
+      return {};
     },
     async elevenlabs_stt(signal) {
       const clip = await readFile(HEALTH_CLIP_PATH);
@@ -206,8 +229,16 @@ export function defaultHealthChecks(cfg: ProxyConfig, fetchFn: typeof fetch = fe
       if (!res.ok) throw Object.assign(new Error(`google routes ${res.status}`), { status: res.status });
     },
     async overpass(signal) {
-      const res = await fetchFn('https://overpass-api.de/api/status', { signal });
-      if (!res.ok) throw new Error(`overpass ${res.status}`);
+      // overpass-api.de answers 406 to anonymous clients without a UA / text Accept; send the
+      // same identity the crossings route uses and fall back to the kumi mirror.
+      const headers = { 'User-Agent': OVERPASS_USER_AGENT, Accept: 'text/plain, */*' };
+      let last = 0;
+      for (const base of OVERPASS_STATUS_URLS) {
+        const res = await fetchFn(base, { headers, signal });
+        if (res.ok) return;
+        last = res.status;
+      }
+      throw new Error(`overpass ${last}`);
     },
   };
 }

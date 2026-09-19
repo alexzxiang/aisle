@@ -93,7 +93,8 @@ export interface AnthropicDeps {
 }
 
 export function sdkStreamFactory(apiKey: string): StreamFactory {
-  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: VISION_TIMEOUT_MS });
+  const clientTimeoutMs = deps.timeoutMs ?? VISION_TIMEOUT_MS;
+  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: clientTimeoutMs });
   return (params, signal) => client.messages.stream(params, { signal });
 }
 
