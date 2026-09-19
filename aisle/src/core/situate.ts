@@ -37,7 +37,7 @@ export const SITUATE_QUESTION_TTL_MS = 20_000;
 /** After the voice becomes free again (a trip or task ended), hold prompts this long so their last line is not clobbered. */
 export const SITUATE_REENTRY_MS = 8000;
 export const SITUATE_MIN_CONFIDENCE = 0.6;
-export const SITUATE_MAX_LABEL_WORDS = 5;
+export const SITUATE_MAX_LABEL_WORDS = 7;
 
 /** Modes in which the loop looks: the camera is up. */
 export const AWARE_MODES: ReadonlySet<AppMode> = new Set<AppMode>(['IDLE', 'GUIDED_TASK']);
@@ -120,19 +120,27 @@ export function contextForSetting(setting: SceneSetting): TaskContext {
   }
 }
 
-/** A speakable label: ≤ 5 words, no digits, no forbidden term; else the setting's own words. */
+/** A speakable label: ≤ 7 words, no digits, no forbidden term; else the setting's own words. */
 export function speakableLabel(label: string, setting: SceneSetting): string {
   const l = label.trim().replace(/[.!?]+$/, '').toLowerCase();
   if (l.length > 0 && countWords(l) <= SITUATE_MAX_LABEL_WORDS && !hasDigit(l) && findForbiddenTerm(l) === null) return l;
   return SETTING_LABEL[setting];
 }
 
-/** "You seem to be in a kitchen. Is that right?" — null when there is nothing safe to say. */
+/**
+ * "You seem to be in a kitchen. Is that right?" — a longer label gets the one-word
+ * tail ("… by a refrigerator. Correct?") so the whole line stays within twelve words;
+ * null when there is nothing safe to say.
+ */
 export function sceneQuestion(label: string, setting: SceneSetting): string | null {
   const l = speakableLabel(label, setting);
   if (!l) return null;
-  const q = `You seem to be ${l}. Is that right?`;
-  return countWords(q) <= MAX_UTTERANCE_WORDS ? q : null;
+  const long = `You seem to be ${l}. Is that right?`;
+  if (countWords(long) <= MAX_UTTERANCE_WORDS) return long;
+  const short = `You seem to be ${l}. Correct?`;
+  if (countWords(short) <= MAX_UTTERANCE_WORDS) return short;
+  const fallback = SETTING_LABEL[setting];
+  return fallback ? `You seem to be ${fallback}. Is that right?` : null;
 }
 
 const STOP_WORDS = new Set(['the', 'and', 'with', 'near', 'next', 'from', 'into', 'onto', 'that', 'this', 'some', 'your', 'my']);

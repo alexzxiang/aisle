@@ -88,6 +88,7 @@ budget, and the Tier-1/Tier-2 clients answer from fixtures.
 | "I need eggs" | Store trip: route to the demo store, aisle guidance, pickup, checkout. |
 | "Take me to CVS" | Echo → "Let me see your surroundings." → "Planning your route." → nearest OSM match → route → "You have arrived." at the door. |
 | "Take me to the eggs in my fridge" | Guided task: a look, a context-specific step plan (home / store / street), one step at a time confirmed by the camera; "next", "repeat", "stop". |
+| (nothing — just open the app) | The camera comes up; the app says "Turn slowly. Show me your surroundings." and then "You seem to be in a kitchen by a refrigerator. Correct?" Answer "yes" or "no", or tell it: "I'm in the living room". |
 | "What's around me" | A free-form scene description. |
 | "Repeat", "how far", "where am I", "stop" | The usual trip questions. |
 

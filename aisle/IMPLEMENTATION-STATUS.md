@@ -48,9 +48,10 @@ device" — see §5.
 | 18 | CV training track (data, labelling, YOLO training, CoreML export, gate scoring, report) | Stub | `training/**` | Five scripts compile and print `--help`; `score_gate.py` verified on synthetic data. **No video, no frames, no labels, no dataset survey, no run, no export**; `eval/ped-signal-v1-report.md` is all `TBD`; `LICENSES.md` dataset rows unfilled. |
 | 20 | "Take me to \<place\>" (round 4): look → plan → OSM places → destination-only trip → "You have arrived." | Implemented | `src/core/destinations.ts`, `trip.ts` (DESTINATION_REQUESTED), `server/routes/places.ts`, `src/core/voice.ts`, `src/outdoor/plannerJobs.ts` | Live: `/api/places?q=CVS` near CMU returns three CVS Pharmacies (1.2–1.5 km); parseIntent classifies both phrasings (Nemotron or the local template). The walk to the place still needs `/api/route` (Google Routes disabled → degraded straight-line leg). |
 | 21 | Guided tasks (round 4): "take me to the eggs in my fridge" → context-specific steps, camera-confirmed | Implemented | `src/core/guidedTask.ts`, `store.ts` (GUIDED_TASK), `plannerJobs.ts` (taskPlan), `server/prompts/vision.ts` (task_step), `fixtures/plan/taskPlan.json` | Live: Nemotron `taskPlan` for home returned five fridge steps in 5.1 s (8 s deadline; template on a miss); Haiku `task_step` answered a facts-only ask in 1.7 s with `task.done` + a micro-hint. Not yet walked with the phone camera. |
+| 22 | Awareness loop (round 5): the camera is up from launch; "Turn slowly. Show me your surroundings." → "You seem to be in a kitchen by a refrigerator. Correct?" → yes / no / "I'm on the sidewalk" | Implemented | `src/core/situate.ts`, `src/ui/ScenePanel.tsx`, `server/prompts/vision.ts` (situate), `src/perception/profile.ts` (IDLE → indoor schedule) | Live: Haiku `situate` on a real kitchen photo → `home / "in a kitchen by a refrigerator" / 0.9` in 2.0 s; a Brooklyn street photo → `crossing / "at a street crossing by stores" / 0.8`; blank frames → unknown (no question). Not yet run on the phone. |
 | 19 | Builds (dev build on the demo phone, EAS internal distribution) | Partial | `app.json`, `eas.json`, `ios/` (generated) | `expo prebuild --clean` + `pod install` succeed with Perception linked. `xcodebuild` **fails on this Mac** (no iOS platform component installed). No `expo run:ios --device` has ever completed. No EAS build has been requested; no device UDIDs registered. |
 
-Tally: 10 Implemented, 9 Partial, 1 Stub, 1 Not started.
+Tally: 11 Implemented, 9 Partial, 1 Stub, 1 Not started.
 
 ---
 
@@ -415,3 +416,33 @@ Nemotron in 5.1 s; `taskPlan` store → 8 s deadline miss → template; `task_st
 (`/api/vision` needed `GUIDED_TASK` added to its mode enum — fixed); `/api/places?q=CVS`
 near CMU → three CVS Pharmacies. Not yet run on the phone (it was unplugged); the round-3
 native changes (camera preview view, expo-blur) still need the signed rebuild.
+
+## Round 5 — 2026-09-19: awareness ("you seem to be …, is that right?")
+
+The camera runs from the moment the app opens (IDLE now uses the indoor perception
+schedule; the obstacle reflex stays quiet until a trip or task starts). `situate.ts` asks
+Tier 1 `situate` every 6 s (scene-gated) and keeps a hypothesis in the store: setting
+(street / crossing / entrance / store / home / kitchen / hallway / room / vehicle) plus a
+short label. Nothing known → "Turn slowly. Show me your surroundings." every 30 s. A
+confident reading → "You seem to be in a kitchen by a refrigerator. Correct?" — "yes" →
+"Got it." (confirmed), "no" → "Tell me where you are." → the next utterance becomes the
+scene in the user's words; "I'm in the living room" works unprompted. Answers are consumed
+before the planner (voice `intercept`), so "yes" never becomes "Say the item again." The
+loop never speaks while a trip, task or pending request has the voice and holds 8 s after
+the voice frees up so an outcome line is never clobbered; in a guided task it looks but
+only updates the screen. The confirmed scene sets the guided task's context (home / store
+/ street), and the guided task itself now asks "It looks like <what to look for>. Is that
+right?" when a step reading is only moderately confident (≥ 0.8 twice still closes a step
+on its own).
+
+Home shows the camera and a scene line ("Looks like: … · say yes or no" / "You are: …");
+the Nav screen shows the line during guided tasks.
+
+Also this round: a dev client with no `EXPO_PUBLIC_PROXY_URL` now aims at Metro's host on
+:8787 instead of `localhost` (the "Offline. Signal reading and directions still work." on
+first launch), expo-blur is only required when its native module is in the build (the
+"ExpoBlurView" warning), and the camera placeholder says "Rebuild the app to see the
+camera" — the round-3 native preview view still needs the signed rebuild.
+
+Gates: app typecheck, 1023 Jest tests (70 suites), phrase + deps lint; server tsc + 157
+vitest. 81 cached phrases.

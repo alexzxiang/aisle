@@ -92,6 +92,9 @@ describe('situate (pure)', () => {
 
   it('questions are twelve words at most, digit-free and never a forbidden term; long labels fall back to the setting', () => {
     expect(sceneQuestion('in a kitchen', 'kitchen')).toBe('You seem to be in a kitchen. Is that right?');
+    // Six- and seven-word labels (what Haiku returns for real photos) keep their detail with the short tail.
+    expect(sceneQuestion('in a kitchen by a refrigerator', 'home')).toBe('You seem to be in a kitchen by a refrigerator. Correct?');
+    expect(sceneQuestion('at a street crossing by some stores', 'crossing')).toBe('You seem to be at a street crossing by some stores. Correct?');
     expect(sceneQuestion('on a sidewalk beside a busy four lane road', 'street')).toBe('You seem to be on a street. Is that right?');
     expect(speakableLabel('in aisle 7', 'store')).toBe('in a store');
     expect(speakableLabel('a safe spot', 'room')).toBe('in a room');
