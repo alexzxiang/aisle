@@ -21,3 +21,4 @@ aisle/training/runs/
 # CoreML weights are exported per machine (models/LICENSES.md: not vendored); EAS uses .easignore instead
 aisle/models/*.mlpackage
 aisle/models/*.mlmodelc
+aisle/training/export/

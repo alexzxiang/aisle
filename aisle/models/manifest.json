@@ -6,27 +6,131 @@
       "name": "coco-yolo-nano",
       "file": "coco-yolo-nano.mlpackage",
       "manifest": "coco-yolo-nano.json",
-      "status": "expected",
+      "status": "present",
       "role": "detector",
       "arch": "yolo11n",
-      "input": { "width": 640, "height": 640, "letterbox": true, "colour": "RGB", "scale": "0-1" },
-      "nms": { "embedded": true, "iouThreshold": 0.5 },
+      "input": {
+        "width": 640,
+        "height": 640,
+        "letterbox": true,
+        "colour": "RGB",
+        "scale": "0-1"
+      },
+      "nms": {
+        "embedded": true,
+        "iouThreshold": 0.5
+      },
       "labels": [
-        "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-        "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-        "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-        "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle",
-        "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-        "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch", "potted plant", "bed",
-        "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven",
-        "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
+        "person",
+        "bicycle",
+        "car",
+        "motorcycle",
+        "airplane",
+        "bus",
+        "train",
+        "truck",
+        "boat",
+        "traffic light",
+        "fire hydrant",
+        "stop sign",
+        "parking meter",
+        "bench",
+        "bird",
+        "cat",
+        "dog",
+        "horse",
+        "sheep",
+        "cow",
+        "elephant",
+        "bear",
+        "zebra",
+        "giraffe",
+        "backpack",
+        "umbrella",
+        "handbag",
+        "tie",
+        "suitcase",
+        "frisbee",
+        "skis",
+        "snowboard",
+        "sports ball",
+        "kite",
+        "baseball bat",
+        "baseball glove",
+        "skateboard",
+        "surfboard",
+        "tennis racket",
+        "bottle",
+        "wine glass",
+        "cup",
+        "fork",
+        "knife",
+        "spoon",
+        "bowl",
+        "banana",
+        "apple",
+        "sandwich",
+        "orange",
+        "broccoli",
+        "carrot",
+        "hot dog",
+        "pizza",
+        "donut",
+        "cake",
+        "chair",
+        "couch",
+        "potted plant",
+        "bed",
+        "dining table",
+        "toilet",
+        "tv",
+        "laptop",
+        "mouse",
+        "remote",
+        "keyboard",
+        "cell phone",
+        "microwave",
+        "oven",
+        "toaster",
+        "sink",
+        "refrigerator",
+        "book",
+        "clock",
+        "vase",
+        "scissors",
+        "teddy bear",
+        "hair drier",
+        "toothbrush"
       ],
-      "keptClasses": ["car", "bus", "truck", "motorcycle", "bicycle", "person"],
-      "confThreshold": { "car": 0.35, "bus": 0.35, "truck": 0.35, "motorcycle": 0.35, "bicycle": 0.35, "person": 0.40 },
-      "profiles": ["OUTDOOR_NAV", "APPROACH_CROSSING", "CROSSING", "INDOOR_NAV", "ITEM_PICKUP"],
+      "keptClasses": [
+        "car",
+        "bus",
+        "truck",
+        "motorcycle",
+        "bicycle",
+        "person"
+      ],
+      "confThreshold": {
+        "car": 0.35,
+        "bus": 0.35,
+        "truck": 0.35,
+        "motorcycle": 0.35,
+        "bicycle": 0.35,
+        "person": 0.4
+      },
+      "profiles": [
+        "OUTDOOR_NAV",
+        "APPROACH_CROSSING",
+        "CROSSING",
+        "INDOOR_NAV",
+        "ITEM_PICKUP"
+      ],
       "targetFps": 15,
       "source": "Ultralytics YOLO11n pretrained on COCO, exported format=coreml imgsz=640 half=True nms=True (10-CV-TRAINING-TRACK.md section 8)",
-      "licence": "AGPL-3.0 (Ultralytics) — see LICENSES.md; weights are not redistributed in this repo"
+      "licence": "AGPL-3.0 (Ultralytics) \u2014 see LICENSES.md; weights are not redistributed in this repo",
+      "exportedAt": "2026-09-18",
+      "exportedWith": "ultralytics 8.4.155 + coremltools 9.0 (numpy<2), format=coreml imgsz=640 half=True nms=True",
+      "validated": "coremltools prediction on ultralytics bus.jpg: bus + person detected, COCO label order confirmed (Mac, 2026-09-18)"
     },
     {
       "name": "coco-yolo-nano-416",
@@ -35,16 +139,45 @@
       "status": "expected",
       "role": "detector-fallback",
       "arch": "yolo11n",
-      "input": { "width": 416, "height": 416, "letterbox": true, "colour": "RGB", "scale": "0-1" },
-      "nms": { "embedded": true, "iouThreshold": 0.5 },
+      "input": {
+        "width": 416,
+        "height": 416,
+        "letterbox": true,
+        "colour": "RGB",
+        "scale": "0-1"
+      },
+      "nms": {
+        "embedded": true,
+        "iouThreshold": 0.5
+      },
       "labelsSameAs": "coco-yolo-nano",
-      "keptClasses": ["car", "bus", "truck", "motorcycle", "bicycle", "person"],
-      "confThreshold": { "car": 0.35, "bus": 0.35, "truck": 0.35, "motorcycle": 0.35, "bicycle": 0.35, "person": 0.40 },
-      "profiles": ["OUTDOOR_NAV", "APPROACH_CROSSING", "CROSSING", "INDOOR_NAV", "ITEM_PICKUP"],
+      "keptClasses": [
+        "car",
+        "bus",
+        "truck",
+        "motorcycle",
+        "bicycle",
+        "person"
+      ],
+      "confThreshold": {
+        "car": 0.35,
+        "bus": 0.35,
+        "truck": 0.35,
+        "motorcycle": 0.35,
+        "bicycle": 0.35,
+        "person": 0.4
+      },
+      "profiles": [
+        "OUTDOOR_NAV",
+        "APPROACH_CROSSING",
+        "CROSSING",
+        "INDOOR_NAV",
+        "ITEM_PICKUP"
+      ],
       "targetFps": 15,
       "whenUsed": "only if the 640 export misses the 15 fps gate on the demo phone",
       "source": "same export with imgsz=416",
-      "licence": "AGPL-3.0 (Ultralytics) — see LICENSES.md"
+      "licence": "AGPL-3.0 (Ultralytics) \u2014 see LICENSES.md"
     },
     {
       "name": "ped-signal-v1",
@@ -53,16 +186,42 @@
       "status": "expected",
       "role": "signal",
       "arch": "yolo11n",
-      "input": { "width": 640, "height": 640, "letterbox": true, "colour": "RGB", "scale": "0-1", "crop": "640x640 window of the native-resolution centre band (09 section 3)" },
-      "nms": { "embedded": true, "iouThreshold": 0.5 },
-      "labels": ["ped_walk", "ped_hand", "ped_countdown"],
-      "confThreshold": { "ped_walk": 0.40, "ped_hand": 0.35, "ped_countdown": 0.35 },
+      "input": {
+        "width": 640,
+        "height": 640,
+        "letterbox": true,
+        "colour": "RGB",
+        "scale": "0-1",
+        "crop": "640x640 window of the native-resolution centre band (09 section 3)"
+      },
+      "nms": {
+        "embedded": true,
+        "iouThreshold": 0.5
+      },
+      "labels": [
+        "ped_walk",
+        "ped_hand",
+        "ped_countdown"
+      ],
+      "confThreshold": {
+        "ped_walk": 0.4,
+        "ped_hand": 0.35,
+        "ped_countdown": 0.35
+      },
       "thresholdRule": "ped_walk chosen at the lowest value keeping held-out per-frame walk precision >= 0.95; the module may raise it from device measurements, never lower it",
-      "profiles": ["APPROACH_CROSSING", "CROSSING"],
+      "profiles": [
+        "APPROACH_CROSSING",
+        "CROSSING"
+      ],
       "targetFps": 15,
-      "gate": { "falseWalkPrecision": 0.95, "recallWalk10to20m": 0.80, "recallHand10to20m": 0.80, "perpConfusionAfterGate": 0.02 },
+      "gate": {
+        "falseWalkPrecision": 0.95,
+        "recallWalk10to20m": 0.8,
+        "recallHand10to20m": 0.8,
+        "perpConfusionAfterGate": 0.02
+      },
       "source": "Agent D fine-tune, 10-CV-TRAINING-TRACK.md sections 4-6; delivered as a PR into models/",
-      "licence": "dataset licences per training/LICENSES.md — see LICENSES.md"
+      "licence": "dataset licences per training/LICENSES.md \u2014 see LICENSES.md"
     },
     {
       "name": "depth-anything-v2-small",
@@ -71,14 +230,27 @@
       "status": "expected",
       "role": "depth",
       "arch": "depth-anything-v2-vits",
-      "input": { "width": 518, "height": 518, "letterbox": false, "colour": "RGB", "scale": "imagenet", "verify": "exact CoreML input size and per-frame ms on the demo phone" },
+      "input": {
+        "width": 518,
+        "height": 518,
+        "letterbox": false,
+        "colour": "RGB",
+        "scale": "imagenet",
+        "verify": "exact CoreML input size and per-frame ms on the demo phone"
+      },
       "labels": [],
       "output": "relative inverse depth, unitless; 1 = nearest after the module's per-frame normalisation",
-      "profiles": ["OUTDOOR_NAV", "APPROACH_CROSSING", "CROSSING", "INDOOR_NAV", "ITEM_PICKUP"],
+      "profiles": [
+        "OUTDOOR_NAV",
+        "APPROACH_CROSSING",
+        "CROSSING",
+        "INDOOR_NAV",
+        "ITEM_PICKUP"
+      ],
       "targetFps": 10,
       "calibration": "NEAR / MID / FAR thresholds are per phone, set by walking at a wall from 4 m (09 section 5.3); defaults in ObstacleEstimator.swift",
       "source": "published CoreML conversion of Depth Anything V2 Small, or coremltools from the PyTorch checkpoint (10 section 8)",
-      "licence": "Apache-2.0 expected for the small variant [verify] — see LICENSES.md"
+      "licence": "Apache-2.0 expected for the small variant [verify] \u2014 see LICENSES.md"
     },
     {
       "name": "walkable-seg",
@@ -87,12 +259,27 @@
       "status": "optional",
       "role": "segmentation",
       "enabledByDefault": false,
-      "input": { "width": 512, "height": 256, "letterbox": false, "colour": "RGB", "scale": "imagenet", "verify": "export and >= 5 fps on the demo phone" },
-      "labels": ["road", "sidewalk", "wall", "building"],
-      "profiles": ["OUTDOOR_NAV", "CROSSING"],
+      "input": {
+        "width": 512,
+        "height": 256,
+        "letterbox": false,
+        "colour": "RGB",
+        "scale": "imagenet",
+        "verify": "export and >= 5 fps on the demo phone"
+      },
+      "labels": [
+        "road",
+        "sidewalk",
+        "wall",
+        "building"
+      ],
+      "profiles": [
+        "OUTDOOR_NAV",
+        "CROSSING"
+      ],
       "targetFps": 5,
       "source": "Cityscapes-class model exported to CoreML; phase-2 item, no gate depends on it",
-      "licence": "as exported — see LICENSES.md"
+      "licence": "as exported \u2014 see LICENSES.md"
     }
   ],
   "ocr": {
@@ -102,7 +289,9 @@
     "regionOfInterest": "upper 40% of the upright frame",
     "minimumTextHeight": 0.02,
     "customWordsFrom": "PerceptionService.setKnownSigns (store map signText tokens)",
-    "profiles": ["INDOOR_NAV"],
+    "profiles": [
+      "INDOOR_NAV"
+    ],
     "targetFps": 3,
     "note": "system request; no file in this directory. Raw text crosses the bridge; normalisation lives in src/indoor/ocrMatcher.ts"
   }
