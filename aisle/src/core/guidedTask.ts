@@ -316,7 +316,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (!m || r.handing) return;
     r.handing = true;
     const handStep = r.step;
-    void handGuide.start(m.goal.item, { goal: r.goal, target: r.modelTarget }).then((res) => {
+    void handGuide.start(m.goal.item, { goal: r.goal, target: m.itemBox() ?? r.modelTarget }).then((res) => {
       if (run !== r || r.step !== handStep) return;
       r.handing = false;
       if (res.done === 'touching') {

@@ -706,3 +706,23 @@ Verified end to end against the live API with a placeholder fixture frame (captu
 scored recorded / Haiku 2.4 s / Sonnet 3.1 s). That proves the machinery, not accuracy: no
 real living-room frames are labelled yet, so v2's ≥ 80 % target-box acceptance is unmeasured.
 Next step for whoever runs the living-room test: start the proxy with `CAPTURE_FRAMES=1`.
+
+### Round 8 (Stream A) — 2026-09-19, night
+Codex's checkpoints (`RECOVERY-CHECKPOINT.md`, commits 1eba080…08fc729 plus its uncommitted
+banana/surface work) reviewed and merged; its partial `surfaceMission` replaced by
+`src/core/itemMission.ts`, a navigator for "find X on the Y" at home: item in view →
+"Bananas just to your right. Turn right a little, then walk four steps." (clock positions past
+fifteen degrees); only the place → "No bananas yet. Table ahead. Walk forward six steps." →
+"At the table. Tilt the camera down and pan slowly."; remembered → "Table was on your left.
+Turn left slowly."; nothing → "I think the table is in the kitchen. Is that right?" → yes →
+doorway search from Claude's box → through → look again; within reach → hand loop → "Have you
+picked it up?" First line on the first tick (the 16:00 trace waited twelve seconds). Voice:
+one yes/no parser (`yesNo.ts`; "Yes yes yes", "Got that right", "Correct, please find the
+bananas" all land), tasks start without read-back unless the recogniser was unsure, restating
+the request is a yes, no more "Confirmation cancelled"; the mic reopens as soon as the last
+capture ends rather than after its planning, and a sub-1.2 s hold keeps a 600 ms tail so a
+one-word "yes" is not clipped; `voice_capture` traces carry `startMs`. Screen: transcript owns
+its touches (hold-anywhere no longer fires from a resting finger; the scroll freeze was the
+audio-session switch on the main thread). Detector speed: 7.5 fps at thermal `serious`, 15 fps
+cold; the decision loop, not the detector, was the slow part. Not yet tested on the phone
+after these changes; `startMs` from the next run decides whether the mic needs native work.

@@ -275,6 +275,8 @@ export const MISSION_REPEAT_MS = 4000;
 export const MISSION_SLOW_REPEAT_MS = 8000;
 /** A model box older than this no longer steers. */
 export const MISSION_MODEL_BOX_MS = 3500;
+/** A detector track that drops out for less than this still counts as in view (a far banana flickers frame to frame). */
+export const MISSION_STICKY_MS = 1500;
 
 export interface MissionRunner {
   readonly goal: MissionGoal;
@@ -291,6 +293,8 @@ export interface MissionRunner {
   intercept(transcript: string): { consumed: boolean; text: string | null };
   /** Say the current line again on the next tick ("repeat", a reminder). */
   repeat(): void;
+  /** The freshest box for the item (model's or the detector's), for the hand loop. */
+  itemBox(): TargetBox | null;
   /** The hand loop finished touching the item. */
   reached(): void;
   /** Back to looking (hand loop gave up, or the user said "no"). */
@@ -306,16 +310,28 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
   let lastSpokenAt = -Infinity;
   const boxes = new Map<string, TargetBox>();
 
+  const sticky = new Map<string, TargetBox>();
+
   const modelBox = (words: string): TargetBox | null => {
     const b = boxes.get(words.toLowerCase());
     return b && now() - b.at <= MISSION_MODEL_BOX_MS ? b : null;
   };
+  /** The freshest box for a thing: the model's, else the last one the detector had inside the sticky window. */
+  const look = (words: string): GuideInstruction | null => {
+    const key = words.toLowerCase();
+    const t = now();
+    const s = sticky.get(key);
+    const fallback = modelBox(key) ?? (s && t - s.at <= MISSION_STICKY_MS ? s : null);
+    const g = deps.guide.instructionFor(words, fallback);
+    if (g?.targetVisible && g.box) sticky.set(key, g.box);
+    return g;
+  };
 
   const snapshot = (): MissionSnapshot => ({
     now: now(),
-    item: deps.guide.instructionFor(goal.item, modelBox(goal.item)),
-    place: goal.place ? deps.guide.instructionFor(goal.place, modelBox(goal.place)) : null,
-    door: deps.guide.instructionFor('doorway', modelBox('the doorway')),
+    item: look(goal.item),
+    place: goal.place ? look(goal.place) : null,
+    door: look('the doorway'),
     sceneLabel: deps.sceneLabel?.() ?? null,
   });
 
@@ -364,6 +380,11 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     repeat() {
       lastKey = null;
       lastSpokenAt = -Infinity;
+    },
+    itemBox() {
+      const key = goal.item.toLowerCase();
+      const s = sticky.get(key);
+      return modelBox(key) ?? (s && now() - s.at <= MISSION_STICKY_MS ? s : null);
     },
     reached() {
       state = { ...state, phase: 'confirm' };

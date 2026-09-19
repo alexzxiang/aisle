@@ -129,6 +129,21 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     expect(m.phase()).toBe('confirm');
   });
 
+  it('a track that flickers for a second still counts as in view (no line ping-pong)', () => {
+    let t = T0;
+    let dets: Detection[] = [{ cls: 'banana', box: [0.7, 0.4, 0.06, 0.06], score: 0.9, trackId: 1 }, { cls: 'table', box: [0.1, 0.3, 0.4, 0.4], score: 0.9, trackId: 2 }];
+    const guide = createGuide({ detections: () => dets, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
+    const m = createMissionRunner(goal, { guide, now: () => t });
+    expect(m.tick().text).toMatch(/^Bananas/);
+    dets = [{ cls: 'table', box: [0.1, 0.3, 0.4, 0.4], score: 0.9, trackId: 2 }];   // the banana dropped out of this frame
+    t += 500;
+    m.tick();
+    expect(m.phase()).toBe('approach_item');
+    t += 2000;                                                                         // …for more than the sticky window
+    m.tick();
+    expect(m.phase()).toBe('approach_place');
+  });
+
   it('a thing the detector cannot name is steered by the model\'s box for it, and the slow lines repeat slowly', () => {
     let t = T0;
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unknown_thing', facing: () => 0 }, hfovDeg: () => 56, now: () => t });

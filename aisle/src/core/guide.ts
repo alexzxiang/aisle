@@ -44,6 +44,8 @@ export interface GuideInstruction {
   /** Whole steps to the target when the target is in view; null otherwise. */
   steps: number | null;
   targetVisible: boolean;
+  /** The box the instruction was computed from, when in view (round 8: callers keep it briefly when a track flickers). */
+  box?: TargetBox;
 }
 
 export interface TargetBox {
@@ -212,8 +214,9 @@ export function createGuide(deps: GuideDeps): Guide {
         const steps = stepsFromBox(cls, box, near, ultraWide, cls ? null : heightForWords(targetWords));
         const side = rel < 0 ? 'left' : 'right';
         const a = Math.abs(rel);
+        const used: TargetBox = { box, at: now(), ...(typeof near === 'number' ? { near } : {}) };
         if (a <= hfov * 0.18 && steps <= 1) {
-          return { kind: 'arrived', text: say('arrived', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
+          return { kind: 'arrived', text: say('arrived', name, steps, side), relativeDeg: rel, steps, targetVisible: true, box: used };
         }
         if (a <= hfov * 0.12) {
           // The way ahead: when the depth grid says something is close in front and the target
@@ -225,13 +228,13 @@ export function createGuide(deps: GuideDeps): Guide {
             const leftOpen = typeof p.left === 'number' ? p.left : 1;
             const rightOpen = typeof p.right === 'number' ? p.right : 1;
             const stepSide = leftOpen <= rightOpen ? 'left' : 'right';
-            return { kind: 'sidestep', text: say('sidestep', name, steps, stepSide), relativeDeg: rel, steps, targetVisible: true };
+            return { kind: 'sidestep', text: say('sidestep', name, steps, stepSide), relativeDeg: rel, steps, targetVisible: true, box: used };
           }
-          return { kind: 'forward', text: say('forward', name, steps, side), relativeDeg: rel, steps, targetVisible: true };
+          return { kind: 'forward', text: say('forward', name, steps, side), relativeDeg: rel, steps, targetVisible: true, box: used };
         }
         const turnText = `Turn ${side} about ${integerToWords(Math.max(5, Math.round(a / 5) * 5))} degrees toward the ${name}.`;
-        if (a <= hfov * 0.3) return { kind: 'turn_little', text: turnText, relativeDeg: rel, steps, targetVisible: true };
-        return { kind: 'turn', text: turnText, relativeDeg: rel, steps, targetVisible: true };
+        if (a <= hfov * 0.3) return { kind: 'turn_little', text: turnText, relativeDeg: rel, steps, targetVisible: true, box: used };
+        return { kind: 'turn', text: turnText, relativeDeg: rel, steps, targetVisible: true, box: used };
       }
 
       // 2. Out of view: remembered bearing.

@@ -192,6 +192,43 @@ Kinds: `guide` (target aimed at, instruction kind/steps/degrees, model box), `ta
 (status, speech, done, box, latency), `seen` (top detector boxes, once a second), `said`
 (every transcript line, both roles), `event` (task/hand/camera/error bus events).
 
+## Round 8 (Stream A, with Codex's checkpoints merged): the item navigator, and a mic that hears "yes"
+Read `RECOVERY-CHECKPOINT.md` for what Codex did between rounds 7b and 8 (fridge mission with
+open/find/reach/confirm stages, prepared ElevenLabs clips for every guide line, detector
+heartbeat/restart, playback watchdog). Round 8 on top of it:
+- **`src/core/itemMission.ts`** — "find X on the Y" at home is a navigator, not a plan:
+  phases `approach_item → reach → confirm`, with `approach_place → scan_place` when only the
+  place is in view, `find_place` (remembered bearing, else the room question "I think the
+  table is in the kitchen. Is that right?") and `find_door` (Claude boxes the doorway). Pure
+  `decide(goal, state, snapshot)` + a runner that paces lines (2 s floor between different
+  lines, 4 s repeat, 8 s for scan lines) and holds a flickering track 1.5 s. `guidedTask`
+  delegates to it when `parseMissionGoal(goal)` matches and the context is home; fridge goals
+  stay on `fridgeMission`. Claude (`task_step`, every 3 s, silent) is told `Look for: <what the
+  navigator is chasing>` and its `target.box` steers things the detector has no class for.
+- **`src/core/yesNo.ts`** — the one yes/no parser. Use it for every open question.
+- **`voice.ts`**: tasks start without a read-back unless on-device confidence < 0.45; routes
+  still confirm. `begin()` waits for the previous *capture* only (`capturing`), utterances are
+  understood in order (`processing`). Short holds get a tail (`SHORT_HOLD_MS`, `SHORT_HOLD_TAIL_MAX_MS`).
+  `voice_capture` trace lines now carry `startMs` (press → recogniser live): **read this first**
+  when someone says the mic cuts off their first word; anything over ~400 ms means the audio
+  session switch is the cost and the fix is native (keep `playAndRecord` up permanently).
+- **Transcript** owns its touches (`transcript-touch-guard`) so resting a finger on it never
+  opens the mic through the hold-anywhere layer — that was the "cannot scroll for a few
+  seconds" bug (mic start blocks the main thread for the audio-session switch).
+- Trace kinds added: `mission` (phase, key, line, what Claude is asked to box).
+  ```bash
+  tail -300 aisle/server/data/cache/trace.jsonl | jq -c 'select(.kind=="mission" or .kind=="said" or .kind=="voice_capture") | del(.received)'
+  ```
+
+**Speed, honestly:** the detector runs 15 fps cold and 7.5 fps once the phone reports thermal
+`serious` (the engine halves every rate; the 16:00 trace shows `thermalState: serious` after
+forty minutes). The slowness people felt was the decision loop (twelve seconds to the first
+line), now gone. Upscaling the still sent to Claude adds nothing (no new pixels); running the
+detector at 960/1280 costs 2–4× and would deepen the throttle. The right next step for far
+small things is a centre-crop zoom pass on alternate detector frames (same 640 model, 2×
+effective resolution) in `PerceptionEngine.swift`, and a lighter `HOME_TASK` profile (depth 5,
+OCR 0) so the phone stays cool — both native, both need `npm run ios:device`.
+
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV
   item (newest wins), INFO dropped if anything is queued, 4 s minimum gap, CRITICAL

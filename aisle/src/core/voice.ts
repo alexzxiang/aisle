@@ -452,6 +452,10 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       opts.conversation?.pushAisle(q, 'prompt');
     };
     const startTask = (goal: string, context: TaskContext): void => {
+      // The same request again while its mission runs ("find the bananas" … "the bananas on
+      // the table?") is a plea for the current line, not a restart from scratch.
+      const st = opts.store.getState();
+      if (st.mode === 'GUIDED_TASK' && sameGoal(goal, st.taskGoal) && opts.intercept?.('repeat')) return;
       // An explicit new mission replaces a route or an older mission through the legal
       // abort edge. Previously TASK_REQUESTED was silently ignored outside IDLE.
       if (opts.store.getState().mode !== 'IDLE') opts.store.getState().abort();
