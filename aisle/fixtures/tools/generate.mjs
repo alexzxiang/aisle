@@ -201,9 +201,13 @@ const crossing = {
   roadSide: 'LEFT',
 };
 
+// Legs are Google-shaped: a step runs through the crossing (leg 1 ends at the far curb, P3),
+// and the crossing sits on the route line at its sAlongM. A leg that stopped at the near curb
+// left a 22 m gap that B's leg progress read as "advanced, then 35 m off the next leg" and
+// re-planned at the curb.
 const legs = [
   { index: 0, from: toLatLng(P0.x, P0.y), to: toLatLng(P1.x, P1.y), bearingDeg: r2(bearingOf(P0, P1)), distanceM: r2(dist(P0, P1)), roadSide: 'RIGHT' },
-  { index: 1, from: toLatLng(P1.x, P1.y), to: toLatLng(P2.x, P2.y), bearingDeg: 180, distanceM: r2(dist(P1, P2)), roadSide: 'LEFT' },
+  { index: 1, from: toLatLng(P1.x, P1.y), to: toLatLng(P3.x, P3.y), bearingDeg: 180, distanceM: r2(dist(P1, P3)), roadSide: 'LEFT' },
   { index: 2, from: toLatLng(P3.x, P3.y), to: toLatLng(P4.x, P4.y), bearingDeg: 90, distanceM: r2(dist(P3, P4)), roadSide: 'RIGHT' },
   { index: 3, from: toLatLng(P4.x, P4.y), to: toLatLng(E.x, E.y), bearingDeg: 135, distanceM: r2(dist(P4, E)), roadSide: 'RIGHT' },
 ];
@@ -281,9 +285,26 @@ const heartbeat = (add, from, to, state, extra) => {
 }
 
 // 2. curb-walk-onset — UNKNOWN 6 s → DONT_WALK → WALK fresh → COUNTDOWN → DONT_WALK, 0.5 Hz heartbeats.
+//    Pose at 10 Hz, facing the crossing bearing (180): still at the curb until 13 s (one second
+//    after the WALK onset), then walking the crossing at SPEED, so B's displacement rules see the
+//    start (> 1.5 m) and the far curb (≥ length − 1 m) exactly as ARKit would on the phone.
 {
   const add = pack('curb-walk-onset');
   add(0, 'onTrackingState', 'NORMAL');
+  const CURB_WALK_START_S = 13;
+  // Own PRNG stream: the poses were added after the other packs were cut, and the shared
+  // sequence must not shift under C's indoor packs (byte-identical regeneration).
+  let poseSeed = 20260920;
+  const poseJitter = (amp) => {
+    poseSeed = (poseSeed * 1664525 + 1013904223) % 4294967296;
+    return (poseSeed / 4294967296 - 0.5) * 2 * amp;
+  };
+  for (let ms = 0; ms <= 30000; ms += 100) {
+    const s = ms / 1000;
+    const along = s < CURB_WALK_START_S ? 0 : (s - CURB_WALK_START_S) * SPEED;
+    // bearing 180: east = 0, north = −along → ARKit z = +along (north = −z).
+    add(ms, 'onPose', { yawDeg: r2(180 + poseJitter(2)), x: r3(poseJitter(0.03)), y: r3(poseJitter(0.02)), z: r3(along + poseJitter(0.03)), trackingState: 'NORMAL', timestamp: ms });
+  }
   heartbeat(add, 0, 6000, 'UNKNOWN', { confidence: 0.2, nOfM: 2 });
   add(6000, 'onSignalState', { state: 'DONT_WALK', fresh: false, confidence: 0.9, nOfM: 6 });
   heartbeat(add, 8000, 12000, 'DONT_WALK', { confidence: 0.91, nOfM: 7 });
@@ -296,8 +317,12 @@ const heartbeat = (add, from, to, state, extra) => {
   for (let ms = 0; ms <= 30000; ms += 500) {
     const s = ms / 1000;
     const cls = s < 6 ? null : s < 12 ? 'ped_hand' : s < 20 ? 'ped_walk' : s < 26 ? 'ped_countdown' : 'ped_hand';
-    add(ms, 'onDetections', cls ? [{ cls, box: box(0.49 + jitter(0.01), 0.42, 0.025, 0.04), score: r2(0.7 + rnd() * 0.25), trackId: 21 }] : []);
+    const dets = cls ? [{ cls, box: box(0.49 + jitter(0.01), 0.42, 0.025, 0.04), score: r2(0.7 + rnd() * 0.25), trackId: 21 }] : [];
+    // 06 demo beat: a car from the right ~4 s into the crossing (its box grows over 2 s; PRNG-free).
+    if (s >= 16 && s <= 18) dets.push({ cls: 'car', box: box(0.78 - (s - 16) * 0.06, 0.44, 0.1 + (s - 16) * 0.08, 0.09 + (s - 16) * 0.06), score: 0.86, trackId: 31 });
+    add(ms, 'onDetections', dets);
   }
+  add(17000, 'onVehicleApproaching', { direction: 'RIGHT', trackId: 31, growth: 1.6 });
 }
 
 // 3. curb-walk-already-on — the first non-UNKNOWN state is WALK with fresh:false.

@@ -67,6 +67,12 @@ export interface MockStoreBridge {
   abort(): void;
   setFirstRun(v: boolean): void;
   transitionEnded(): void;
+  /**
+   * Mode edges (optional). When present the harness keys perception packs by AppMode
+   * (mocks/perception.ts DEFAULT_MODE_PACKS) instead of by ModeProfile, so the curb
+   * pack arms on the AT_CURB edge rather than 25 m out. Returns an unsubscribe.
+   */
+  subscribeMode?(cb: (mode: AppMode, prev: AppMode) => void): () => void;
 }
 
 export interface JumpDeps {

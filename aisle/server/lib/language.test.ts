@@ -30,6 +30,20 @@ describe('checkLanguage — speech lane (Claude)', () => {
     expect(checkLanguage('one two three four five six seven eight nine ten eleven twelve', { lane: 'speech' }).verdict).toBe('pass');
   });
 
+  it('blanks a string containing a digit (mirror of the client sanitizeSpeech)', () => {
+    for (const s of ['Aisle 3, dairy.', 'Walk in 12 seconds.', '2 people ahead.']) {
+      const c = checkLanguage(s, { lane: 'speech' });
+      expect(c.verdict, s).toBe('blanked');
+      expect(c.text).toBe('');
+      expect(c.reason).toBe('digit');
+    }
+    expect(checkLanguage('Aisle three, dairy.', { lane: 'speech' }).verdict).toBe('pass');
+  });
+
+  it('reports forbidden before digit when both apply', () => {
+    expect(checkLanguage('Clear in 3.', { lane: 'speech' }).reason).toBe('forbidden');
+  });
+
   it('never allow-lists the walking-beta sentence on the speech lane', () => {
     expect(checkLanguage(WALKING_BETA_WARNING, { lane: 'speech' }).verdict).toBe('blanked');
   });
@@ -71,6 +85,10 @@ describe('checkLanguage — tts lane', () => {
   it('still rejects every other sentence containing an allow-listed word', () => {
     expect(checkLanguage('The sidewalks are clear.', { lane: 'tts' }).verdict).toBe('rejected_422');
   });
+
+  it('leaves digits to the client on the tts lane (the digit rule is a speech-lane mirror)', () => {
+    expect(checkLanguage('Aisle 3.', { lane: 'tts' }).verdict).toBe('pass');
+  });
 });
 
 describe('sanitizeSpeech', () => {
@@ -80,5 +98,6 @@ describe('sanitizeSpeech', () => {
   });
   it('blanks a violation', () => {
     expect(sanitizeSpeech('Go.')).toEqual({ speech: '', verdict: 'blanked' });
+    expect(sanitizeSpeech('Aisle 3.')).toEqual({ speech: '', verdict: 'blanked' });
   });
 });

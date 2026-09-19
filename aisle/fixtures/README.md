@@ -47,7 +47,7 @@ exercise the **real** entry profile, not a convenient one:
 | Pack | Contains |
 |---|---|
 | `outdoor-leg` | pose at 10 Hz, `onLateralOffset {source:'pose'}` drifting to +0.7 m and back, one `onObstacleAhead MID`, tracking `NORMAL` |
-| `curb-walk-onset` | `UNKNOWN` 6 s → `DONT_WALK` → `WALK fresh:true` (t=12 s) → `COUNTDOWN` → `DONT_WALK`; 0.5 Hz heartbeats |
+| `curb-walk-onset` | `UNKNOWN` 6 s → `DONT_WALK` → `WALK fresh:true` (t=12 s) → `COUNTDOWN` → `DONT_WALK`; 0.5 Hz heartbeats; pose at 10 Hz facing the crossing, still until 13 s then walking it at 1.3 m/s (start / far-curb displacement rules) |
 | `curb-walk-already-on` | first non-UNKNOWN state is `WALK fresh:false` |
 | `curb-flicker` | 4-of-8 flicker that stays `UNKNOWN`; a `LIMITED` tracking gap; > 10 s of `UNKNOWN` (cant_see_signal path) |
 | `vehicle-approach` | a parked-car track (constant area, never fires); one `onVehicleApproaching {RIGHT, growth 1.6}` then silence 4 s on that track; `onDetections` ≤ 5 Hz |

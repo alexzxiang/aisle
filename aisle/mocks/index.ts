@@ -40,15 +40,21 @@ export interface MockHarness {
   getSpeed(): number;
   getTimeS(): number;
   getDurationS(): number;
-  /** Seek track + perception pack and emit the legal event chain (needs `bus`). */
+  /**
+   * Seek the track, emit the legal event chain (needs `bus`), then arm the phase's
+   * perception pack at its offset. The pack goes on last and pinned, so the mode edges
+   * the chain produces (each re-arming a default pack) cannot override it.
+   */
   jumpToPhase(phase: ReplayPhase): PhaseSpec | null;
   /** Inject a manual signal state through the perception mock (null releases). */
   forceSignalState(state: SignalState | null, fresh?: boolean): void;
-  /** Perception pack override for the DebugPanel. */
+  /** Perception pack override for the DebugPanel; holds until the perception profile changes (01 §7). */
   selectPack(name: string, offsetMs?: number): void;
   packNames(): string[];
   /** Run one tick by hand (tests). */
   tick(): void;
+  /** stop() plus the store-mode subscription. */
+  dispose(): void;
 }
 
 export interface MockServices {
@@ -97,10 +103,13 @@ export function createMockServices(opts: CreateMockServicesOptions = {}): MockSe
     perception.tick();
   };
 
-  // Phase jump: seek the track, arm the pack at its offset, then emit the legal chain.
-  sensors.controls.onJump((_phase, spec) => {
-    if (perception.packNames().includes(spec.pack)) perception.selectPack(spec.pack, spec.packOffsetMs);
-  });
+  // Mode-driven packs when A's store is bridged (01 §7: AT_CURB shares a profile with the
+  // approach, so only the mode edge can arm the curb pack at the curb).
+  let unsubMode: (() => void) | null = null;
+  if (opts.store?.subscribeMode) {
+    perception.setAppMode(opts.store.getMode());
+    unsubMode = opts.store.subscribeMode((mode) => perception.setAppMode(mode));
+  }
 
   const harness: MockHarness = {
     clock,
@@ -127,13 +136,21 @@ export function createMockServices(opts: CreateMockServicesOptions = {}): MockSe
     getDurationS: () => sensors.controls.getDurationS(),
     jumpToPhase(phase) {
       const spec = sensors.controls.jumpToPhase(phase);
-      if (spec && opts.bus) emitJumpEvents(phase, { bus: opts.bus, store: opts.store, ctx: opts.jumpContext });
+      if (!spec) return null;
+      // Chain first: every mode edge arms its default pack; the phase's pack then wins.
+      if (opts.bus) emitJumpEvents(phase, { bus: opts.bus, store: opts.store, ctx: opts.jumpContext });
+      if (perception.packNames().includes(spec.pack)) perception.selectPack(spec.pack, spec.packOffsetMs);
       return spec;
     },
     forceSignalState: (state, fresh) => perception.forceSignalState(state, fresh),
-    selectPack: (name, offsetMs) => perception.selectPack(name, offsetMs),
+    selectPack: (name, offsetMs) => perception.selectPack(name, offsetMs, { holdUntil: 'profile' }),
     packNames: () => perception.packNames(),
     tick,
+    dispose() {
+      harness.stop();
+      if (unsubMode) unsubMode();
+      unsubMode = null;
+    },
   };
 
   return { sensors, perception, semanticVision, planner, network, harness };

@@ -4,7 +4,10 @@
  * Every `speech` string from Claude and every `text` on /api/tts is checked against
  * the forbidden list (01 §3: safe, clear, go, cross now, no cars, you can cross) and
  * the 12-word limit. A violation blanks `speech` (Claude) or returns 422 (/api/tts).
- * The client lints too; the proxy is the second lock.
+ * The speech lane also blanks any string containing a digit, mirroring the client's
+ * sanitizeSpeech (src/perception/semanticVision.ts): a bare "3" is not normalised by
+ * the voice and A's phrase table spells numbers out. The client lints too; the proxy
+ * is the second lock.
  *
  * The one exemption: Google's mandatory walking-beta warning, allow-listed by the
  * SHA-256 of its exact bytes. It exempts that sentence from both rules on /api/tts and
@@ -13,7 +16,7 @@
  * `src/outdoor/types.ts`); there is deliberately no second copy here.
  */
 import { createHash } from 'node:crypto';
-import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm } from '../../src/core/phrases';
+import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit } from '../../src/core/phrases';
 import { WALKING_BETA_WARNING } from '../../src/outdoor/types';
 
 export type { LanguageVerdict } from './log';
@@ -33,7 +36,7 @@ export interface LanguageCheck {
   verdict: LanguageVerdict;
   /** Text to use downstream: the input on pass/allowlisted, '' on blanked. */
   text: string;
-  reason?: 'forbidden' | 'too_long';
+  reason?: 'forbidden' | 'too_long' | 'digit';
   term?: string | null;
   words: number;
 }
@@ -46,7 +49,7 @@ export interface CheckOptions {
 
 /**
  * Pure. Returns the verdict and the text the caller may use.
- *  - speech lane: forbidden or > 12 words → 'blanked', text ''.
+ *  - speech lane: forbidden, a digit, or > 12 words → 'blanked', text ''.
  *  - tts lane: allow-listed hash → 'allowlisted' (skips both rules);
  *              forbidden or > 12 words → 'rejected_422'.
  */
@@ -57,7 +60,7 @@ export function checkLanguage(text: string, opts: CheckOptions): LanguageCheck {
   }
   const term = findForbiddenTerm(text);
   const max = opts.maxWords ?? MAX_UTTERANCE_WORDS;
-  const fail = (reason: 'forbidden' | 'too_long'): LanguageCheck => ({
+  const fail = (reason: 'forbidden' | 'too_long' | 'digit'): LanguageCheck => ({
     verdict: opts.lane === 'speech' ? 'blanked' : 'rejected_422',
     text: '',
     reason,
@@ -65,6 +68,7 @@ export function checkLanguage(text: string, opts: CheckOptions): LanguageCheck {
     words,
   });
   if (term) return fail('forbidden');
+  if (opts.lane === 'speech' && hasDigit(text)) return fail('digit');
   if (words > max) return fail('too_long');
   return { verdict: 'pass', text, words };
 }

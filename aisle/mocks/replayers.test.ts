@@ -3,7 +3,7 @@
  * perception on fixtures/perception/*.jsonl (including the hard cases), plus the
  * vision/planner replayers and the harness that ties them together.
  */
-import type { AppEvent, Pose, SignalState } from '../src/core/contracts';
+import type { AppEvent, AppMode, ModeProfile, Pose, SignalState } from '../src/core/contracts';
 import { createReplayClock } from './clock';
 import * as fx from './fixtures';
 import { createMockServices } from './index';
@@ -166,6 +166,99 @@ describe('mock PerceptionService on fixtures/perception/*.jsonl', () => {
     p.stop();
     expect(p.currentPack()).toBeNull();
     expect(p.getTrackingState()).toBe('NOT_AVAILABLE');
+  });
+
+  it('an explicit selectPack pins its pack and offset against a same-profile re-arm and yields to a profile change', async () => {
+    const { p, advance } = perceptionOn('outdoor-leg');
+    await p.start('APPROACH_CROSSING');
+    p.selectPack('curb-walk-onset', 14000);
+    advance(500);
+    expect(p.debug().pinned).toBe(true);
+    expect(p.debug().packTimeMs).toBe(14500);
+    p.setProfile('APPROACH_CROSSING');               // what bindPerceptionToApp would send again
+    expect(p.currentPack()).toBe('curb-walk-onset');
+    expect(p.debug().packTimeMs).toBe(14500);        // not restarted at 0
+    p.setProfile('OUTDOOR_NAV');                     // a real edge releases the pin
+    expect(p.currentPack()).toBe('outdoor-leg');
+    expect(p.debug().pinned).toBe(false);
+    expect(p.debug().packTimeMs).toBe(0);
+  });
+
+  it('mode-driven: packs follow AppMode, the curb pack arms on AT_CURB (not the approach), CROSSING keeps it, and setProfile stops arming', async () => {
+    const { p, advance } = perceptionOn('outdoor-leg');
+    p.setAppMode('IDLE');
+    await p.start('OUTDOOR_NAV');                    // binding starts the session on the first non-IDLE mode
+    p.setAppMode('OUTDOOR_NAV');
+    expect(p.currentPack()).toBe('outdoor-leg');
+    p.setAppMode('APPROACH_CROSSING');
+    p.setProfile('APPROACH_CROSSING');
+    expect(p.currentPack()).toBe('vehicle-approach');
+    advance(3000);
+    p.setAppMode('AT_CURB');                         // same profile as the approach: only the mode edge can do this
+    expect(p.currentPack()).toBe('curb-walk-onset');
+    expect(p.debug().packTimeMs).toBe(0);
+    advance(14000);
+    p.setAppMode('CROSSING');
+    p.setProfile('CROSSING');                        // would have armed vehicle-approach@0 when profile-driven
+    expect(p.currentPack()).toBe('curb-walk-onset');
+    expect(p.debug().packTimeMs).toBe(14000);
+    p.setAppMode('OUTDOOR_NAV');
+    expect(p.currentPack()).toBe('outdoor-leg');
+    p.setAppMode('IDLE');
+    expect(p.currentPack()).toBeNull();
+    expect(p.debug().modeDriven).toBe(true);
+    expect(p.debug().mode).toBe('IDLE');
+  });
+
+  it("mode-driven pins: a jump's pin yields to the next mode edge; the operator's 'profile' pin outlives AT_CURB and yields to CROSSING", async () => {
+    const { p, advance } = perceptionOn('outdoor-leg');
+    p.setAppMode('IDLE');
+    await p.start('OUTDOOR_NAV');
+    p.setAppMode('OUTDOOR_NAV');
+    p.setAppMode('APPROACH_CROSSING');
+    // Jump-style pin (default 'mode'): the curb edge re-arms the mode pack.
+    p.selectPack('curb-flicker', 0);
+    p.setAppMode('AT_CURB');
+    expect(p.currentPack()).toBe('curb-walk-onset');
+    // Operator pin picked on the approach: same profile at the curb, so it plays there.
+    p.setAppMode('APPROACH_CROSSING');
+    p.selectPack('curb-walk-already-on', 0, { holdUntil: 'profile' });
+    advance(1000);
+    p.setAppMode('AT_CURB');
+    expect(p.currentPack()).toBe('curb-walk-already-on');
+    expect(p.debug().packTimeMs).toBe(1000);
+    expect(p.debug().pinned).toBe(true);
+    // Order-independent: the operator reacting to the AT_CURB edge before the harness does also wins.
+    p.setAppMode('APPROACH_CROSSING');
+    p.selectPack('curb-walk-already-on', 0, { holdUntil: 'profile' });
+    p.setAppMode('AT_CURB');
+    expect(p.currentPack()).toBe('curb-walk-already-on');
+    // A profile change (CROSSING) releases it; the rule for CROSSING keeps whatever is armed.
+    p.setAppMode('CROSSING');
+    expect(p.debug().pinned).toBe(false);
+    expect(p.currentPack()).toBe('curb-walk-already-on');
+    p.setAppMode('OUTDOOR_NAV');
+    expect(p.currentPack()).toBe('outdoor-leg');
+  });
+
+  it('poses stay in one world frame across a pack switch (ARKit keeps one session frame)', async () => {
+    const { p, advance } = perceptionOn('outdoor-leg');
+    await p.start('OUTDOOR_NAV');
+    const poses: Array<{ x: number; z: number }> = [];
+    p.onPose((q) => poses.push({ x: q.x, z: q.z }));
+    for (let i = 0; i < 100; i += 1) advance(100);      // 10 s of the outdoor leg (~13 m along 118°)
+    const last = poses[poses.length - 1]!;
+    expect(Math.hypot(last.x, last.z)).toBeGreaterThan(10);
+    p.selectPack('curb-walk-onset', 0);
+    advance(0);                                          // the pack's t=0 pose only
+    const first = poses[poses.length - 1]!;
+    expect(first.x).toBeCloseTo(last.x, 2);              // the new pack's origin is re-based onto the last pose
+    expect(first.z).toBeCloseTo(last.z, 2);
+    for (let i = 0; i < 300; i += 1) advance(100);      // 30 s: still 13 s, then 17 s south at 1.3 m/s
+    const end = poses[poses.length - 1]!;
+    expect(end.z - first.z).toBeGreaterThan(20);        // south = +z in the ARKit frame
+    expect(Math.abs(end.x - first.x)).toBeLessThan(0.5);
+    expect(p.debug().poseOffset.z).toBeCloseTo(last.z, 1);   // = last.z − the pack's own first z (±0.03 m jitter)
   });
 
   it('curb-walk-onset: UNKNOWN for 6 s, DONT_WALK, then exactly one WALK fresh:true, then COUNTDOWN and DONT_WALK', async () => {
@@ -431,5 +524,81 @@ describe('createMockServices harness', () => {
     expect(m.harness.isRunning()).toBe(false);
     expect(m.harness.getDurationS()).toBeGreaterThan(150);
     expect(m.network.isOnline()).toBe(true);
+  });
+
+  it('with a bridged store, a jump applies the phase pack after the event chain and the chain edges key the packs by mode', async () => {
+    let wall = 0;
+    let mode: AppMode = 'IDLE';
+    const modeSubs = new Set<(m: AppMode, prev: AppMode) => void>();
+    const setMode = (m: AppMode): void => {
+      const prev = mode;
+      mode = m;
+      for (const cb of Array.from(modeSubs)) cb(m, prev);
+    };
+    const edgesByEvent: Partial<Record<AppEvent['type'], AppMode>> = {
+      ROUTE_READY: 'OUTDOOR_NAV', CROSSING_AHEAD: 'APPROACH_CROSSING', CURB_REACHED: 'AT_CURB',
+      CROSSING_STARTED: 'CROSSING', FAR_CURB_REACHED: 'OUTDOOR_NAV', STORE_ENTERED: 'TRANSITION',
+    };
+    const packsSeen: string[] = [];
+    const emitted: AppEvent[] = [];
+    let m!: ReturnType<typeof createMockServices>;
+    const bus = {
+      emit: (e: AppEvent) => {
+        emitted.push(e);
+        const next = edgesByEvent[e.type];
+        if (next) {
+          setMode(next);
+          // bindPerceptionToApp: start on the first non-IDLE profile, setProfile afterwards.
+          const profile = (next === 'AT_CURB' ? 'APPROACH_CROSSING' : next === 'TRANSITION' ? 'OUTDOOR_NAV' : next) as ModeProfile;
+          if (!m.perception.debug().running) void m.perception.start(profile);
+          else m.perception.setProfile(profile);
+          packsSeen.push(`${next}:${m.perception.currentPack()}@${m.perception.debug().packTimeMs}`);
+        }
+      },
+    };
+    const store = {
+      getMode: () => mode,
+      abort: () => setMode('IDLE'),
+      setFirstRun: () => undefined,
+      transitionEnded: () => setMode('INDOOR_NAV'),
+      subscribeMode: (cb: (m: AppMode, prev: AppMode) => void) => {
+        modeSubs.add(cb);
+        return () => modeSubs.delete(cb);
+      },
+    };
+    m = createMockServices({ bus, store, wall: () => wall, latencyScale: 0, setIntervalFn: () => 1, clearIntervalFn: () => undefined });
+    m.harness.start();
+
+    const spec = m.harness.jumpToPhase('CROSSING');
+    expect(spec).toEqual(fx.track.phases!.CROSSING);
+    // The chain armed the mode packs in order; the curb pack came on the AT_CURB edge and survived CROSSING.
+    expect(packsSeen).toEqual([
+      'OUTDOOR_NAV:outdoor-leg@0', 'APPROACH_CROSSING:vehicle-approach@0', 'AT_CURB:curb-walk-onset@0', 'CROSSING:curb-walk-onset@0',
+    ]);
+    // ...and the phase's pack/offset was applied last, so it is what actually plays.
+    expect(m.perception.currentPack()).toBe('curb-walk-onset');
+    expect(m.perception.debug().packTimeMs).toBe(spec!.packOffsetMs);
+    expect(m.perception.debug().pinned).toBe(true);
+    const states: string[] = [];
+    m.perception.onSignalState((e) => states.push(`${e.state}${e.fresh ? '*' : ''}`));
+    wall += 7000;                                   // pack 14 s → 21 s: WALK heartbeats then COUNTDOWN at 20 s; the onset (12 s) is behind us
+    m.harness.tick();
+    expect(states).toContain('COUNTDOWN');
+    expect(states).not.toContain('WALK*');
+
+    // A second jump to APPROACH_CROSSING first aborts to IDLE (pack cleared), then re-walks the chain.
+    packsSeen.length = 0;
+    m.harness.jumpToPhase('APPROACH_CROSSING');
+    expect(packsSeen).toEqual(['OUTDOOR_NAV:outdoor-leg@0', 'APPROACH_CROSSING:vehicle-approach@0']);
+    expect(m.perception.currentPack()).toBe('vehicle-approach');
+    expect(m.perception.debug().packTimeMs).toBe(0);
+
+    // Continuous replay after the jump: the next real edge releases the pin and keys by mode again.
+    bus.emit({ type: 'CURB_REACHED', crossingId: 'crossing-forbes-01' });
+    expect(m.perception.currentPack()).toBe('curb-walk-onset');
+    expect(m.perception.debug().pinned).toBe(false);
+    m.harness.dispose();
+    expect(m.harness.isRunning()).toBe(false);
+    expect(modeSubs.size).toBe(0);
   });
 });

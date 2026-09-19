@@ -7,8 +7,8 @@
  * against the target bearing and line, so A's COURSE buzz is exercised, not stubbed.
  *
  * Playback: play / pause / scrub / speed / jumpToPhase through `controls`. A phase
- * jump only seeks; the legal event chain that moves A's store is emitted by
- * `mocks/phases.ts`, which the harness wires to `controls.onJump`.
+ * jump only seeks (and tells `onJump` listeners); the legal event chain that moves
+ * A's store and the perception pack are applied by the harness (`mocks/index.ts`).
  *
  * Timers: none. The harness calls `controls.tick()` at ~20 Hz (mocks/index.ts).
  */
@@ -86,12 +86,15 @@ export function createMockSensorService(opts: MockSensorOptions): MockSensorServ
     const ts = wall();
     lastHeading = { trueHeadingDeg: s.heading.trueHeadingDeg, accuracy: s.heading.accuracy, timestamp: ts };
     lastFix = { lat: s.lat, lng: s.lng, accuracyM: s.accuracyM, courseDeg: s.courseDeg, speedMps: s.speedMps, timestamp: ts };
+    const stepsChanged = s.steps !== lastSteps || cursor < 0;
     lastSteps = s.steps;
     stepHistory.push({ ts, steps: s.steps });
     if (stepHistory.length > 4096) stepHistory.splice(0, stepHistory.length - 4096);
     for (const cb of Array.from(headingSubs)) cb(lastHeading);
     for (const cb of Array.from(locationSubs)) cb(lastFix);
-    for (const cb of Array.from(stepSubs)) cb(lastSteps);
+    // Like Pedometer.watchStepCount, steps fire only when the count changes: a standing user
+    // produces no step callbacks, which is what B's curb-stillness rule (2 s, no step) needs.
+    if (stepsChanged) for (const cb of Array.from(stepSubs)) cb(lastSteps);
   };
 
   const tick = (): void => {
