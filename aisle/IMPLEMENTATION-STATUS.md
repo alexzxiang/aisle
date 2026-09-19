@@ -726,3 +726,20 @@ its touches (hold-anywhere no longer fires from a resting finger; the scroll fre
 audio-session switch on the main thread). Detector speed: 7.5 fps at thermal `serious`, 15 fps
 cold; the decision loop, not the detector, was the slow part. Not yet tested on the phone
 after these changes; `startMs` from the next run decides whether the mic needs native work.
+
+### Round 9 (Stream A) — 2026-09-19, late
+Fifty-nine more classes on-device: a second detector, YOLOv8n Open Images V7, alternates
+frames with COCO indoors (same inference count, so no extra heat; COCO keeps every frame
+outdoors for the looming filter); doors, door handles, countertops, cabinets, drawers, light
+switches, stairs, shelves, windows, mugs, plates, eggs, milk, bread, glasses, shoes, bins, lamps
+and more, at score ≥ 0.35 because the nano Open Images model is the weaker one; the tracker
+merges both streams and emits every live track. Export is one line on the Mac (no GPU);
+`training/brev/oiv7_home.py` narrows the model to the kept labels for a Brev fine-tune. Talk
+cues: rising earcon + LISTEN haptic when the recogniser is live, falling earcon + SENT haptic
+the moment the mic closes. Pivots gated ("Switch to bananas on the table?" — yes/no; "stop"
+immediate). Coaching: hand "a little more to the left" / "other way" / "too far, back to the
+right a little" / "reach further forward" vs "grab it" (fingertip depth vs target depth, new
+native field); walking "keep going, three steps more", "keep walking forward", "stop, you
+passed the bananas". App 1232 tests, proxy 202, Swift harness 113. Rebuilt for a generic iOS
+destination; the phone was not reachable for the install at the time of writing — plug it in,
+unlock, and run `npm run ios:device` (the build is cached, so it installs in under a minute).

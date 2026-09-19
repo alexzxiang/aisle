@@ -101,8 +101,8 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1092 tests
-cd aisle/server && npx tsc --noEmit && npx vitest run   # 188 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1232 tests
+cd aisle/server && npx tsc --noEmit && npx vitest run   # 202 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
 curl -s localhost:8787/api/health | head -c 300
@@ -228,6 +228,31 @@ detector at 960/1280 costs 2–4× and would deepen the throttle. The right next
 small things is a centre-crop zoom pass on alternate detector frames (same 640 model, 2×
 effective resolution) in `PerceptionEngine.swift`, and a lighter `HOME_TASK` profile (depth 5,
 OCR 0) so the phone stays cool — both native, both need `npm run ios:device`.
+
+## Round 9 (Stream A): more things, talk cues, gated pivots, coaching
+- **Two detectors indoors.** `oiv7-yolo-nano` (Open Images V7, YOLOv8n) alternates frames with
+  COCO nano in INDOOR_NAV / ITEM_PICKUP / AWARE (`PerceptionEngine.runDetector`,
+  `detectorParity`); outdoors COCO keeps every frame. Labels → classes in
+  `OpenImagesLabels.kept` (VehicleTracker.swift), score ≥ 0.35. The engine emits every live
+  track (`IoUTracker.live(maxMissedFrames: 1)`), not one frame's raw list. The package is
+  git-ignored: export it once per Mac (`models/README.md` has the line; ~10 s, no GPU) or the
+  engine runs COCO alone and logs `oiv7-yolo-nano: not loaded (optional)`. JS side:
+  `HOME_DETECTION_CLASSES` (contracts), `classForWords` synonyms, `CLASS_HEIGHT_M`, preview colours.
+- **`training/brev/oiv7_home.py`** narrows that model to the ~110 kept labels and fine-tunes it
+  on Brev (README there). Same label names → drop-in replacement.
+- **Talk cues.** `voice.ts` `cues.listening()` fires when the recogniser is live (LISTEN haptic +
+  `listen.wav`), `cues.sent()` the moment the mic closes on release (SENT haptic + `sent.wav`).
+  Earcons: `scripts/generate-tones.ts`, `AudioChannels.earcon()`. Nothing else taps.
+- **Pivots are gated.** A different spoken goal while a mission/trip runs → "Switch to X?"
+  (`pendingConfirm.kind` `switch_task` / `switch_route`); yes pivots through `abort()`, no says
+  "Keeping …". "Stop" / "cancel" still stop at once; typed input pivots directly.
+- **Coaching.** `coachHand()` (guide.ts): push / other way / pull back / reach further vs grab,
+  using the fingertip's depth nearness (`HandPoseEvent.near`, new native field) against the
+  target box's. Navigator (`itemMission.decide`): "Keep going. Three steps more.", "Keep walking
+  forward." after `MISSION_STALL_MS`, and "Stop. You passed the bananas." when a thing ≤ 2 steps
+  away drops out of the bottom of the frame or behind within `MISSION_OVERSHOOT_MS`.
+- Native changed (classes, second detector, hand `near`): **rebuild with `npm run ios:device -- --clean`**
+  (the `--clean` matters: the Xcode project only picks up a new `.mlpackage` at prebuild).
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV
