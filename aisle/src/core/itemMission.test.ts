@@ -1,7 +1,7 @@
 import type { Detection } from './contracts';
 import { createGuide, type GuideInstruction } from './guide';
 import {
-  answerRoom, clockWord, createMissionRunner, decide, guessRoom, initialMissionState, missionName, parseMissionGoal,
+  answerOpen, answerRoom, clockWord, createMissionRunner, decide, guessRoom, initialMissionState, missionName, parseMissionGoal,
   MISSION_CHANGE_FLOOR_MS, MISSION_REPEAT_MS, MISSION_SLOW_REPEAT_MS,
 } from './itemMission';
 
@@ -34,12 +34,13 @@ describe('parseMissionGoal / names / clock', () => {
 
 const g = (over: Partial<GuideInstruction>): GuideInstruction => ({ kind: 'forward', text: '', relativeDeg: 0, steps: 4, targetVisible: true, ...over });
 const goal = parseMissionGoal('bananas on the table')!;
+const start = () => initialMissionState(goal.place);
 
 describe('decide: where the person stands → what to say', () => {
   const snap = (over: Partial<Parameters<typeof decide>[2]>) => ({ now: T0, item: null, place: null, door: null, sceneLabel: null, ...over });
 
   it('bananas in view: clock, side and steps; within reach → the reach phase', () => {
-    let s = initialMissionState();
+    let s = start();
     let r = decide(goal, s, snap({ item: g({ kind: 'turn_little', relativeDeg: 20, steps: 4 }) }));
     expect(r.decision).toMatchObject({ phase: 'approach_item', text: "Bananas at one o'clock. Turn right a little, then walk four steps.", haptic: 'TURN', boxTarget: 'bananas' });
     s = r.next;
@@ -51,7 +52,7 @@ describe('decide: where the person stands → what to say', () => {
   });
 
   it('push: a shorter walk than last time is "keep going"; the same walk for seven seconds is "keep walking" (round 9)', () => {
-    let r = decide(goal, initialMissionState(), snap({ item: g({ kind: 'forward', relativeDeg: 2, steps: 5 }) }));
+    let r = decide(goal, start(), snap({ item: g({ kind: 'forward', relativeDeg: 2, steps: 5 }) }));
     expect(r.decision.text).toBe('Bananas ahead. Walk forward five steps.');
     r = decide(goal, r.next, snap({ now: T0 + 2000, item: g({ kind: 'forward', relativeDeg: 2, steps: 3 }) }));
     expect(r.decision.text).toBe('Keep going. Three steps more.');
@@ -63,7 +64,7 @@ describe('decide: where the person stands → what to say', () => {
 
   it('pull back: a close item that drops out of the bottom of the frame was walked past — "Stop. You passed the bananas." (round 9)', () => {
     const close = g({ kind: 'forward', relativeDeg: 6, steps: 2, box: { box: [0.4, 0.6, 0.3, 0.3], at: T0 } });
-    let r = decide(goal, initialMissionState(), snap({ item: close }));
+    let r = decide(goal, start(), snap({ item: close }));
     expect(r.next.lastSeen).toMatchObject({ what: 'item', steps: 2 });
     const gone = g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false });
     r = decide(goal, r.next, snap({ now: T0 + 1500, item: gone, place: gone }));
@@ -73,12 +74,12 @@ describe('decide: where the person stands → what to say', () => {
     expect(r.decision.key).not.toContain('overshoot');
     // A far thing that drops out is simply lost, not passed.
     const far = g({ kind: 'forward', relativeDeg: 0, steps: 6, box: { box: [0.4, 0.3, 0.1, 0.1], at: T0 } });
-    const lost = decide(goal, decide(goal, initialMissionState(), snap({ item: far })).next, snap({ now: T0 + 1500, item: gone, place: gone }));
+    const lost = decide(goal, decide(goal, start(), snap({ item: far })).next, snap({ now: T0 + 1500, item: gone, place: gone }));
     expect(lost.decision.key).not.toContain('overshoot');
   });
 
   it('only the table in view: walk to it, then scan its surface; the item appearing takes over', () => {
-    let r = decide(goal, initialMissionState(), snap({ place: g({ kind: 'turn_little', relativeDeg: -25, steps: 6 }) }));
+    let r = decide(goal, start(), snap({ place: g({ kind: 'turn_little', relativeDeg: -25, steps: 6 }) }));
     expect(r.decision).toMatchObject({ phase: 'approach_place', text: "No bananas yet. Table at eleven o'clock. Turn left a little, then walk six steps." });
     r = decide(goal, r.next, snap({ place: g({ kind: 'forward', relativeDeg: 0, steps: 5 }) }));
     expect(r.decision.text).toBe('No bananas yet. Table ahead. Walk forward five steps.');
@@ -91,21 +92,23 @@ describe('decide: where the person stands → what to say', () => {
   });
 
   it('table remembered from earlier: turn toward it', () => {
-    const r = decide(goal, initialMissionState(), snap({ place: g({ kind: 'scan_remembered', relativeDeg: -70, steps: null, targetVisible: false }) }));
+    const r = decide(goal, start(), snap({ place: g({ kind: 'scan_remembered', relativeDeg: -70, steps: null, targetVisible: false }) }));
     expect(r.decision).toMatchObject({ phase: 'find_place', text: 'Table was on your left. Turn left slowly.', haptic: 'TURN', boxTarget: 'table' });
-    const behind = decide(goal, initialMissionState(), snap({ place: g({ kind: 'turn_around', relativeDeg: 170, steps: null, targetVisible: false }) }));
+    const behind = decide(goal, start(), snap({ place: g({ kind: 'turn_around', relativeDeg: 170, steps: null, targetVisible: false }) }));
     expect(behind.decision.text).toBe('Table behind you. Turn around slowly.');
   });
 
   it('nothing in view: an educated guess with a question, once; then the room answer drives the doorway search', () => {
     const unseen = g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false });
-    let r = decide(goal, initialMissionState(), snap({ item: unseen, place: unseen, sceneLabel: 'in a bedroom' }));
+    let r = decide(goal, start(), snap({ item: unseen, place: unseen, sceneLabel: 'in a bedroom' }));
+    expect(r.decision).toMatchObject({ text: 'Turn slowly all the way around so I can find the table.', explore: true });   // look first
+    r = decide(goal, r.next, snap({ now: T0 + 13_000, item: unseen, place: unseen, sceneLabel: 'in a bedroom' }));
     expect(r.decision).toMatchObject({ phase: 'find_place', text: 'I think the table is in the kitchen. Is that right?', asking: 'room' });
     // Not asked twice: the fallback is a slow scan the model may talk over.
-    r = decide(goal, r.next, snap({ item: unseen, place: unseen, sceneLabel: 'in a bedroom' }));
+    r = decide(goal, r.next, snap({ now: T0 + 14_000, item: unseen, place: unseen, sceneLabel: 'in a bedroom' }));
     expect(r.decision).toMatchObject({ text: 'Turn slowly all the way around so I can find the table.', modelMaySpeak: true });
     // No scene label → the plain question.
-    expect(decide(goal, initialMissionState(), snap({ item: unseen, place: unseen })).decision.text).toBe('I do not see a table here. Is it in another room?');
+    expect(decide(goal, { ...start(), scanSince: T0 - 13_000 }, snap({ item: unseen, place: unseen })).decision.text).toBe('I do not see a table here. Is it in another room?');
 
     const yes = answerRoom(r.next, 'yes', T0);
     expect(yes).toMatchObject({ consumed: true, text: 'Turn slowly until I see a doorway.' });
@@ -118,17 +121,64 @@ describe('decide: where the person stands → what to say', () => {
     expect(d.decision).toMatchObject({ phase: 'find_place', text: 'At the doorway. Walk through, then turn slowly.' });
     // In the new room the question may be asked again.
     expect(d.next.askedRoom).toBe(false);
-    expect(answerRoom(initialMissionState(), 'no, this room', T0)).toMatchObject({ consumed: true, text: 'Turn slowly all the way around so I can find it.' });
-    expect(answerRoom(initialMissionState(), 'in the kitchen', T0).next.phase).toBe('find_door');
-    expect(answerRoom(initialMissionState(), 'what', T0).consumed).toBe(false);
+    expect(answerRoom(start(), 'no, this room', T0)).toMatchObject({ consumed: true, text: 'Turn slowly all the way around so I can find it.' });
+    expect(answerRoom(start(), 'in the kitchen', T0).next.phase).toBe('find_door');
+    expect(answerRoom(start(), 'what', T0).consumed).toBe(false);
   });
 
-  it('an item with no place: chase it, remembered bearings, else a full turn', () => {
+  it('an item with no place: reason about where it usually is, prefer a place in view, then remembered, then unseen', () => {
     const keys = parseMissionGoal('my keys')!;
-    expect(decide(keys, initialMissionState(), snap({ item: g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false }) })).decision)
-      .toMatchObject({ text: 'Keys not seen yet. Turn slowly all the way around.', modelMaySpeak: true, boxTarget: 'keys' });
+    const unseen = g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false });
+    // Nothing in view at all: the best usual place, said as a hypothesis.
+    let r = decide(keys, initialMissionState(), snap({ item: unseen, candidates: [{ place: 'table', evidence: 'unseen' }, { place: 'countertop', evidence: 'unseen' }] }));
+    expect(r.decision).toMatchObject({ text: 'No keys in view. They are usually on the table.', boxTarget: 'table', phase: 'find_place' });
+    expect(r.next.working).toBe('table');
+    // A counter in view beats an unseen table.
+    r = decide(keys, initialMissionState(), snap({ item: unseen, candidates: [{ place: 'table', evidence: 'unseen' }, { place: 'countertop', evidence: 'visible' }] }));
+    expect(r.decision.text).toBe('No keys in view. They are usually on the counter.');
+    expect(r.next.working).toBe('countertop');
+    // The item itself remembered from earlier still wins over any guess.
     expect(decide(keys, initialMissionState(), snap({ item: g({ kind: 'scan_remembered', relativeDeg: 50, steps: null, targetVisible: false }) })).decision.text)
-      .toBe('Keys was on your right. Turn right slowly.'.replace('Keys was', 'Keys was'));
+      .toBe('Keys was on your right. Turn right slowly.');
+  });
+
+  it('rules a place out after a fruitless scan, says so, moves to the next guess, and finally asks where else (round 11)', () => {
+    const keys = parseMissionGoal('my keys')!;
+    const unseen = g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false });
+    let r = decide(keys, initialMissionState(), snap({ item: unseen, candidates: [{ place: 'table', evidence: 'visible' }] }));
+    expect(r.next.working).toBe('table');
+    r = decide(keys, r.next, snap({ item: unseen, place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }));
+    expect(r.decision.text).toBe('At the table. Tilt the camera down and pan slowly.');
+    r = decide(keys, r.next, snap({ now: T0 + 5000, item: unseen, place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }));
+    expect(r.decision.text).toBe('Still looking for the keys. Pan slowly across the table.');
+    r = decide(keys, r.next, snap({ now: T0 + 16_000, item: unseen, place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }));
+    expect(r.decision.text).toBe('Not on the table. Maybe on the counter.');
+    expect(r.next.tried).toEqual(['table']);
+    expect(r.next.working).toBe('countertop');
+    // Exhaust every guess: the app admits it and asks.
+    let state = r.next;
+    for (let i = 0; i < 8 && state.working; i += 1) {
+      state = decide(keys, { ...state, scanSince: T0 }, snap({ now: T0 + 20_000, item: unseen, place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) })).next;
+    }
+    const done = decide(keys, { ...state, working: null, tried: ['table', 'countertop', 'desk', 'couch', 'nightstand', 'door'] }, snap({ now: T0 + 20_000, item: unseen }));
+    expect(done.decision.text).toMatch(/^I have checked the table, the counter, the desk, the couch, the nightstand and the door\. Where else should I look\?$/);
+    expect(done.decision.explore).toBe(true);
+  });
+
+  it('a container has to be opened: "may be inside, open it, then say open" → open → scan inside; cannot open → next guess', () => {
+    const water = parseMissionGoal('a bottle of water')!;
+    const unseen = g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false });
+    let r = decide(water, initialMissionState(), snap({ item: unseen, candidates: [{ place: 'fridge', evidence: 'visible' }] }));
+    expect(r.decision.text).toBe('No bottle of water in view. It is usually in the fridge.');
+    r = decide(water, r.next, snap({ item: unseen, place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }));
+    expect(r.decision).toMatchObject({ phase: 'open_place', text: 'The bottle of water may be inside the fridge. Open it, then say open.', asking: 'open' });
+    const opened = answerOpen(r.next, 'it is open');
+    expect(opened.consumed).toBe(true);
+    r = decide(water, opened.next, snap({ item: unseen, place: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }));
+    expect(r.decision.text).toBe('Point the camera inside the fridge and pan slowly.');
+    const stuck = answerOpen({ ...r.next, opened: false, openAsked: true }, "I can't open it");
+    expect(stuck).toMatchObject({ consumed: true, text: 'Okay. Let me think of somewhere else.' });
+    expect(stuck.next.tried).toContain('fridge');
   });
 });
 
@@ -175,12 +225,12 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     let t = T0;
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unknown_thing', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
     const m = createMissionRunner(parseMissionGoal('my keys')!, { guide, now: () => t });
-    expect(m.tick().text).toBe('Keys not seen yet. Turn slowly all the way around.');
-    expect(m.boxTarget()).toBe('keys');
+    expect(m.tick().text).toBe('No keys in view. They are usually on the table.');
+    expect(m.boxTarget()).toBe('table');
     t += 3000;
-    expect(m.tick().text).toBeNull();                      // slow line: not yet
+    expect(m.tick().text).toBe('Turn slowly all the way around so I can find the table.');
     t += MISSION_SLOW_REPEAT_MS;
-    expect(m.tick().text).toBe('Keys not seen yet. Turn slowly all the way around.');
+    expect(m.tick().text).toBe('Turn slowly all the way around so I can find the table.');
     m.onModelBox('keys', [0.6, 0.5, 0.05, 0.03], t);
     t += MISSION_CHANGE_FLOOR_MS;
     expect(m.tick().text).toMatch(/^Keys just to your right/);
@@ -191,6 +241,8 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     let t = T0;
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
     const m = createMissionRunner(goal, { guide, now: () => t, sceneLabel: () => 'in a bedroom' });
+    expect(m.tick().text).toBe('Turn slowly all the way around so I can find the table.');   // look first
+    t += 13_000;
     expect(m.tick().text).toBe('I think the table is in the kitchen. Is that right?');
     expect(m.askingRoom()).toBe(true);
     expect(m.intercept('hmm')).toEqual({ consumed: false, text: null });

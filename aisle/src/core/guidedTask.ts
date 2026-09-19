@@ -620,6 +620,14 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         }
         if (out.status === 'applied') r.search?.observe(out.response?.search, out.seq, now() - (out.latencyMs ?? 0));
         const observation = out.status === 'applied' ? out.response?.search : undefined;
+        // Round 11: Claude's landmarks are evidence for the navigator's hypotheses too — a counter it
+        // boxed is a counter the phone can walk to, even when the detector has no box for it.
+        if (r.mission && observation && observation.quality === 'usable') {
+          for (const l of observation.landmarks) {
+            const cls = classForWords(l.name);
+            if (cls && l.confidence >= 0.6) r.mission.onModelBox(cls, l.box, now() - (out.latencyMs ?? 0));
+          }
+        }
         if (r.search && r.mission && observation && observation.confidence >= 0.8 && observation.quality === 'usable'
           && (observation.barrier === 'closed_fridge' || observation.barrier === 'closed_freezer')
           && observation.landmarks.some((l) => l.kind === 'appliance' && l.confidence >= 0.8 && /fridge|refrigerator|freezer/i.test(l.name))) {
@@ -799,13 +807,18 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         }
       }
       if (r.mission) {
-        if (r.mission.askingRoom()) {
+        // Open questions (room, "open it"), redirects ("try the cabinet"), "where have we looked".
+        // Never while the person is answering the pickup question (step 2): "yes" means holding it.
+        if (r.step !== 2) {
           const a = r.mission.intercept(t);
           if (a.consumed) {
             if (a.text) {
               speech.say({ text: a.text, priority: 'NAV', dedupeKey: 'task-guide', cooldownMs: 0 });
               deps.conversation?.pushAisle(a.text, 'prompt');
             }
+            // A redirect while the hand loop runs: back to walking.
+            if (r.handing && r.mission.phase() === 'find_place') { handGuide.stop(); r.handing = false; r.step = 0; r.guided = null; }
+            missionTick(r);
             return true;
           }
         }

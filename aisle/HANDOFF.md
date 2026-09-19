@@ -101,8 +101,8 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1270 tests
-cd aisle/server && npx tsc --noEmit && npx vitest run   # 212 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1284 tests
+cd aisle/server && npx tsc --noEmit && npx vitest run   # 215 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
 curl -s localhost:8787/api/health | head -c 300
@@ -282,6 +282,34 @@ Voice: "search again" / "keep looking" restart the scan; "where have we looked" 
 memory; "no" to a proposal refuses that landmark; "stop" ends everything.
 Cost: a task_step now returns ~300 more tokens (4–5 s round trip on Haiku); `FRESH_MS`
 (8 s) and the vision timeout (8 s) are set around that. Not yet run on the phone.
+
+## Round 11 (Stream A): reasoning when the camera does not see the thing
+`src/core/hypotheses.ts` + the navigator (`itemMission.decide`). The order of thought, each
+step one spoken line:
+1. **The item itself** — in view (detector, or Claude's `search.item` box) → chase it; seen
+   earlier → its bearing.
+2. **The stated place** ("on the table") → walk there, scan it (`MISSION_SCAN_GIVE_UP_MS` 15 s).
+3. **Where such things usually are** (`usualPlaces`: eggs → fridge; bananas → counter, table,
+   bowl; keys → table, counter, desk, couch, nightstand, by the door; cereal → cabinet, shelf …),
+   ranked by prior × evidence (in view 1.0, remembered 0.8, unseen 0.5), said as a hypothesis:
+   "No keys in view. They are usually on the table." Claude's landmarks count as evidence
+   (a boxed counter is a counter to walk to).
+4. **Containers** (fridge, cabinet, drawer, wardrobe…): "The bottle may be inside the fridge.
+   Open it, then say open." → "open" → "Point the camera inside the fridge and pan slowly."
+   ("can't open it" rules it out). Dairy with no stated place goes straight to the fridge
+   mission (Poon's `likelyFridgeGoal`, with its handle / open / find / reach stages).
+5. **Elimination**: a place scanned without the item is dropped and named — "Not on the table.
+   Maybe on the counter." → … → "I have checked the table, the counter and the desk. Where
+   else should I look?" `tried` also goes to Claude in userText ("Checked without finding it").
+6. **Looking around before asking**: the stated place nowhere in sight → the explorer's poses
+   for `MISSION_ASK_ROOM_AFTER_MS` (12 s), only then "I think the table is in the kitchen. Is
+   that right?" → doorway search.
+7. **The person redirects at any time**: "try the cabinet", "it's on the table", "check the
+   fridge" (`statedPlaceIn`) → "Okay. Trying the cabinet."; "where have we looked?" answers
+   from `tried`.
+The explorer (`searchExplorer`) takes a tick only when the navigator flags `explore` (nothing
+geometric to say). Tests: `hypotheses.test.ts`, `itemMission.test.ts` (elimination, container,
+redirect), `adaptiveSearch.test.ts`.
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

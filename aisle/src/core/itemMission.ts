@@ -31,8 +31,9 @@ import { classForWords, spokenName } from './sceneMemory';
 import { itemOfGoal } from './handGuide';
 import { isAffirmative, isNegative, normalizeAnswer } from './yesNo';
 import type { SearchExplorer } from './searchExplorer';
+import { checkedLine, hypothesisLine, rankHypotheses, spoken, statedPlaceIn, type PlaceEvidence, type PlaceHypothesis } from './hypotheses';
 
-export type MissionPhase = 'approach_item' | 'approach_place' | 'scan_place' | 'find_place' | 'find_door' | 'reach' | 'confirm';
+export type MissionPhase = 'approach_item' | 'approach_place' | 'open_place' | 'scan_place' | 'find_place' | 'find_door' | 'reach' | 'confirm';
 
 export interface MissionGoal {
   goal: string;
@@ -114,8 +115,10 @@ export interface MissionSnapshot {
   now: number;
   /** guide.instructionFor(item) with the model's item box. */
   item: GuideInstruction | null;
-  /** guide.instructionFor(place) with the model's place box; null without a place. */
+  /** guide.instructionFor(working place) with the model's box for it; null without a working place. */
   place: GuideInstruction | null;
+  /** Round 11: what the phone can act on for each candidate place (the stated one and the usual ones). */
+  candidates?: ReadonlyArray<{ place: string; evidence: PlaceEvidence }>;
   /** guide.instructionFor('doorway') with the model's doorway box. */
   door: GuideInstruction | null;
   /** The awareness loop's room label ("in a kitchen"), when it has one. */
@@ -133,8 +136,10 @@ export interface MissionDecision {
   haptic: HapticPattern | null;
   /** Geometry has nothing: the model's own sentence may be spoken. */
   modelMaySpeak: boolean;
-  /** A question is open (the room question). */
-  asking: 'room' | null;
+  /** A question is open: the room question, or "open it, then say open" at a container. */
+  asking: 'room' | 'open' | null;
+  /** Geometry has nothing to steer by: the search explorer may take this tick instead. */
+  explore?: boolean;
 }
 
 export interface MissionState {
@@ -150,11 +155,24 @@ export interface MissionState {
   lastForwardSteps: number | null;
   /** When the walk line was last a new one (a person who stalls hears "keep walking"). */
   forwardSince: number | null;
+  /** Round 11: the place being tried now — the stated one, or the best hypothesis. */
+  working: string | null;
+  /** Places scanned without the item, in order. */
+  tried: string[];
+  /** The reason for the current working place has been said ("It is usually on the counter."). */
+  reasoned: boolean;
+  /** At a container: the person was asked to open it; and did. */
+  openAsked: boolean;
+  opened: boolean;
 }
 
-export function initialMissionState(): MissionState {
-  return { phase: 'find_place', askedRoom: false, throughDoorAt: null, scanSince: null, lastSeen: null, lastForwardSteps: null, forwardSince: null };
+export function initialMissionState(place: string | null = null): MissionState {
+  return { phase: 'find_place', askedRoom: false, throughDoorAt: null, scanSince: null, lastSeen: null, lastForwardSteps: null, forwardSince: null, working: place, tried: [], reasoned: place !== null, openAsked: false, opened: false };
 }
+/** Scanning a place this long without the item rules it out. */
+export const MISSION_SCAN_GIVE_UP_MS = 15_000;
+/** Looking around for the stated place this long before asking whether it is in another room. */
+export const MISSION_ASK_ROOM_AFTER_MS = 12_000;
 
 /** A close thing that drops out of view within this long was walked past, not lost. */
 export const MISSION_OVERSHOOT_MS = 4000;
@@ -187,11 +205,26 @@ export const itemLine = (name: string, g: GuideInstruction): { text: string; key
  */
 export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapshot): { decision: MissionDecision; next: MissionState } {
   const itemName = missionName(goal.item, goal.itemCls);
-  const placeName = goal.place ? missionName(goal.place, goal.placeCls) : null;
-  const next: MissionState = { ...state };
-  const out = (phase: MissionPhase, text: string | null, key: string, boxTarget: string, haptic: HapticPattern | null = null, modelMaySpeak = false, asking: MissionDecision['asking'] = null): { decision: MissionDecision; next: MissionState } => {
+  const plural = isPlural(itemName);
+  const working = state.working;
+  const placeName = working ? spoken(missionName(working, classForWords(working))) : null;
+  const next: MissionState = { ...state, tried: [...state.tried] };
+  const out = (phase: MissionPhase, text: string | null, key: string, boxTarget: string, haptic: HapticPattern | null = null, modelMaySpeak = false, asking: MissionDecision['asking'] = null, explore = false): { decision: MissionDecision; next: MissionState } => {
     next.phase = phase;
-    return { decision: { phase, text, key: `${phase}:${key}`, boxTarget, haptic, modelMaySpeak, asking }, next };
+    return { decision: { phase, text, key: `${phase}:${key}`, boxTarget, haptic, modelMaySpeak, asking, explore }, next };
+  };
+  /** Rule the working place out and pick the next hypothesis; says why in one line. */
+  const nextHypothesis = (): { decision: MissionDecision; next: MissionState } | null => {
+    const previous = next.working;
+    if (previous) { next.tried.push(previous); next.working = null; }
+    next.scanSince = null; next.openAsked = false; next.opened = false; next.reasoned = false; next.askedRoom = false;
+    const evidence = (place: string): PlaceEvidence => s.candidates?.find((c) => c.place === place)?.evidence ?? 'unseen';
+    const ranked = rankHypotheses(goal.item, goal.place, next.tried, evidence);
+    const pick: PlaceHypothesis | undefined = ranked[0];
+    if (!pick) return null;
+    next.working = pick.place;
+    next.reasoned = true;
+    return out('find_place', hypothesisLine(itemName, plural, pick, previous === null && next.tried.length === 0, previous), `hypothesis:${pick.place}`, pick.place, null);
   };
 
   // Reach and confirm are owned by the caller (hand loop, the user's "yes"); hold them.
@@ -240,24 +273,55 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
   }
   if (state.phase === 'approach_item' && !s.item?.targetVisible) next.lastForwardSteps = null;
 
+  // 1a. The item itself was seen earlier: its bearing beats any guess.
+  if (!working && s.item && !s.item.targetVisible && s.item.kind !== 'scan_unknown') {
+    const l = itemLine(itemName, s.item);
+    return out('approach_item', l.text, l.key, goal.item, l.haptic);
+  }
+  // 1b. No working place yet (nothing stated, or the stated one was ruled out): reason about where it usually is.
+  if (!working) {
+    const picked = nextHypothesis();
+    if (picked) return picked;
+    if (state.tried.length > 0) {
+      return out('find_place', `${checkedLine(state.tried)} Where else should I look?`, 'exhausted', goal.item, null, false, null, true);
+    }
+  }
+
   // 2. Not in view, but the place it should be on is: walk there, then look across it.
-  if (placeName && s.place) {
+  if (working && placeName && s.place) {
+    const opens = rankHypotheses(goal.item, goal.place, [], () => 'unseen').find((h) => h.place === working)?.opens ?? /^(?:fridge|freezer|cabinet|drawer|wardrobe|dishwasher|microwave|oven|box)$/.test(working);
     if (s.place.targetVisible) next.lastSeen = { what: 'place', at: s.now, steps: s.place.steps, bottom: s.place.box ? s.place.box.box[1] + s.place.box.box[3] : 0, relativeDeg: s.place.relativeDeg };
     else if (seen && seen.what === 'place' && state.phase === 'approach_place' && s.now - seen.at <= MISSION_OVERSHOOT_MS && seen.steps !== null && seen.steps <= 2 && seen.bottom >= 0.85) {
       next.lastSeen = null;
-      return out('approach_place', `Stop. You walked past the ${placeName}. Turn around slowly.`, 'overshoot', goal.place ?? goal.item, 'STOP');
+      return out('approach_place', `Stop. You walked past the ${placeName}. Turn around slowly.`, 'overshoot', working, 'STOP');
     }
-    if (s.place.targetVisible || state.phase === 'scan_place') {
-      if (s.place.kind === 'arrived' || state.phase === 'scan_place') {
+    if (s.place.targetVisible || state.phase === 'scan_place' || state.phase === 'open_place') {
+      if (s.place.kind === 'arrived' || state.phase === 'scan_place' || state.phase === 'open_place') {
+        // A container: the item is inside; it has to be opened before anything can be seen.
+        if (opens && !state.opened) {
+          if (!state.openAsked) {
+            next.openAsked = true;
+            return out('open_place', `The ${itemName} may be inside the ${placeName}. Open it, then say open.`, 'open', working, 'CONFIRM', false, 'open');
+          }
+          return out('open_place', `Open the ${placeName}, then say open.`, 'open-wait', working, null, false, 'open');
+        }
         const since = state.scanSince ?? s.now;
         next.scanSince = since;
         if (state.phase !== 'scan_place') {
-          return out('scan_place', `At the ${placeName}. Tilt the camera down and pan slowly.`, 'start', goal.item, 'CONFIRM');
+          const line = opens ? `Point the camera inside the ${placeName} and pan slowly.` : `At the ${placeName}. Tilt the camera down and pan slowly.`;
+          return out('scan_place', line, 'start', goal.item, 'CONFIRM');
         }
-        if (!s.place.targetVisible && s.now - since > 20_000) {
-          // Scanned for a while and the place itself is gone: we drifted; find it again.
+        if (s.now - since > MISSION_SCAN_GIVE_UP_MS) {
+          // Scanned long enough without the item: this place is ruled out; reason about the next.
+          const picked = nextHypothesis();
+          if (picked) return picked;
+          next.working = null;
+          return out('find_place', `${checkedLine(next.tried)} Where else should I look?`, 'exhausted', goal.item, null, false, null, true);
+        }
+        if (!s.place.targetVisible && s.now - since > 8000) {
+          // The place itself is gone from view while scanning: we drifted; find it again.
           next.scanSince = null;
-          return out('approach_place', null, 'lost', goal.place ?? goal.item);
+          return out('approach_place', null, 'lost', working);
         }
         return out('scan_place', `Still looking for the ${itemName}. Pan slowly across the ${placeName}.`, 'looking', goal.item, null, true);
       }
@@ -268,7 +332,7 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     // The place is remembered from earlier: turn to it.
     if (s.place.kind === 'scan_remembered' || s.place.kind === 'turn' || s.place.kind === 'turn_around') {
       const l = itemLine(placeName, s.place);
-      return out('find_place', l.text, l.key, goal.place ?? goal.item, l.haptic);
+      return out('find_place', l.text, l.key, working, l.haptic);
     }
   }
 
@@ -287,23 +351,40 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     return out('find_door', 'Turn slowly until I see a doorway.', 'scan', 'the doorway', null, true);
   }
 
-  // 4. Nothing in view and nothing remembered.
-  if (placeName) {
-    if (!state.askedRoom) {
+  // 4. Nothing in view and nothing remembered for the working place.
+  if (working && placeName) {
+    // A usual place (not stated) that is nowhere in sight: look for it briefly, then move on to the next guess.
+    const usual = goal.place === null || working.toLowerCase() !== goal.place.toLowerCase();
+    if (usual) {
+      const since = state.scanSince ?? s.now;
+      next.scanSince = since;
+      if (s.now - since > MISSION_SCAN_GIVE_UP_MS) {
+        const picked = nextHypothesis();
+        if (picked) return picked;
+        next.working = null;
+        return out('find_place', `${checkedLine(next.tried)} Where else should I look?`, 'exhausted', goal.item, null, false, null, true);
+      }
+      return out('find_place', `Turn slowly all the way around so I can find the ${placeName}.`, 'scan', working, null, true, null, true);
+    }
+    // The stated place: look around first (the explorer's poses, or a full turn); only when that
+    // finds nothing is the person asked whether it is in another room.
+    const since = state.scanSince ?? s.now;
+    next.scanSince = since;
+    if (!state.askedRoom && s.now - since >= MISSION_ASK_ROOM_AFTER_MS) {
       next.askedRoom = true;
-      const room = guessRoom(goal.place, goal.item);
+      const room = guessRoom(working, goal.item);
       const here = s.sceneLabel?.toLowerCase() ?? '';
       const elsewhere = room !== null && here.length > 0 && !here.includes(room);
       const q = elsewhere ? `I think the ${placeName} is in the ${room}. Is that right?` : `I do not see a ${placeName} here. Is it in another room?`;
-      return out('find_place', q, 'ask_room', goal.place ?? goal.item, null, false, 'room');
+      return out('find_place', q, 'ask_room', working, null, false, 'room');
     }
-    return out('find_place', `Turn slowly all the way around so I can find the ${placeName}.`, 'scan', goal.place ?? goal.item, null, true);
+    return out('find_place', `Turn slowly all the way around so I can find the ${placeName}.`, 'scan', working, null, true, null, true);
   }
   if (s.item && !s.item.targetVisible && s.item.kind !== 'scan_unknown') {
     const l = itemLine(itemName, s.item);
     return out('approach_item', l.text, l.key, goal.item, l.haptic);
   }
-  return out('approach_item', `${cap(itemName)} not seen yet. Turn slowly all the way around.`, 'scan', goal.item, null, true);
+  return out('approach_item', `${cap(itemName)} not seen yet. Turn slowly all the way around.`, 'scan', goal.item, null, true, null, true);
 }
 
 /** The user's answer to "is it in another room?" — true when consumed. */
@@ -313,6 +394,19 @@ export function answerRoom(state: MissionState, transcript: string, now: number)
   const elsewhere = !here && (isAffirmative(t) || /\b(?:another|other|different|next) room\b/.test(t) || /\b(?:kitchen|living room|bedroom|bathroom|hallway)\b/.test(t));
   if (elsewhere) return { consumed: true, next: { ...state, phase: 'find_door', throughDoorAt: now }, text: 'Turn slowly until I see a doorway.' };
   if (here) return { consumed: true, next: { ...state, phase: 'find_place', askedRoom: true }, text: 'Turn slowly all the way around so I can find it.' };
+  return { consumed: false, next: state, text: null };
+}
+
+/** "open" / "it's open" / "done" at a container: the inside can be scanned now. */
+export function answerOpen(state: MissionState, transcript: string): { consumed: boolean; next: MissionState; text: string | null } {
+  const t = normalizeAnswer(transcript);
+  if (/^(?:open|it'?s open|its open|opened|i opened it|done|ok(?:ay)?|yes|it is open)$/.test(t) || isAffirmative(t)) {
+    // Stays in open_place so the next tick opens the scan with "Point the camera inside…".
+    return { consumed: true, next: { ...state, opened: true, phase: 'open_place', scanSince: null }, text: null };
+  }
+  if (isNegative(t) || /\b(?:can'?t|cannot|stuck|locked|won'?t open)\b/.test(t)) {
+    return { consumed: true, next: { ...state, tried: [...state.tried, ...(state.working ? [state.working] : [])], working: null, openAsked: false, opened: false, phase: 'find_place' }, text: 'Okay. Let me think of somewhere else.' };
+  }
   return { consumed: false, next: state, text: null };
 }
 
@@ -362,8 +456,8 @@ export interface MissionRunner {
 
 export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps): MissionRunner {
   const now = deps.now ?? Date.now;
-  let state: MissionState = initialMissionState();
-  let asking: 'room' | null = null;
+  let state: MissionState = initialMissionState(goal.place);
+  let asking: 'room' | 'open' | null = null;
   let lastKey: string | null = null;
   let lastSpokenAt = -Infinity;
   let searchTarget: string | null = null;
@@ -389,13 +483,20 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     return g;
   };
 
-  const snapshot = (): MissionSnapshot => ({
-    now: now(),
-    item: look(goal.item),
-    place: goal.place ? look(goal.place) : null,
-    door: look('the doorway'),
-    sceneLabel: deps.sceneLabel?.() ?? null,
-  });
+  const evidenceOf = (g: GuideInstruction | null): PlaceEvidence =>
+    g?.targetVisible ? 'visible' : g && (g.kind === 'scan_remembered' || g.kind === 'turn' || g.kind === 'turn_around') ? 'remembered' : 'unseen';
+  const snapshot = (): MissionSnapshot => {
+    const candidates = state.working ? undefined
+      : rankHypotheses(goal.item, goal.place, state.tried, () => 'unseen').slice(0, 4).map((h) => ({ place: h.place, evidence: evidenceOf(look(h.place)) }));
+    return {
+      now: now(),
+      item: look(goal.item),
+      place: state.working ? look(state.working) : null,
+      door: look('the doorway'),
+      sceneLabel: deps.sceneLabel?.() ?? null,
+      ...(candidates ? { candidates } : {}),
+    };
+  };
 
   return {
     goal,
@@ -412,25 +513,28 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       if (remembered) memorySince = memorySince ?? t;
       else memorySince = null;
       const memoryFresh = remembered && memorySince !== null && t - memorySince <= MISSION_MEMORY_MS;
-      if (deps.search && !memoryFresh && state.phase !== 'reach' && state.phase !== 'confirm') {
-        const direct = snap.item?.targetVisible ? snap.item : snap.place;
-        const scanningSurface = !snap.item?.targetVisible && (snap.place?.kind === 'arrived' || state.phase === 'scan_place');
-        const exploration = deps.search.tick(scanningSurface ? goal.item : goal.place ?? goal.item, direct, { surface: scanningSurface });
+      // Reasoning first (the stated place, then where such things usually are, with what the
+      // phone can act on); the explorer takes the tick only when geometry has nothing to say.
+      const reasoned = decide(goal, state, snap);
+      const wantsExplore = reasoned.decision.explore === true || (state.phase === 'scan_place' && !snap.item?.targetVisible && reasoned.decision.key.endsWith(':looking'));
+      if (deps.search && !memoryFresh && wantsExplore && state.phase !== 'reach' && state.phase !== 'confirm') {
+        const scanningSurface = state.phase === 'scan_place';
+        const exploration = deps.search.tick(scanningSurface ? goal.item : state.working ?? goal.item, null, { surface: scanningSurface });
         if (exploration) {
           searchTarget = exploration.target;
           asking = null;
-          state.phase = scanningSurface ? 'scan_place' : 'find_place';
+          state = { ...reasoned.next, phase: scanningSurface ? 'scan_place' : 'find_place' };
           const haptic = exploration.haptic ?? null;
           const decision: MissionDecision = { phase: state.phase, text: exploration.text, key: `search:${exploration.phase}`, boxTarget: exploration.target, haptic, modelMaySpeak: false, asking: null };
           return { text: exploration.text, haptic, modelMaySpeak: false, decision };
         }
       }
       searchTarget = null;
-      const { decision, next } = decide(goal, state, snap);
+      const { decision, next } = reasoned;
       state = next;
       if (decision.asking) asking = decision.asking;
       if (decision.text === null) return { text: null, haptic: null, modelMaySpeak: decision.modelMaySpeak, decision };
-      const slow = /:(?:scan|looking|unknown|ask_room)$/.test(decision.key);
+      const slow = /:(?:scan|looking|unknown|ask_room|exhausted|open-wait)$/.test(decision.key);
       const news = decision.key !== lastKey;
       const floor = news ? MISSION_CHANGE_FLOOR_MS : slow ? MISSION_SLOW_REPEAT_MS : MISSION_REPEAT_MS;
       if (t - lastSpokenAt < floor && !(news && decision.haptic === 'CONFIRM')) {
@@ -448,16 +552,41 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     userText() {
       const target = this.boxTarget();
       const place = goal.place ? ` The user says it is on the ${goal.place}.` : '';
-      return `Goal: ${goal.goal}. Phase: ${state.phase}.${place} Look for: ${target}. Return the box of ${target} in target.box when visible, else null. Local geometry owns walking words; keep speech to what you see.`;
+      const working = state.working && state.working !== goal.place ? ` Hypothesis: ${goal.item} usually ${/^(?:fridge|freezer|cabinet|drawer|wardrobe)$/.test(state.working) ? 'in' : 'on'} the ${spoken(state.working)}.` : '';
+      const checked = state.tried.length ? ` Checked without finding it: ${state.tried.map(spoken).join(', ')}.` : '';
+      return `Goal: ${goal.goal}. Phase: ${state.phase}.${place}${working}${checked} Look for: ${target}. Return the box of ${target} in target.box when visible, else null. Also box the ${goal.item} in search.item if you can see it anywhere. Local geometry owns walking words; keep speech to what you see.`;
     },
     onModelBox(words, box, at) {
       boxes.set(words.toLowerCase(), { box, at });
     },
     intercept(transcript) {
-      const searchAnswer = deps.search?.intercept(transcript);
+      const t = transcript.trim();
+      // "try the cabinet" / "it's on the table": the person's word beats every guess.
+      const redirect = statedPlaceIn(t);
+      if (redirect && state.phase !== 'reach' && state.phase !== 'confirm') {
+        state = { ...state, working: redirect, tried: state.tried.filter((p) => p !== redirect), reasoned: true, openAsked: false, opened: false, scanSince: null, askedRoom: false, phase: 'find_place' };
+        asking = null;
+        lastKey = null;
+        lastSpokenAt = now();
+        deps.search?.restart();
+        return { consumed: true, text: `Okay. Trying the ${spoken(redirect)}.` };
+      }
+      if (/^(?:where have (?:we|you) (?:looked|checked|been)|what have (?:we|you) checked|what did you check)\??$/i.test(t)) {
+        return { consumed: true, text: state.tried.length ? checkedLine(state.tried) : `I have not checked anywhere yet.` };
+      }
+      const searchAnswer = deps.search?.intercept(t);
       if (searchAnswer?.consumed) return searchAnswer;
+      if (asking === 'open') {
+        const r = answerOpen(state, t);
+        if (!r.consumed) return { consumed: false, text: null };
+        asking = null;
+        state = r.next;
+        lastKey = null;
+        lastSpokenAt = r.text ? now() : -Infinity;
+        return { consumed: true, text: r.text };
+      }
       if (asking !== 'room') return { consumed: false, text: null };
-      const r = answerRoom(state, transcript, now());
+      const r = answerRoom(state, t, now());
       if (!r.consumed) return { consumed: false, text: null };
       asking = null;
       state = r.next;
@@ -484,6 +613,6 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       lastKey = null;
       lastSpokenAt = -Infinity;
     },
-    askingRoom: () => asking === 'room',
+    askingRoom: () => asking === 'room' || asking === 'open',
   };
 }

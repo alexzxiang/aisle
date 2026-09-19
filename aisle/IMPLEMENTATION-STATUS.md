@@ -770,3 +770,15 @@ and thresholds set to what Claude actually returns (observation ≥ 0.6, landmar
 box ≥ 0.8, 8 s freshness). Live probe: a task_step with the search block answers in 4.3 s
 with a landmark box. App 1270 tests, proxy 212, Swift 117. Rebuild required (native
 classes); the phone was unreachable for the install at the time of writing.
+
+### Round 11 (Stream A) — 2026-09-19, late night
+Merged Poon's two commits (stale-fact expiry, box validation at both ends, classifier evidence
+kept, "It may be in the fridge" for dairy with no stated place). Then the reasoning layer for
+an unseen item: `hypotheses.ts` (usual places per item with priors and container flags; ranked
+by prior × evidence with the stated place first; tried places dropped), wired into the
+navigator as a working place with elimination ("Not on the table. Maybe on the counter."),
+container opening ("… may be inside the fridge. Open it, then say open."), an exhausted line
+that names what was checked and asks, a look-around before the room question, redirects
+("try the cabinet") and "where have we looked". Claude gets the hypothesis and the checked
+list in userText and its landmarks feed the navigator's evidence. App 1284 tests, proxy 215.
+JS only — Metro reload. Not yet tried in the room.

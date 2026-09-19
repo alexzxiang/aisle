@@ -541,7 +541,9 @@ describe('createGuidedTask', () => {
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => Date.now() });
     const task = createGuidedTask({ ...h.deps, guide, scene: () => 'in a bedroom' });
     h.bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas on the table', context: 'home', source: 'voice' });
-    expect(h.said[0].text).toBe('I think the table is in the kitchen. Is that right?');
+    expect(h.said[0].text).toBe('Turn slowly all the way around so I can find the table.');   // look around first
+    await flush(13_000);
+    expect(h.said.map((s) => s.text)).toContain('I think the table is in the kitchen. Is that right?');
     expect(task.intercept('yes')).toBe(true);
     expect(h.said[h.said.length - 1].text).toBe('Turn slowly until I see a doorway.');
     expect(task.getDebugState()).toMatchObject({ active: true, stage: 'find_door', goal: 'bananas on the table' });

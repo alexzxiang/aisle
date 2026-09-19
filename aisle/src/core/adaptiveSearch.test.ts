@@ -51,7 +51,8 @@ describe('adaptive search in the actual guided-task loop', () => {
     expect(h.planner).not.toHaveBeenCalled();
     expect(h.said.some((t) => /camera slowly left/.test(t))).toBe(true);
     expect(h.said.some((t) => /May I guide/.test(t))).toBe(true);
-    expect(h.said.some((t) => /Is that right|another room\?/.test(t))).toBe(false);
+    // The room question only comes after looking around, never as the first thing.
+    expect(h.said[0]).not.toMatch(/Is that right|another room\?/);
     expect(h.store.getState().mode).toBe('GUIDED_TASK');
     expect(h.hand.start).not.toHaveBeenCalled();
     h.task.dispose();
