@@ -48,7 +48,7 @@ import type {
 } from '../core/contracts';
 import type { AppEventBus } from '../core/bus';
 import type { AppStore } from '../core/store';
-import { MAX_PROMPT_WORDS, MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, phraseText } from '../core/phrases';
+import { MAX_PROMPT_WORDS, MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit, phraseText } from '../core/phrases';
 import { normalizeTokens } from '../indoor/ocrMatcher';
 
 // ---------------------------------------------------------------------------
@@ -435,11 +435,17 @@ export function gateVerdict(g: GateInput): GateVerdict {
   return 'ok';
 }
 
-/** Speech leaves the client only if it is non-empty, ≤ 12 words and carries no forbidden word. */
+/**
+ * Speech leaves the client only if it is non-empty, ≤ 12 words, carries no
+ * forbidden word and no digit (01 §11: Flash does no text normalization and
+ * speech.say() rejects a digit in `text`, so 'Aisle 3' must be blanked here
+ * rather than thrown from apply()).
+ */
 export function sanitizeSpeech(speech: string): string | null {
   const s = speech.trim();
   if (!s) return null;
   if (findForbiddenTerm(s)) return null;
+  if (hasDigit(s)) return null;
   if (countWords(s) > MAX_UTTERANCE_WORDS) return null;
   return s;
 }

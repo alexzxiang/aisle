@@ -118,6 +118,12 @@ describe('pure pieces', () => {
     expect(sanitizeSpeech('It is safe to cross.')).toBeNull();        // lint-phrases: allow
     expect(sanitizeSpeech('one two three four five six seven eight nine ten eleven twelve thirteen')).toBeNull();
   });
+  it('sanitizeSpeech blanks any digit so speech.say() never sees one', () => {
+    expect(sanitizeSpeech('Aisle 3, dairy.')).toBeNull();
+    expect(sanitizeSpeech('Milk is 2 shelves up.')).toBeNull();
+    expect(sanitizeSpeech('Exit in 10 meters.')).toBeNull();
+    expect(sanitizeSpeech('Aisle three, dairy.')).toBe('Aisle three, dairy.');
+  });
   it('coerceVisionResponse tolerates garbage', () => {
     expect(coerceVisionResponse(null, 4).confidence).toBe(0);
     expect(coerceVisionResponse({ confidence: 'high' }, 4).confidence).toBe(0);
