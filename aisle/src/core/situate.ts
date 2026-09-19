@@ -81,7 +81,7 @@ const SETTING_WORDS: ReadonlyArray<[RegExp, SceneSetting]> = [
   [/\b(living room|bedroom|bathroom|office|dining room|room|couch|sofa|bed|desk|apartment|house|home|flat)\b/i, 'room'],
   [/\b(crosswalk|crossing|intersection|corner|curb|kerb)\b/i, 'crossing'],
   [/\b(entrance|door|doorway|front of|lobby|gate)\b/i, 'entrance'],
-  [/\b(store|shop|market|grocery|aisle|pharmacy|cvs|walgreens|giant eagle|target|walmart|mall|checkout)\b/i, 'store'],
+  [/\b(store|shop|market|grocery|aisle|pharmacy|cvs|walgreens|giant eagle|target|walmart|mall|checkout|cashier|register|dairy|produce|deli|bakery|shopping cart|grocery cart)\b/i, 'store'],
   [/\b(street|sidewalk|road|outside|outdoors|avenue|block|park|bus stop|campus)\b/i, 'street'],
   [/\b(car|bus|train|taxi|uber|vehicle|subway)\b/i, 'vehicle'],
 ];

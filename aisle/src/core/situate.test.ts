@@ -84,6 +84,11 @@ describe('situate (pure)', () => {
     expect(settingFromWords('in my living room')).toBe('room');
     expect(settingFromWords('on the sidewalk')).toBe('street');
     expect(settingFromWords('in aisle seven at giant eagle')).toBe('store');
+    // Grocery sections a shopper names count as the store, so an item request there reroutes to the model.
+    expect(settingFromWords('by the dairy')).toBe('store');
+    expect(settingFromWords('over in produce')).toBe('store');
+    expect(settingFromWords('over at the deli')).toBe('store');
+    expect(settingFromWords('near the cashier')).toBe('store');
     expect(settingFromWords('somewhere')).toBe('unknown');
     expect(contextForSetting('kitchen')).toBe('home');
     expect(contextForSetting('crossing')).toBe('street');
