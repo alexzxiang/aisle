@@ -213,6 +213,12 @@ At the curb the app is near-silent on purpose — the user needs to hear traffic
 
 ## If something breaks mid-run
 
+For fridge/freezer and microphone validation, follow
+[DEPTH-VOICE-VALIDATION.md](DEPTH-VOICE-VALIDATION.md). Glass freezer doors can show
+shelves while still closed: describe that limitation in the demo and confirm
+opening by touch before saying “the freezer door is open.” The size-based reach
+estimate still needs measured phone validation; saved images alone do not calibrate it.
+
 | Symptom | Do this, out loud |
 |---|---|
 | Phone says nothing for ten seconds | "It stays quiet when it has nothing true to say." Then press **Describe surroundings**. |

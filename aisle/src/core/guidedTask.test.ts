@@ -356,7 +356,7 @@ describe('createGuidedTask', () => {
     await flush(1000);
     expect(h.said.length).toBe(count);
     // At the fridge (tall box, depth says close): the step closes and the next one is announced.
-    detections.list = [{ cls: 'fridge', box: [0.2, 0.05, 0.6, 0.9], score: 0.9, trackId: 1, near: 0.9 }];
+    detections.list = [{ cls: 'fridge', box: [0.01, 0.005, 0.98, 0.99], score: 0.9, trackId: 1, near: 0.9 }];
     await flush(1500);
     expect(h.said.map((r) => r.text)).toContain('Fridge close ahead. Stop here.');
     expect(task.getDebugState().step).toBe(1);
@@ -441,23 +441,23 @@ describe('createGuidedTask', () => {
     for (const t of ['what is next to me', 'is it done yet', 'eggs', 'the door is open', '']) expect(isAdvanceRequest(t)).toBe(false);
   });
 
-  it('fridge mission starts without a planner, keeps geometry alive during stalled vision, and rejects an old step reply', async () => {
+  it.each(['fridge', 'freezer'])('%s mission starts without a planner, keeps geometry alive during stalled vision, and rejects an old step reply', async (appliance) => {
     let finishAsk!: (v: AskOutcome) => void;
     const h = harness({ askImpl: () => new Promise((resolve) => { finishAsk = resolve; }) });
     let detections: Detection[] = [{ cls: 'fridge', box: [0.6, 0.2, 0.3, 0.4], score: 0.9, trackId: 1 }];
     const guide = createGuide({ detections: () => detections, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
     const task = createGuidedTask({ ...h.deps, guide });
-    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs from my fridge', context: 'home', source: 'voice' });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: `eggs from my ${appliance}`, context: 'home', source: 'voice' });
     expect(h.planner).not.toHaveBeenCalled();
     expect(h.describe).not.toHaveBeenCalled();
-    expect(h.said[0].text).toMatch(/Turn right about .* degrees toward the fridge/);
+    expect(h.said[0].text).toMatch(/Turn right about .* degrees toward the (fridge|freezer)/);
     await flush(3000); // cloud request hangs
     detections = [{ cls: 'fridge', box: [0.3, 0.2, 0.4, 0.4], score: 0.9, trackId: 1 }];
     await flush(500);
-    expect(h.said.at(-1)?.text).toMatch(/Fridge ahead.*steps/);
-    detections = [{ cls: 'fridge', box: [0.2, 0.05, 0.6, 0.9], near: 0.9, score: 0.9, trackId: 1 }];
+    expect(h.said.at(-1)?.text).toMatch(/(?:Fridge|Freezer) ahead.*steps/);
+    detections = [{ cls: 'fridge', box: [0.01, 0.005, 0.98, 0.99], near: 0.9, score: 0.9, trackId: 1 }];
     await flush(1000);
-    expect(task.getDebugState()).toMatchObject({ stage: 'open', goal: 'eggs from my fridge' });
+    expect(task.getDebugState()).toMatchObject({ stage: 'open', goal: `eggs from my ${appliance}` });
     const old = applied({ done: true, confidence: 0.99 });
     old.response!.speech = 'Old walking instruction.';
     finishAsk(old);
@@ -538,13 +538,13 @@ describe('createGuidedTask', () => {
   });
 
   it('keeps eggs through opening, item localization, hand steering and explicit pickup confirmation', async () => {
-    const eggBox: [number, number, number, number] = [0.2, 0.3, 0.15, 0.1];
+    let eggBox: [number, number, number, number] = [0.45, 0.3, 0.1, 0.02];
     const h = harness({ askImpl: async (text) => {
       const out = applied({ done: false, confidence: 0 });
       if (text.includes('Stage: find_item')) out.response!.target = { box: eggBox, confidence: 0.9 };
       return out;
     } });
-    const guide = createGuide({ detections: () => [{ cls: 'fridge', box: [0.2, 0.05, 0.6, 0.9], near: 0.9, score: 0.9, trackId: 1 }], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
+    const guide = createGuide({ detections: () => [{ cls: 'fridge', box: [0.01, 0.005, 0.98, 0.99], near: 0.9, score: 0.9, trackId: 1 }], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
     const hand = { start: jest.fn(async () => ({ done: 'touching' as const, steps: 1, handWords: 3 })), stop: jest.fn(), isRunning: () => false };
     const task = createGuidedTask({ ...h.deps, guide, handGuide: hand, tickMs: 1000, seen: () => 'chair left, table right, '.repeat(30) });
     h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
@@ -555,6 +555,10 @@ describe('createGuidedTask', () => {
     expect(hand.start).toHaveBeenCalledWith('fridge handle', { goal: 'eggs in my fridge', target: null });
     expect(task.intercept('the door is open')).toBe(true);
     await flush(3000);
+    expect(task.getDebugState().stage).toBe('find_item');
+    expect(hand.start).not.toHaveBeenCalledWith('eggs', expect.anything());
+    eggBox = [0.425, 0.3, 0.15, 0.1];
+    await flush(3000);
     expect(hand.start).toHaveBeenCalledWith('eggs', expect.objectContaining({ goal: 'eggs in my fridge', target: expect.objectContaining({ box: eggBox }) }));
     expect(task.getDebugState()).toMatchObject({ stage: 'confirm_pickup', active: true, goal: 'eggs in my fridge' });
     expect(h.deps.store.getState().mode).toBe('GUIDED_TASK');
@@ -562,6 +566,26 @@ describe('createGuidedTask', () => {
     expect(h.asks.mock.calls.some((c) => c[1].userText?.includes('Stage: find_item'))).toBe(true);
     expect(task.intercept('yes')).toBe(true);
     expect(h.deps.store.getState().mode).toBe('DONE');
+    task.dispose();
+  });
+
+  it('rejects a cloud arrival at distance and requires two different reach frames', async () => {
+    let frameAt = 1;
+    let box: Detection['box'] = [0.2, 0.05, 0.6, 0.9];
+    const h = harness({ askImpl: async () => applied({ done: true, confidence: 0.99 }) });
+    const guide = createGuide({ detections: () => [{ cls: 'fridge', box, score: 0.9, near: 1, trackId: 1 }],
+      detectionTimestamp: () => frameAt, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
+    const task = createGuidedTask({ ...h.deps, guide });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush(4000);
+    expect(task.getDebugState().stage).toBe('approach');
+    box = [0.01, 0.005, 0.98, 0.99];
+    frameAt = 2;
+    await flush(2000);
+    expect(task.getDebugState()).toMatchObject({ stage: 'approach', doneReadings: 1 });
+    frameAt = 3;
+    await flush(500);
+    expect(task.getDebugState().stage).toBe('open');
     task.dispose();
   });
 });

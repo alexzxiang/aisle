@@ -14,6 +14,10 @@ describe('guide (pure)', () => {
   it('relative depth alone cannot declare a small distant fridge within reach', () => {
     expect(rig({ detections: [det('fridge', 0.5, 0.3, 0.95)] }).guide.instructionFor('fridge')?.kind).not.toBe('arrived');
   });
+  it('uses the same object dimensions for spoken steps and reach', () => {
+    const guide = rig({ detections: [det('remote', 0.5, 0.1)] }).guide;
+    expect(guide.instructionFor('remote')).toMatchObject({ kind: 'forward', steps: 2 });
+  });
   it('does not replace forward progress with stop on uncorroborated static relative depth', () => {
     const guide = createGuide({ detections: () => [det('fridge', 0.5, 0.3)], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, path: () => ({ center: 0.9, closingRate: 0.001 }) });
     expect(guide.instructionFor('fridge')).toMatchObject({ kind: 'forward' });
@@ -72,8 +76,9 @@ describe('createGuide', () => {
     const now = () => 1000;
     expect(rig({ detections: [det('fridge', 0.5, 0.3)], now }).guide.instructionFor('eggs in my fridge')).toMatchObject({ kind: 'forward', steps: 6, targetVisible: true });
     expect(rig({ detections: [det('fridge', 0.68, 0.3)], now }).guide.instructionFor('the fridge')).toMatchObject({ kind: 'turn_little', targetVisible: true });
-    expect(rig({ detections: [det('fridge', 0.1, 0.3)], now }).guide.instructionFor('fridge')).toMatchObject({ kind: 'turn', targetVisible: true });
-    expect(rig({ detections: [det('fridge', 0.5, 0.9, 0.9)], now }).guide.instructionFor('fridge')).toMatchObject({ kind: 'arrived' });
+    expect(rig({ detections: [det('fridge', 0.15, 0.3)], now }).guide.instructionFor('fridge')).toMatchObject({ kind: 'turn', targetVisible: true });
+    expect(rig({ detections: [{ ...det('fridge', 0.5, 0.9, 0.9), box: [0.01, 0.005, 0.98, 0.99] }], now }).guide.instructionFor('fridge')).toMatchObject({ kind: 'arrived' });
+    expect(rig({ detections: [det('fridge', 0.5, 0.9, 0.99)], now }).guide.instructionFor('fridge')?.kind).not.toBe('arrived');
     const r = rig({ detections: [det('fridge', 0.5, 0.3)], now }).guide.instructionFor('fridge')!;
     expect(r.text).toMatch(/fridge/i);
     expect(r.text).toMatch(/six steps|ahead/i);
@@ -106,7 +111,7 @@ describe('createGuide', () => {
     const open = createGuide({ detections: () => [det('fridge', 0.5, 0.3)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.2, left: 0.2, right: 0.2 }) });
     expect(open.instructionFor('fridge')).toMatchObject({ kind: 'forward' });
     // Close to the target, the "blockage" is the target itself: no sidestep.
-    const atIt = createGuide({ detections: () => [det('fridge', 0.5, 0.9, 0.9)], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.9, left: 0.9, right: 0.9 }) });
+    const atIt = createGuide({ detections: () => [{ ...det('fridge', 0.5, 0.9, 0.9), box: [0.01, 0.005, 0.98, 0.99] }], memory, hfovDeg: () => 56, now, path: () => ({ center: 0.9, left: 0.9, right: 0.9 }) });
     expect(atIt.instructionFor('fridge')).toMatchObject({ kind: 'arrived' });
   });
 

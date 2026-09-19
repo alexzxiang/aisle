@@ -76,7 +76,7 @@ describe('sceneMemory (pure)', () => {
       expect(hasDigit(s)).toBe(false);
       expect(findForbiddenTerm(s)).toBeNull();
     }
-    expect(whereSentence('fridge', -90, 0.3)).toBe('The fridge is to your left, close.');
+    expect(whereSentence('fridge', -90, 0.3)).toBe('The fridge is to your left.');
     expect(whereSentence('couch', 175, 0.1)).toBe('The couch is behind you. Turn around.');
   });
 });
@@ -90,7 +90,7 @@ describe('createSceneMemory', () => {
     r.see(90, [det('couch', 0.5, 0.4, 0.5)]);  // turned east: couch ahead
     t += 1000;
     r.face(90);
-    expect(r.mem.whereIs('fridge')).toMatchObject({ cls: 'fridge', relativeDeg: -90, phrase: 'The fridge is to your left, a few steps away.' });
+    expect(r.mem.whereIs('fridge')).toMatchObject({ cls: 'fridge', relativeDeg: -90, phrase: 'The fridge is to your left.' });
     expect(r.mem.whereIs('couch')).toMatchObject({ relativeDeg: 0 });
     r.face(180);
     expect(r.mem.whereIs('fridge')).toMatchObject({ phrase: 'The fridge is behind you. Turn around.' });
@@ -148,7 +148,7 @@ describe('createSceneMemory', () => {
     r.see(30, [det('fridge', 0.5)]);
     r.face(30);
     expect(r.mem.intercept('where is the fridge?')).toBe(true);
-    expect(r.said[r.said.length - 1]).toBe('The fridge is ahead, a few steps away.');
+    expect(r.said[r.said.length - 1]).toBe('The fridge is ahead.');
     r.mem.dispose();
   });
 });

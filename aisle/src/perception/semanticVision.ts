@@ -52,7 +52,7 @@ import {
 import type { AppEventBus } from '../core/bus';
 import type { AppStore } from '../core/store';
 import { MAX_PROMPT_WORDS, MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit, phraseText } from '../core/phrases';
-import { normalizeTokens } from '../indoor/ocrMatcher';
+import { ocrFactTokens } from './ocrFacts';
 
 // ---------------------------------------------------------------------------
 // Constants (01 §8)
@@ -597,6 +597,14 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
 
   // Facts, refreshed from the perception streams.
   const facts: VisionFacts = { detections: [], ocrTokens: [] };
+  let ocrReads: Parameters<typeof ocrFactTokens>[0] = [];
+  let ocrAt = -Infinity;
+  const refreshOcr = (knownSigns: readonly string[] = []): string[] => {
+    const state = store.getState();
+    const inStore = ['INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV'].includes(state.mode) || state.scene?.setting === 'store';
+    facts.ocrTokens = ocrFactTokens(now() - ocrAt <= 3000 ? ocrReads : [], inStore, knownSigns);
+    return facts.ocrTokens;
+  };
   let sceneLabelsAt = 0;
   const SCENE_LABELS_FRESH_MS = 4000;
   const unsubs: Array<() => void> = [];
@@ -610,9 +618,9 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
     facts.detections = d;
   }));
   unsubs.push(perception.onOcrText((reads) => {
-    const toks = new Set<string>();
-    for (const r of reads) for (const t of normalizeTokens(r.text)) toks.add(t);
-    facts.ocrTokens = Array.from(toks);
+    ocrReads = reads;
+    ocrAt = now();
+    refreshOcr();
   }));
   unsubs.push(perception.onDepth((d) => {
     facts.depth = d;
@@ -690,7 +698,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       mode,
       facts: {
         detections: facts.detections,
-        ocr: facts.ocrTokens,
+        ocr: refreshOcr(o.knownSigns),
         ...(facts.depth ? { depth: facts.depth } : {}),
         ...(facts.signalState ? { signalState: facts.signalState } : {}),
         ...(typeof heading === 'number' ? { headingDeg: heading } : {}),
@@ -826,7 +834,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       }
     },
 
-    getFacts: () => ({ ...facts, detections: [...facts.detections], ocrTokens: [...facts.ocrTokens] }),
+    getFacts: () => ({ ...facts, detections: [...facts.detections], ocrTokens: [...refreshOcr()] }),
     getStats: () => ({ ...stats }),
     dispose() {
       for (const u of unsubs.splice(0)) u();

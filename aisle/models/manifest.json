@@ -6,7 +6,7 @@
       "name": "coco-yolo-nano",
       "file": "coco-yolo-nano.mlpackage",
       "manifest": "coco-yolo-nano.json",
-      "status": "present",
+      "status": "expected",
       "role": "detector",
       "arch": "yolo11n",
       "input": {
@@ -329,7 +329,7 @@
       "name": "depth-anything-v2-small",
       "file": "depth-anything-v2-small.mlpackage",
       "manifest": "depth-anything-v2-small.json",
-      "status": "present",
+      "status": "expected",
       "role": "depth",
       "arch": "depth-anything-v2-vits",
       "input": {

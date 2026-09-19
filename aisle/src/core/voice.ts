@@ -346,6 +346,10 @@ interface Session {
   readyAt: number | null;
   results: RecognizedResult[];
   finalTranscript: string | null;
+  /** Committed chunks: iOS continuous recognition sends each new segment with a leading space. */
+  committedTranscript: string;
+  cancelled: boolean;
+  result?: Promise<VoiceOutcome>;
   audioUri: string | null;
   ended: boolean;
   error: string | null;
@@ -731,7 +735,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // the first second of the next answer going unheard.
       if (capturing) await capturing;
       if (session) return;
-      const s: Session = { handle: null, pressedAt: now(), readyAt: null, results: [], finalTranscript: null, audioUri: null, ended: false, error: null, done: false, waiters: [] };
+      const s: Session = { handle: null, pressedAt: now(), readyAt: null, results: [], finalTranscript: null, committedTranscript: '', cancelled: false, audioUri: null, ended: false, error: null, done: false, waiters: [] };
       session = s;
       // Stop the app talking into its own microphone (B-1): clear the queue and cut the
       // current utterance the instant the talk button opens the mic. Half the bad transcripts
@@ -746,49 +750,57 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         // continue: the recognizer configures its own category on iOS
       }
       const rec = opts.recognizer;
-      if (!rec || !rec.isAvailable()) {
-        s.error = 'unavailable';
-        s.ended = true;
-        return;
-      }
-      const granted = await rec.requestPermissions();
-      if (!granted) {
-        s.error = 'not-allowed';
-        s.ended = true;
-        return;
-      }
-      if (session !== s) return; // cancelled while asking
-      s.handle = rec.listen(
-        // Start locally when supported; saved audio still permits the existing STT fallback.
-        { lang: 'en-US', onDevice: opts.preferOnDeviceStt !== false && rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()), persistAudio },
-        {
-          onResult(e) {
-            if (!bestTranscript(e.results)) return; // an empty final must not erase useful partials
-            s.results = e.results;
-            if (e.isFinal) {
-              s.finalTranscript = bestTranscript(e.results);
+      try {
+        if (!rec || !rec.isAvailable()) throw new Error('Speech recognition unavailable');
+        const granted = await rec.requestPermissions();
+        if (!granted) throw new Error('Microphone or speech recognition permission denied');
+        if (session !== s) return; // cancelled while asking
+        s.handle = rec.listen(
+          // Start locally when supported; saved audio still permits the existing STT fallback.
+          { lang: 'en-US', onDevice: opts.preferOnDeviceStt !== false && rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()), persistAudio },
+          {
+            onResult(e) {
+              if (s.done || s.cancelled) return;
+              if (!bestTranscript(e.results)) return; // an empty final must not erase useful partials
+              s.results = e.results.map((r) => ({
+                ...r,
+                transcript: /^\s/.test(r.transcript) && s.committedTranscript &&
+                  r.transcript.trim() !== s.committedTranscript && !r.transcript.trim().startsWith(`${s.committedTranscript} `)
+                  ? `${s.committedTranscript} ${r.transcript.trim()}` : r.transcript.trim(),
+              }));
+              if (e.isFinal) {
+                s.finalTranscript = bestTranscript(s.results);
+                s.committedTranscript = s.finalTranscript;
+                wake(s);
+              }
+            },
+            onError(code) {
+              s.error = code;
+              s.ended = true;
               wake(s);
-            }
+            },
+            onEnd() {
+              s.ended = true;
+              wake(s);
+            },
+            onAudioEnd(uri) {
+              s.audioUri = uri;
+              // The recognizer may hand the file over after end()/cancel() finished: delete it then.
+              if (s.done) discardClip(s);
+            },
           },
-          onError(code) {
-            s.error = code;
-            s.ended = true;
-            wake(s);
-          },
-          onEnd() {
-            s.ended = true;
-            wake(s);
-          },
-          onAudioEnd(uri) {
-            s.audioUri = uri;
-            // The recognizer may hand the file over after end()/cancel() finished: delete it then.
-            if (s.done) discardClip(s);
-          },
-        },
-      );
-      if (s.handle.ready) {
-        await s.handle.ready;
-        s.readyAt = now();
+        );
+        if (s.handle.ready) {
+          await s.handle.ready;
+          s.readyAt = now();
+        }
+      } catch (error) {
+        s.error = error instanceof Error ? error.message : String(error);
+        s.ended = true;
+        wake(s);
+        try { s.handle?.abort(); } catch { /* startup may already have ended */ }
+        if (session === s) { session = null; await teardown(s); }
+        throw error;
       }
       if (session === s) {
         try { opts.cues?.listening(); } catch { /* a cue is a courtesy */ }
@@ -796,12 +808,26 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     },
 
     end() {
-      if (ending) return ending;
       const s = session;
+      if (s?.result) return s.result;
       if (!s) {
+        if (ending) return ending;
         return Promise.resolve({ output: { intent: 'unknown' as const, item: null, reply: '' }, transcript: '', sttPath: 'none' as const, planner: false, plannerLatencyMs: null });
       }
       const releasedAt = now();
+      let releaseCapture!: () => void;
+      const captureDone = new Promise<void>((resolve) => { releaseCapture = resolve; });
+      capturing = captureDone;
+      void captureDone.then(() => { if (capturing === captureDone) capturing = null; });
+      let microphoneReleased = false;
+      const releaseMicrophone = async (): Promise<void> => {
+        if (microphoneReleased) return;
+        microphoneReleased = true;
+        if (session === s) session = null;
+        // Keep this utterance's file until transcription finishes, but free the
+        // microphone immediately. A network upload must not delay the next press.
+        try { await teardown(null); } finally { releaseCapture(); }
+      };
       // 1. Capture: keep a short tail for a short hold, stop, wait for the final result, tear
       //    the session down. The next press can start as soon as this settles.
       const capture = (async (): Promise<{ transcript: string; sttPath: VoiceOutcome['sttPath']; uncertain: boolean }> => {
@@ -817,17 +843,19 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
           s.handle?.stop();
           try { opts.cues?.sent(); } catch { /* a cue is a courtesy */ }
           await waitForFinal(s);
-          if (s.handle?.ended && !s.ended) {
+          if (s.handle?.ended) {
             let timer: ReturnType<typeof setTimeout> | undefined;
             await Promise.race([s.handle.ended, new Promise<void>((resolve) => { timer = setTimeout(resolve, 2000); })]);
             if (timer) clearTimeout(timer);
           }
-          let transcript = s.finalTranscript || bestTranscript(s.results);
+          let transcript = bestTranscript(s.results) || s.finalTranscript || '';
           let sttPath: VoiceOutcome['sttPath'] = transcript ? 'on-device' : 'none';
           const confidence = Math.max(...s.results.map((r) => r.confidence ?? -1));
           let uncertain = confidence >= 0 && confidence < UNCERTAIN_CONFIDENCE;
+          await releaseMicrophone();
           if ((!transcript || uncertain) && s.audioUri && opts.sttUpload) {
-            const scribe = await opts.sttUpload(s.audioUri, keytermsFrom(opts.knownItems()), STT_TIMEOUT_MS);
+            // An upload failure must never erase words already captured locally.
+            const scribe = await opts.sttUpload(s.audioUri, keytermsFrom(opts.knownItems()), STT_TIMEOUT_MS).catch(() => null);
             if (scribe && scribe.trim()) {
               transcript = scribe.trim();
               sttPath = 'scribe';
@@ -843,34 +871,42 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         } catch {
           return { transcript: '', sttPath: 'none', uncertain: false };
         } finally {
-          if (session === s) session = null;
-          await teardown(s);
+          await releaseMicrophone();
+          s.done = true;
+          discardClip(s);
         }
       })();
-      capturing = capture.then(() => undefined, () => undefined);
-      void capturing.then(() => { capturing = null; });
       // 2. Understanding, in spoken order, off the microphone's critical path.
       const result = processing.then(async () => {
         const c = await capture;
+        if (s.cancelled) return { output: { intent: 'unknown' as const, item: null, reply: '' }, transcript: '', sttPath: 'none' as const, planner: false, plannerLatencyMs: null };
         return finishWith(c.transcript, c.sttPath, 'voice', c.uncertain);
       });
       processing = result.then(() => undefined, () => undefined);
       ending = result;
-      void result.then(() => { ending = null; }, () => { ending = null; });
+      s.result = result;
+      const finished = (): void => { if (ending === result) ending = null; };
+      void result.then(finished, finished);
       return result;
     },
 
     cancel() {
       const s = session;
+      if (!s) return;
       session = null;
       if (s) {
+        s.cancelled = true;
         try {
           s.handle?.abort();
         } catch {
           // already gone
         }
       }
-      void teardown(s);
+      if (!s.result) {
+        const cleanup = teardown(s);
+        capturing = cleanup;
+        void cleanup.then(() => { if (capturing === cleanup) capturing = null; });
+      }
     },
 
     isListening: () => session !== null && !session.ended,
@@ -936,24 +972,32 @@ export function createExpoRecognizer(): Recognizer {
         }),
         M.addListener('audioend', (e) => h.onAudioEnd(e.uri)),
       ];
-      M.start({
-        lang: o.lang,
-        interimResults: true,
-        continuous: true, // push-to-talk ends on release, not the first brief silence
-        requiresOnDeviceRecognition: o.onDevice,
-        contextualStrings: o.contextualStrings,
-        iosTaskHint: 'search',
-        // Keep playback on the speaker and duck instead of re-routing (02 Task 7).
-        iosCategory: {
-          category: 'playAndRecord',
-          categoryOptions: ['duckOthers', 'defaultToSpeaker', 'allowBluetooth'],
-          mode: 'default',
-        },
-        // Persist only for the Scribe fallback; otherwise nothing is written to disk.
-        ...(o.persistAudio
-          ? { recordingOptions: { persist: true, outputSampleRate: 16_000, outputEncoding: 'pcmFormatInt16' } }
-          : {}),
-      });
+      try {
+        M.start({
+          lang: o.lang,
+          interimResults: true,
+          continuous: true, // push-to-talk ends on release, not the first brief silence
+          requiresOnDeviceRecognition: o.onDevice,
+          contextualStrings: o.contextualStrings,
+          iosTaskHint: 'dictation',
+          // Keep playback on the speaker and duck instead of re-routing (02 Task 7).
+          iosCategory: {
+            category: 'playAndRecord',
+            categoryOptions: ['duckOthers', 'defaultToSpeaker', 'allowBluetooth'],
+            mode: 'default',
+          },
+          // Persist only for the Scribe fallback; otherwise nothing is written to disk.
+          ...(o.persistAudio
+            ? { recordingOptions: { persist: true, outputSampleRate: 16_000, outputEncoding: 'pcmFormatInt16' } }
+            : {}),
+        });
+      } catch (error) {
+        clearTimeout(readyTimer);
+        for (const sub of subs) sub.remove();
+        readyReject(error instanceof Error ? error : new Error(String(error)));
+        endResolve();
+        throw error;
+      }
       return {
         ready,
         ended,

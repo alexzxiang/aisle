@@ -156,21 +156,15 @@ export function directionPhrase(relativeDeg: number): string {
   return 'behind you';
 }
 
-export function distancePhrase(area: number, near?: number): string {
-  if (typeof near === 'number') return near >= 0.66 ? 'close' : near >= 0.4 ? 'a few steps away' : 'far';
-  if (area >= 0.2) return 'close';
-  if (area >= 0.04) return 'a few steps away';
-  return 'far';
-}
-
 /** The sentence for an answer; ≤ 12 words, no digits. A classifier sighting has no distance. */
 export function whereSentence(cls: DetectionClass | string, relativeDeg: number, area: number, near?: number, opts: { plural?: boolean; noDistance?: boolean } = {}): string {
   const name = spokenName(cls);
   const verb = opts.plural ? 'are' : 'is';
   const dir = directionPhrase(relativeDeg);
   if (dir === 'behind you') return `The ${name} ${verb} behind you. Turn around.`;
-  if (opts.noDistance) return `The ${name} ${verb} ${dir}.`;
-  return `The ${name} ${verb} ${dir}, ${distancePhrase(area, near)}.`;
+  // A remembered bearing, area and frame-relative depth cannot establish the
+  // user's current distance after they have moved.
+  return `The ${name} ${verb} ${dir}.`;
 }
 
 const WHERE_IS_RE = /^(?:where(?:'s| is| are)|do you see|can you see|is there)\s+(?:the |a |an |my |any )?(.{2,40}?)\??$/i;

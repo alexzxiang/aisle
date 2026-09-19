@@ -21,8 +21,8 @@
  *
  * Distance: a box of a known-height thing subtends h of the portrait frame; with the
  * wide lens's ~70° vertical field of view, distance ≈ H / (1.4 × h). One step ≈ 0.7 m.
- * The depth grid's nearness (0..1) caps it: ≥ 0.75 is "right in front of you" whatever
- * the box says. Ultra-wide (≈ 95° vertical) uses 1.9 instead of 1.4.
+ * Frame-relative depth never shortens this estimate. Cropped fridge heights use
+ * a width prior; reach is checked in metres before rounding the spoken steps.
  *
  * Wording varies on purpose (the same sentence twice in a row is what people call
  * "spamming"): each kind has several phrasings and the previous one is never reused.
@@ -33,6 +33,7 @@ import type { Detection, DetectionClass, HandPoseEvent } from './contracts';
 import { classForWords, spokenName, wrap180, type SceneMemory } from './sceneMemory';
 import { integerToWords } from '../outdoor/numberWords';
 import { guidanceText } from './preparedGuidance';
+import { distanceFromBox, REACH_DISTANCE_M } from './distance';
 
 export type GuideKind = 'arrived' | 'forward' | 'sidestep' | 'turn_little' | 'turn' | 'turn_around' | 'scan_remembered' | 'scan_unknown';
 
@@ -91,14 +92,8 @@ export const TARGET_FRESH_MS = 3000;
 export const PATH_BLOCKED = 0.7;
 
 export function stepsFromBox(cls: DetectionClass | null, box: [number, number, number, number], near: number | undefined, ultraWide = false, heightOverrideM?: number | null): number {
-  const h = Math.max(0.02, box[3]);
   const heightM = (cls && CLASS_HEIGHT_M[cls]) ?? heightOverrideM ?? DEFAULT_HEIGHT_M;
-  const k = ultraWide ? 1.9 : 1.4;
-  let distanceM = heightM / (k * h);
-  if (typeof near === 'number') {
-    if (near >= 0.75 && h >= 0.75) distanceM = Math.min(distanceM, 1.0);
-    else if (near >= 0.5) distanceM = Math.min(distanceM, 2.5);
-  }
+  const distanceM = distanceFromBox(box, heightM, ultraWide ? 100 : 56, cls === 'fridge' ? 0.7 : undefined) ?? MAX_STEPS * STEP_M;
   return Math.max(0, Math.min(MAX_STEPS, Math.round(distanceM / STEP_M)));
 }
 
@@ -172,6 +167,7 @@ export function phraseFor(kind: GuideKind, name: string, steps: number | null, s
 export interface GuideDeps {
   /** The detector's latest tracks (a fresh copy each call). */
   detections: () => readonly Detection[];
+  detectionTimestamp?: () => number;
   /** The depth grid's bottom row, fresh (≤ 1 s): nearness 0..1 ahead / left / right. Null when unknown. */
   path?: () => { center: number; left?: number; right?: number; closingRate?: number } | null;
   /** Scene memory: remembered bearings for things out of view, and the facing. */
@@ -199,31 +195,36 @@ export function createGuide(deps: GuideDeps): Guide {
   return {
     instructionFor(targetWords, modelBox) {
       const cls = classForWords(targetWords);
-      const name = cls ? spokenName(cls) : targetWords.toLowerCase().replace(/^(the|a|an|my|some)\s+/, '');
+      const name = cls === 'fridge' && /\bfreezer\b/i.test(targetWords) ? 'freezer' : cls ? spokenName(cls) : targetWords.toLowerCase().replace(/^(the|a|an|my|some)\s+/, '');
       const hfov = deps.hfovDeg();
-      const ultraWide = hfov > 80;
 
       // 1. In view: the detector's box, else the model's recent box.
       let box: [number, number, number, number] | null = null;
       let near: number | undefined;
+      let evidenceAt = now();
       if (cls) {
-        const seen = deps.detections().filter((d) => d.cls === cls).sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
+        const seen = deps.detections().filter((d) => d.cls === cls && d.score >= 0.6).sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
         if (seen) {
           box = seen.box;
           near = seen.near;
+          evidenceAt = deps.detectionTimestamp?.() ?? now();
         }
       }
-      if (!box && modelBox && now() - modelBox.at <= TARGET_FRESH_MS) {
+      if (!box && modelBox && now() >= modelBox.at && now() - modelBox.at <= TARGET_FRESH_MS) {
         box = modelBox.box;
         near = modelBox.near;
+        evidenceAt = modelBox.at;
       }
       if (box) {
+        const knownHeight = (cls && CLASS_HEIGHT_M[cls]) || heightForWords(targetWords);
+        const distanceM = distanceFromBox(box, knownHeight ?? DEFAULT_HEIGHT_M, hfov, cls === 'fridge' ? 0.7 : undefined);
+        if (distanceM === null) return null;
         const rel = degreesFromBox(box, hfov);
-        const steps = stepsFromBox(cls, box, near, ultraWide, cls ? null : heightForWords(targetWords));
+        const steps = Math.max(0, Math.min(MAX_STEPS, Math.round(distanceM / STEP_M)));
         const side = rel < 0 ? 'left' : 'right';
         const a = Math.abs(rel);
-        const used: TargetBox = { box, at: now(), ...(typeof near === 'number' ? { near } : {}) };
-        if (a <= hfov * 0.18 && steps <= 1) {
+        const used: TargetBox = { box, at: evidenceAt, ...(typeof near === 'number' ? { near } : {}) };
+        if (a <= hfov * 0.18 && knownHeight !== null && distanceM <= REACH_DISTANCE_M) {
           return { kind: 'arrived', text: say('arrived', name, steps, side), relativeDeg: rel, steps, targetVisible: true, box: used };
         }
         if (a <= hfov * 0.12) {
