@@ -5,20 +5,30 @@
  */
 import React from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { AccessibilityInfo } from 'react-native';
 import { services } from '../core/services';
 import { bindStoreToBus, createAppStore, type AppStore } from '../core/store';
 import { createStubServices, type StubServices } from '../core/stubs';
-import type { AppMode } from '../core/contracts';
-import { findForbidden } from './copy';
+import type { AppMode, SceneHypothesis } from '../core/contracts';
+import { MAX_UTTERANCE_WORDS, SAY_CARD_EXAMPLES, SAY_CARD_NOTE, SAY_CARD_TITLE, findForbidden, wordCount } from './copy';
 import { Root } from './Root';
 import { HomeScreen, CANCEL_LABEL, FIND_LABEL, ITEM_FIELD_LABEL, PENDING_NOTE, PRACTICE_LABEL, SETTINGS_LABEL } from './HomeScreen';
-import { NavScreen, REPEAT_LABEL, STOP_ARMED_LABEL, STOP_LABEL } from './NavScreen';
-import { OnboardingScreen, DONE_LABEL, NEXT_LABEL, PLAY_AGAIN_LABEL, SKIP_LABEL } from './OnboardingScreen';
+import {
+  NavScreen,
+  REPEAT_LABEL,
+  STOP_ARMED_LABEL,
+  STOP_ARM_MS,
+  STOP_ARM_SCREEN_READER_MS,
+  STOP_HINT,
+  STOP_HINT_SCREEN_READER,
+  STOP_LABEL,
+} from './NavScreen';
+import { OnboardingScreen, DONE_LABEL, NEXT_LABEL, NO_LABEL, PLAY_AGAIN_LABEL, SKIP_LABEL, YES_LABEL } from './OnboardingScreen';
 import { DebugPanel, DEBUG_CLOSE_LABEL } from './DebugPanel';
 import { SettingsSheet, CLOSE_LABEL, FASTER_LABEL, SLOWER_LABEL, TRAINING_LABEL } from './SettingsSheet';
 import { StateBand, DEBUG_LONG_PRESS_MS, HERO_ANNOUNCE_GRACE_MS, shouldAnnounceHero } from './StateBand';
 import { CAMERA_LABEL, CAMERA_PLACEHOLDER, CameraPanel, hasCameraPreview, setCameraPreviewForTests } from './CameraPanel';
-import { DESCRIBE_LABEL, TRANSCRIPT_EMPTY, TRANSCRIPT_LABEL, TranscriptPanel, visibleEntries } from './TranscriptPanel';
+import { DESCRIBE_LABEL, NARRATE_LABEL, QUIET_LABEL, TRANSCRIPT_EMPTY, TRANSCRIPT_LABEL, TranscriptPanel, visibleEntries } from './TranscriptPanel';
 import { DESCRIBE_SETTING_LABEL } from './SettingsSheet';
 import { GlassPanel, isBlurAvailable } from './Glass';
 import { stripSlots, EMPTY_FACTS } from './derive';
@@ -107,6 +117,16 @@ function press(node: ReactTestInstance): Promise<void> {
   return act(async () => {
     (node.props.onPress as () => void)();
   });
+}
+
+/** Presence by testID. A panel forwards its testID to more than one node, so only presence is meaningful. */
+function hasNode(r: ReactTestRenderer, testID: string): boolean {
+  return r.root.findAll((n: ReactTestInstance) => n.props.testID === testID).length > 0;
+}
+
+/** A confirmed scene hypothesis, the shape `situate.ts` writes into the store. */
+function scene(label: string, confirmed = true): SceneHypothesis {
+  return { setting: 'store', label, confidence: 0.9, confirmed, source: 'camera', at: T0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +413,80 @@ describe('NavScreen', () => {
     expect(store.getState().mode).toBe('IDLE');
   });
 
+  it('with a screen reader on, Stop drops the hold, says so, and announces the armed state', async () => {
+    setup('OUTDOOR_NAV');
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+    try {
+      const r = await render(<NavScreen reduceMotion now={T0} screenReader />);
+      const stop = byLabel(r, STOP_LABEL);
+      // VoiceOver's activate delivers press-in and press-out together: a hold never arrives.
+      expect(stop.props.onLongPress).toBeUndefined();
+      expect(stop.props.delayLongPress).toBeUndefined();
+      expect(stop.props.accessibilityHint).toBe(STOP_HINT_SCREEN_READER);
+
+      await press(stop);
+      expect(store.getState().mode).toBe('OUTDOOR_NAV');
+      expect(announce).toHaveBeenCalledWith(STOP_ARMED_LABEL);
+      await press(byLabel(r, STOP_ARMED_LABEL));
+      expect(store.getState().mode).toBe('IDLE');
+    } finally {
+      announce.mockRestore();
+    }
+  });
+
+  it('without a screen reader the hold and its hint stay', async () => {
+    setup('OUTDOOR_NAV');
+    const r = await render(<NavScreen reduceMotion now={T0} screenReader={false} />);
+    const stop = byLabel(r, STOP_LABEL);
+    expect(stop.props.onLongPress).toEqual(expect.any(Function));
+    expect(stop.props.accessibilityHint).toBe(STOP_HINT);
+  });
+
+  it('the armed window is longer under a screen reader', () => {
+    expect(STOP_ARM_SCREEN_READER_MS).toBeGreaterThan(STOP_ARM_MS);
+  });
+
+  it('the Quiet pill turns narration off and back on, and never stops guidance', async () => {
+    setup('OUTDOOR_NAV');
+    const r = await render(<NavScreen reduceMotion now={T0} />);
+    expect(store.getState().describeSurroundings).toBe(true);
+
+    await press(byLabel(r, QUIET_LABEL));
+    expect(store.getState().describeSurroundings).toBe(false);
+    // The label now offers the way back, and the trip is untouched.
+    expect(labelsOf(r)).toContain(NARRATE_LABEL);
+    expect(labelsOf(r)).not.toContain(QUIET_LABEL);
+    expect(store.getState().mode).toBe('OUTDOOR_NAV');
+
+    await press(byLabel(r, NARRATE_LABEL));
+    expect(store.getState().describeSurroundings).toBe(true);
+    expectClean(r);
+  });
+
+  it('shows the scene line once something is known, and never through the crossing', async () => {
+    setup('INDOOR_NAV');
+    const r = await render(<NavScreen reduceMotion now={T0} />);
+    expect(hasNode(r, 'scene-panel')).toBe(false);
+
+    await act(async () => {
+      (store.setState as unknown as (p: Record<string, unknown>) => void)({ scene: scene('in the dairy aisle') });
+    });
+    expect(hasNode(r, 'scene-panel')).toBe(true);
+    expect(renderedStrings(r)).toContain('You are: in the dairy aisle');
+
+    await act(async () => {
+      store.getState().setMode('AT_ITEM');
+    });
+    expect(renderedStrings(r)).toContain('You are: in the dairy aisle');
+  });
+
+  it('suppresses the scene line at the curb, where nothing competes with the band', async () => {
+    setup('AT_CURB', { initial: { scene: scene('at a street crossing') } });
+    const r = await render(<NavScreen reduceMotion now={T0} />);
+    expect(hasNode(r, 'scene-panel')).toBe(false);
+    expectClean(r);
+  });
+
   it('in DONE the second target reads Finish and ends the trip', async () => {
     setup('DONE');
     const r = await render(<NavScreen reduceMotion now={T0} />);
@@ -533,7 +627,9 @@ describe('OnboardingScreen', () => {
     const n = stepsFor(true).length;
     for (let i = 0; i < n - 1; i += 1) {
       expectClean(r);
-      await press(byLabel(r, NEXT_LABEL));
+      // The rehearsal step offers Yes / No in place of Next; either answer advances.
+      const labels = labelsOf(r);
+      await press(byLabel(r, labels.includes(NEXT_LABEL) ? NEXT_LABEL : YES_LABEL));
     }
     const methods = stubs.log.calls.filter((c) => c.service === 'haptics').map((c) => `${c.method}:${String(c.args[0] ?? '')}`);
     expect(methods).toEqual(expect.arrayContaining(['startCourse:function', 'stopCourse:', 'play:TURN', 'play:STOP', 'play:CONFIRM']));
@@ -555,6 +651,45 @@ describe('OnboardingScreen', () => {
       stubs.bus.emit({ type: 'ROUTE_READY', legCount: 2, destName: 'Demo Grocery', crossingCount: 1 });
     });
     expect(store.getState().mode).toBe('OUTDOOR_NAV');
+  });
+
+  it('the lesson ends by rehearsing the yes / no answer, and either answer moves on', async () => {
+    setup('ONBOARDING', { initial: { firstRun: false } });
+    const steps = stepsFor(false);
+    const rehearsal = steps.findIndex((s) => s.practice === 'yes_no');
+    expect(rehearsal).toBeGreaterThan(-1);
+
+    const r = await render(<OnboardingScreen reduceMotion />);
+    for (let i = 0; i < rehearsal; i += 1) await press(byLabel(r, NEXT_LABEL));
+
+    // The question is asked out loud, under its own key, and answered here.
+    const asked = stubs.log.calls.filter((c) => c.service === 'speech' && c.method === 'say').map((c) => c.args[0] as { cacheKey?: string });
+    expect(asked.some((s) => s.cacheKey === 'onboarding_practice_scene')).toBe(true);
+    expect(renderedStrings(r)).toContain(PHRASES.onboarding_practice_scene);
+    const labels = labelsOf(r);
+    expect(labels).toEqual(expect.arrayContaining([YES_LABEL, NO_LABEL]));
+    expect(labels).not.toContain(NEXT_LABEL);
+    expectClean(r);
+
+    await press(byLabel(r, YES_LABEL));
+    // "Got it." — what the awareness loop answers a yes with — then the last step.
+    const said = stubs.log.calls.filter((c) => c.service === 'speech' && c.method === 'say').map((c) => c.args[0] as { cacheKey?: string });
+    expect(said.some((s) => s.cacheKey === 'noted')).toBe(true);
+    expect(stubs.log.calls).toContainEqual(expect.objectContaining({ method: 'play', args: ['CONFIRM'] }));
+    expect(labelsOf(r)).toContain(DONE_LABEL);
+  });
+
+  it('answering "no" teaches the follow-up the real loop asks', async () => {
+    setup('ONBOARDING', { initial: { firstRun: false } });
+    const steps = stepsFor(false);
+    const rehearsal = steps.findIndex((s) => s.practice === 'yes_no');
+    const r = await render(<OnboardingScreen reduceMotion />);
+    for (let i = 0; i < rehearsal; i += 1) await press(byLabel(r, NEXT_LABEL));
+
+    await press(byLabel(r, NO_LABEL));
+    const said = stubs.log.calls.filter((c) => c.service === 'speech' && c.method === 'say').map((c) => c.args[0] as { cacheKey?: string });
+    expect(said.some((s) => s.cacheKey === 'tell_me_where')).toBe(true);
+    expect(labelsOf(r)).toContain(DONE_LABEL);
   });
 
   it('practice from Home: skip returns to IDLE through the abort edge', async () => {
@@ -902,6 +1037,36 @@ describe('HomeScreen transcript', () => {
     expect(labelsOf(r)).toEqual(expect.arrayContaining(['You: I need eggs', 'Aisle: Eggs. Planning the route.']));
     expect(labelsOf(r)).not.toContain(DESCRIBE_LABEL);
     expectClean(r);
+  });
+
+  it('before the first line, the card says what to say; the conversation replaces it', async () => {
+    setup('IDLE', { initial: { firstRun: true } });
+    const log = fakeLog([]);
+    const r = await render(<HomeScreen reduceMotion now={T0} conversation={log} />);
+
+    const strings = renderedStrings(r);
+    expect(strings).toContain(SAY_CARD_TITLE);
+    expect(strings).toContain(SAY_CARD_NOTE);
+    for (const example of SAY_CARD_EXAMPLES) {
+      expect(strings.some((s) => s.includes(example))).toBe(true);
+    }
+    // One summary a screen reader reads in a breath, rather than five stray lines.
+    expect(hasNode(r, 'say-card')).toBe(true);
+    expect(labelsOf(r).some((l) => l.startsWith(SAY_CARD_TITLE) && l.includes(SAY_CARD_NOTE))).toBe(true);
+    expectClean(r);
+
+    await act(async () => {
+      log.push(you('1', 'I need eggs'));
+    });
+    expect(renderedStrings(r)).not.toContain(SAY_CARD_TITLE);
+    expect(hasNode(r, 'say-card')).toBe(false);
+  });
+
+  it('every example is something the app actually answers, and is speakable', async () => {
+    for (const example of SAY_CARD_EXAMPLES) {
+      expect(findForbidden(example)).toEqual([]);
+      expect(wordCount(example)).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
+    }
   });
 });
 

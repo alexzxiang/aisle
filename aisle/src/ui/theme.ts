@@ -102,7 +102,22 @@ export const sizes = {
   /** The camera panel's aspect (width : height). */
   /** Portrait: the phone is held upright and the frame should show what is ahead, floor to head height. */
   cameraAspect: 3 / 4,
+  /** The camera never shrinks below this, however short the window. */
+  cameraMinHeight: 160,
 } as const;
+
+/**
+ * The camera panel's height cap on a screen whose remaining furniture needs
+ * `reservePt`. A flat share of the window is fine on the demo phone and wrong
+ * on a short one: at 0.46 of an iPhone SE's 667 pt the transcript is pushed to
+ * its minimum and the talk button off the bottom. The panel therefore yields
+ * whatever the rest of the screen needs, down to `sizes.cameraMinHeight`.
+ */
+export function cameraMaxHeight(windowHeight: number, share: number, reservePt: number): number {
+  const byShare = Math.round(windowHeight * share);
+  const byReserve = Math.round(windowHeight - reservePt);
+  return Math.max(sizes.cameraMinHeight, Math.min(byShare, byReserve));
+}
 
 /** Every motion in the app, all gated by reduce-motion (DESIGN.md, Motion). */
 export const motion = {

@@ -387,6 +387,24 @@ export interface StripSlot {
 /** Modes where the strip talks about the room and the camera, not crossings and aisles. */
 export const AWARENESS_STRIP_MODES: ReadonlySet<AppMode> = new Set<AppMode>(['IDLE', 'ONBOARDING', 'GUIDED_TASK', 'DONE']);
 
+/** The crossing beat owns the screen: nothing competes with the band there (DESIGN.md rule 1). */
+export const SCENE_LINE_SUPPRESSED_MODES: ReadonlySet<AppMode> = new Set<AppMode>([
+  'APPROACH_CROSSING',
+  'AT_CURB',
+  'CROSSING',
+]);
+
+/**
+ * Whether the trip screen shows the awareness line. Home always shows it — the
+ * camera is the page there, and "Looking around…" is the honest answer before
+ * the first reading. On the trip screen the line appears only once the app
+ * believes something, and never through the crossing.
+ */
+export function showSceneLine(mode: AppMode, scene: { label?: string | null } | null | undefined): boolean {
+  if (SCENE_LINE_SUPPRESSED_MODES.has(mode)) return false;
+  return typeof scene?.label === 'string' && scene.label.length > 0;
+}
+
 const COUNT_WORD = ['no', 'one', 'two', 'three'] as const;
 const SEEN_NAMES: Readonly<Partial<Record<Detection['cls'], string>>> = Object.freeze({
   ped_walk: 'walk signal',

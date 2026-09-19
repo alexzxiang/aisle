@@ -1,8 +1,9 @@
 /**
  * Home: one question, "What do you need?", answered by voice or by a text
  * field (keyboard dictation is the zero-risk fallback that always ships,
- * 02 Task 7). Below it, practice and settings, the conversation so far, then
- * the three sentences the first launch owes the user: disclaimer, privacy,
+ * 02 Task 7). Below it, practice and settings, then either the conversation so
+ * far or -- before the first line -- the card of things to say, then the three
+ * sentences the first launch owes the user: disclaimer, privacy,
  * walking-routes beta.
  */
 import React, { useCallback, useState } from 'react';
@@ -16,9 +17,18 @@ import { Button } from './Button';
 import { Backdrop, GlassPanel } from './Glass';
 import { awarenessSlots, heroText, visibleError } from './derive';
 import { useBus, useConversationEntries, useDetections, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
-import { DISCLAIMER_TEXT, PRIVACY_TEXT, WALKING_BETA_FALLBACK, itemAcknowledgement, normalizeTypedItem } from './copy';
+import {
+  DISCLAIMER_TEXT,
+  PRIVACY_TEXT,
+  SAY_CARD_EXAMPLES,
+  SAY_CARD_NOTE,
+  SAY_CARD_TITLE,
+  WALKING_BETA_FALLBACK,
+  itemAcknowledgement,
+  normalizeTypedItem,
+} from './copy';
 import type { ConversationLogPort, VoicePort } from './ports';
-import { accentFor, colors, fontScaleCap, sizes, space, type } from './theme';
+import { accentFor, cameraMaxHeight, colors, fontScaleCap, sizes, space, type } from './theme';
 
 export const ITEM_FIELD_LABEL = 'What do you need';
 export const ITEM_FIELD_PLACEHOLDER = 'For example, eggs';
@@ -44,6 +54,12 @@ export interface HomeScreenProps {
 
 /** The Home camera is a viewfinder, not the page: about a quarter of the window at most. */
 export const HOME_CAMERA_MAX_HEIGHT_SHARE = 0.42;
+/**
+ * Points Home keeps below the camera: the scene line, the item field, the talk
+ * button and the two buttons under it. Home scrolls, so this is about what the
+ * user sees without scrolling, not about fitting.
+ */
+export const HOME_CAMERA_RESERVE_PT = 420;
 
 export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const { onOpenDebug, onOpenSettings, voice, conversation, betaNotice = WALKING_BETA_FALLBACK, now: nowOverride } = props;
@@ -98,7 +114,13 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
         keyboardDismissMode="on-drag"
       >
         {/* The camera is up from launch (the awareness loop): show it, and what the app makes of it. */}
-        <CameraPanel slots={slots} accent={accent} maxHeight={Math.round(windowHeight * HOME_CAMERA_MAX_HEIGHT_SHARE)} reduceMotion={reduceMotion} style={styles.camera} />
+        <CameraPanel
+          slots={slots}
+          accent={accent}
+          maxHeight={cameraMaxHeight(windowHeight, HOME_CAMERA_MAX_HEIGHT_SHARE, HOME_CAMERA_RESERVE_PT)}
+          reduceMotion={reduceMotion}
+          style={styles.camera}
+        />
         <ScenePanel scene={scene} reduceMotion={reduceMotion} />
 
         <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.fieldRow}>
@@ -144,7 +166,28 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
 
         {entries.length > 0 ? (
           <TranscriptPanel entries={entries} max={HOME_TRANSCRIPT_MAX} showDescribe={false} reduceMotion={reduceMotion} style={styles.transcript} />
-        ) : null}
+        ) : (
+          <GlassPanel
+            reduceMotion={reduceMotion}
+            contentStyle={styles.sayCard}
+            accessible
+            accessibilityRole="summary"
+            accessibilityLabel={`${SAY_CARD_TITLE}: ${SAY_CARD_EXAMPLES.join('. ')}. ${SAY_CARD_NOTE}`}
+            testID="say-card"
+          >
+            <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.sayTitle}>
+              {SAY_CARD_TITLE}
+            </Text>
+            {SAY_CARD_EXAMPLES.map((example) => (
+              <Text key={example} allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.sayExample}>
+                {`“${example}”`}
+              </Text>
+            ))}
+            <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.note}>
+              {SAY_CARD_NOTE}
+            </Text>
+          </GlassPanel>
+        )}
 
         <View style={styles.notes} accessibilityRole="summary">
           <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.note}>
@@ -211,6 +254,22 @@ const styles = StyleSheet.create({
   },
   transcript: {
     marginHorizontal: 0,
+  },
+  sayCard: {
+    paddingHorizontal: space.l,
+    paddingVertical: space.l,
+    gap: space.xs,
+  },
+  sayTitle: {
+    ...type.meta,
+    fontWeight: '700',
+    color: colors.secondary,
+    paddingBottom: space.xs,
+  },
+  sayExample: {
+    ...type.body,
+    fontWeight: '600',
+    color: colors.text,
   },
   camera: {
     flexGrow: 0,

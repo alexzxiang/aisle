@@ -1,7 +1,9 @@
 /**
  * Onboarding / practice (02 Task 8): one pattern per step, spoken by the
  * speech service and demonstrated through haptics, beacon and ticker. Two big
- * targets per step: "Play it again" and "Next". Never cut.
+ * targets per step: "Play it again" and "Next" -- or, on the rehearsal step
+ * that closes the lesson, "Yes" and "No", so the user has answered the
+ * awareness loop's question once before it is asked for real. Never cut.
  *
  * Exit: on the first run, "Done" completes onboarding and the trip continues
  * once ROUTE_READY arrives; from the practice button (no target item) it
@@ -14,6 +16,7 @@ import { Button } from './Button';
 import { Backdrop, GlassPanel } from './Glass';
 import { useBus, useMode, useOptionalService, useResolvedReduceMotion, useStoreSlice } from './hooks';
 import { heroFor, spokenLines, stepsFor, type OnboardingStep, type StepServices } from './onboardingSteps';
+import { phraseText } from '../core/phrases';
 import type { OnboardingPorts } from './ports';
 import { accentFor, colors, fontScaleCap, sizes, space, tabular, type } from './theme';
 import { services } from '../core/services';
@@ -23,6 +26,11 @@ export const NEXT_LABEL = 'Next';
 export const DONE_LABEL = 'Done';
 export const SKIP_LABEL = 'Skip practice';
 export const WAITING_NOTE = 'When you press Done, guidance starts as soon as the route is ready.';
+/** The yes / no rehearsal step (`practice: 'yes_no'`). */
+export const YES_LABEL = 'Yes';
+export const NO_LABEL = 'No';
+export const YES_HINT = 'Confirms what Aisle guessed, and ends the lesson';
+export const NO_HINT = 'Tells Aisle it guessed wrong, and ends the lesson';
 
 export interface OnboardingScreenProps {
   onOpenDebug?: () => void;
@@ -105,6 +113,18 @@ export function OnboardingScreen({ onOpenDebug, ports, reduceMotion: reduceMotio
 
   const again = useCallback(() => setReplay((n) => n + 1), []);
 
+  // The yes / no rehearsal: answer, hear what the real loop answers, move on.
+  // Both answers advance — the lesson teaches the gesture, not the room.
+  const answer = useCallback(
+    (yes: boolean) => {
+      haptics?.play('CONFIRM');
+      const key = yes ? 'noted' : 'tell_me_where';
+      speech?.say({ text: phraseText(key), priority: 'NAV', cacheKey: key, dedupeKey: `onboarding_answer_${key}`, cooldownMs: 0 });
+      next();
+    },
+    [haptics, speech, next],
+  );
+
   const waitingForRoute = last && targetItem !== null;
 
   return (
@@ -135,10 +155,17 @@ export function OnboardingScreen({ onOpenDebug, ports, reduceMotion: reduceMotio
         </GlassPanel>
       </ScrollView>
       <View style={styles.controls}>
-        <View style={styles.row}>
-          <Button label={PLAY_AGAIN_LABEL} onPress={again} hint="Repeats this step" reduceMotion={reduceMotion} style={styles.half} />
-          <Button label={last ? DONE_LABEL : NEXT_LABEL} onPress={next} hint={last ? 'Finishes practice' : 'Moves to the next step'} reduceMotion={reduceMotion} style={styles.half} />
-        </View>
+        {step.practice === 'yes_no' ? (
+          <View style={styles.row}>
+            <Button label={YES_LABEL} onPress={() => answer(true)} hint={YES_HINT} reduceMotion={reduceMotion} style={styles.half} testID="practice-yes" />
+            <Button label={NO_LABEL} onPress={() => answer(false)} hint={NO_HINT} reduceMotion={reduceMotion} style={styles.half} testID="practice-no" />
+          </View>
+        ) : (
+          <View style={styles.row}>
+            <Button label={PLAY_AGAIN_LABEL} onPress={again} hint="Repeats this step" reduceMotion={reduceMotion} style={styles.half} />
+            <Button label={last ? DONE_LABEL : NEXT_LABEL} onPress={next} hint={last ? 'Finishes practice' : 'Moves to the next step'} reduceMotion={reduceMotion} style={styles.half} />
+          </View>
+        )}
         {!firstRun ? (
           <Button label={SKIP_LABEL} onPress={finish} size="compact" quiet hint="Leaves practice now" reduceMotion={reduceMotion} />
         ) : null}

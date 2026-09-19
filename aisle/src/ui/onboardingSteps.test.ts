@@ -21,9 +21,17 @@ function makeServices(): { s: StepServices; calls: ReturnType<typeof createCallL
 }
 
 describe('onboarding script', () => {
-  it('covers the whole lesson: disclaimer, four patterns, beacon, ticker, gear, calibration, done', () => {
+  it('covers the whole lesson: disclaimer, four patterns, beacon, ticker, gear, calibration, the yes/no rehearsal, done', () => {
     const ids = ONBOARDING_STEPS.map((s) => s.id);
-    expect(ids).toEqual(['disclaimer', 'intro', 'course-intro', 'course', 'turn', 'stop', 'confirm', 'beacon', 'ticker-a', 'ticker-b', 'gear', 'lanyard', 'calibrate', 'done']);
+    expect(ids).toEqual(['disclaimer', 'intro', 'course-intro', 'course', 'turn', 'stop', 'confirm', 'beacon', 'ticker-a', 'ticker-b', 'gear', 'lanyard', 'calibrate', 'practice-scene', 'done']);
+  });
+
+  it('ends with exactly one answered step, and it is the awareness question', () => {
+    const answered = ONBOARDING_STEPS.filter((s) => s.practice === 'yes_no');
+    expect(answered.map((s) => s.id)).toEqual(['practice-scene']);
+    expect(spokenLines(answered[0])[0].text).toMatch(/\?$/);
+    // Last but one: the lesson still signs off with "done".
+    expect(ONBOARDING_STEPS[ONBOARDING_STEPS.length - 2].practice).toBe('yes_no');
   });
 
   it.each(ONBOARDING_STEPS.map((s) => [s.id, s] as const))('%s speaks within the rules, through pre-generated keys only', (_id, step) => {
