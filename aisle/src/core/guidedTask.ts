@@ -251,6 +251,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
 
   const handGuide: HandGuide = deps.handGuide ?? createHandGuide({ vision: deps.vision, speech, haptics: deps.haptics, bus, conversation: deps.conversation, now });
   const lastTurnPulse = new WeakMap<RunState, number>();
+  const lastArrivalFrame = new WeakMap<RunState, number>();
 
   /**
    * Round 7: geometry speaks first. Returns true when a geometric instruction was spoken (or
@@ -260,17 +261,20 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (!deps.guide) return false;
     const s = r.steps[r.step];
     if (r.mission) return false;
-    if (!s || (r.fridge ? r.step !== 0 : !isWalkingStep(s.instruction))) return false;
+    if (!s || (r.fridge ? r.step !== 0 && r.step !== 2 : !isWalkingStep(s.instruction))) return false;
     const t = now();
     if (t - r.stepAt < (r.fridge ? 0 : TASK_GUIDE_AFTER_STEP_MS)) return false;
-    const target = r.fridge ? 'fridge' : stepTarget(s.instruction, s.lookFor, r.goal);
+    const target = r.fridge ? (r.step === 2 ? itemOfGoal(r.goal) : /\bfreezer\b/i.test(r.goal) ? 'freezer' : 'fridge') : stepTarget(s.instruction, s.lookFor, r.goal);
     const next = deps.guide.instructionFor(target, r.modelTarget);
     deps.trace?.('guide', { step: r.step, instruction: s.instruction, target, decision: next ? { kind: next.kind, steps: next.steps, relativeDeg: next.relativeDeg, visible: next.targetVisible, text: next.text } : null, modelTarget: r.modelTarget?.box ?? null });
-    if (!next) return false;
+    if (!next) { r.doneReadings = 0; lastArrivalFrame.delete(r); return false; }
     // Two separate live geometry readings must agree. Opening is never completed by
     // proximity, and cloud replies cannot erase the approach's geometric evidence.
-    if (next.kind === 'arrived') r.doneReadings += 1;
-    else r.doneReadings = 0;
+    if (next.kind === 'arrived') {
+      const frameAt = next.box?.at ?? now();
+      if (lastArrivalFrame.get(r) !== frameAt) r.doneReadings += 1;
+      lastArrivalFrame.set(r, frameAt);
+    } else { r.doneReadings = 0; lastArrivalFrame.delete(r); }
     const prev = r.guided;
     const news = deps.guide.changed(prev?.instruction ?? null, next);
     if (next.targetVisible && next.kind.startsWith('turn') && t - (lastTurnPulse.get(r) ?? -Infinity) >= 1500) {
@@ -535,7 +539,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       // The reach: steer the hand word by word until it touches the item, then close the task step.
       r.handing = true;
       const handleStage = r.fridge && r.step === 1;
-      const item = handleStage ? 'fridge handle' : itemOfGoal(r.goal);
+      const item = handleStage ? (/\bfreezer\b/i.test(r.goal) ? 'freezer handle' : 'fridge handle') : itemOfGoal(r.goal);
       const handStep = r.step;
       void handGuide.start(item, { goal: r.goal, target: handleStage ? null : r.modelTarget }).then((res) => {
         if (run !== r || r.step !== handStep) return;
@@ -563,7 +567,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: true, force: true });
         if (run !== r || r.step !== askedStep || mode() !== 'GUIDED_TASK') return;
         deps.trace?.('task_step', { step: r.step, geometric, status: out.status, speech: out.response?.speech ?? null, done: out.response?.task ?? null, target: out.response?.target ?? null, latencyMs: out.latencyMs });
-        if (run === r && out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= 0.4) {
+        if (run === r && out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= (r.fridge && r.step === 2 ? doneConfidence : 0.4)) {
           r.modelTarget = { box: out.response.target.box, at: now() - (out.latencyMs ?? 0) };
           if (r.mission) r.mission.onModelBox(boxTarget, out.response.target.box, now() - (out.latencyMs ?? 0));
         }
@@ -577,12 +581,9 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
           }
           return;
         }
-        if (r.fridge && r.step === 2) {
-          const found = out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= doneConfidence;
-          r.doneReadings = found ? r.doneReadings + 1 : 0;
-          if (r.doneReadings >= doneStreak) advanceRun(r, false);
-          return;
-        }
+        // Seeing an item (or a cloud claim of proximity) cannot close a walking
+        // checkpoint. Only fresh geometric reach evidence above can do that.
+        if (r.fridge && (r.step === 0 || r.step === 2)) return;
         if (geometric) return;
         if (out.status === 'applied' && out.response?.speech && !r.check) {
           const text = out.response.speech;
@@ -732,7 +733,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         speakStep(r, true);
         return true;
       }
-      if (r.fridge && r.step === 1 && /^(?:the )?(?:fridge |refrigerator )?door is open[.!]?$|^i (?:have )?opened (?:it|the fridge)[.!]?$/i.test(t)) { advanceRun(r, true); return true; }
+      if (r.fridge && r.step === 1 && /^(?:the )?(?:fridge |refrigerator |freezer )?door is open[.!]?$|^i (?:have )?opened (?:it|the fridge|the freezer)[.!]?$/i.test(t)) { advanceRun(r, true); return true; }
       if (r.fridge && r.step === 4 && (YES_RE.test(t) || /^(?:i have|i am holding|i'm holding) (?:it|them|the eggs|the milk)[.!]?$/i.test(t))) { complete(r); return true; }
       if (!r.check) return false;
       if (YES_RE.test(t)) {

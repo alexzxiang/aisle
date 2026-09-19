@@ -355,6 +355,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   }));
   const guide = createGuide({
     detections: () => now() - latestDetectionAt <= 1500 ? latestDetections : [],
+    detectionTimestamp: () => latestDetectionAt,
     memory: sceneMemory,
     hfovDeg: lensHfov,
     path: () => (latestDepth && now() - latestDepth.at <= 1000 ? latestDepth : null),

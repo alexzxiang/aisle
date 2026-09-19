@@ -7,12 +7,12 @@ describe('facts in words (round 6b)', () => {
     const text = renderFacts({ seq: 1, question: 'task_step', mode: 'GUIDED_TASK', userText, facts: { detections: [], ocr: [] } });
     expect(text).toContain('Stage: open. Look for interior shelves.');
   });
-  it('describeDetections: side from the box, distance from the depth grid when present, else box size', () => {
+  it('describes side and apparent size without inventing physical distance', () => {
     expect(describeDetections([
       { cls: 'table', box: [0.4, 0.5, 0.3, 0.3], score: 0.8, trackId: 1, near: 0.8 },
       { cls: 'backpack', box: [0.05, 0.5, 0.1, 0.1], score: 0.7, trackId: 2 },
       { cls: 'cell_phone', box: [0.8, 0.5, 0.15, 0.1], score: 0.7, trackId: 3, near: 0.2 },
-    ])).toBe('table ahead (close), backpack left (small, far), cell phone right (far)');
+    ])).toBe('table ahead, backpack left (small in frame), cell phone right (small in frame)');
   });
 
   it('describePath: the bottom row of the depth grid in words', () => {
@@ -30,7 +30,7 @@ describe('facts in words (round 6b)', () => {
         depth: { centerBottomRel: 0.2, closingRate: 0, timestamp: 0, leftBottomRel: 0.1, rightBottomRel: 0.9 },
       },
     });
-    expect(text).toContain('onDeviceSees: fridge right (close)');
+    expect(text).toContain('onDeviceSees: fridge right (large in frame; distance unmeasured)');
     expect(text).toContain('onDeviceScene: kitchen 0.71, refrigerator 0.44');
     expect(text).toContain('path: ahead open, left open, right blocked');
     expect(systemPromptFor({ question: 'situate', facts: { detections: [], ocr: [] } })).not.toContain('Do not describe the scene');
@@ -64,7 +64,7 @@ describe('the two on-device lists are distinguished', () => {
   });
 });
 
-describe('relative depth may bring a thing nearer, never push it farther', () => {
+describe('relative depth never establishes physical proximity', () => {
   // Captured on the phone at the fridge door: the box filled 88 % of the frame
   // while the depth grid read near: 0, so Claude was told "fridge ahead (far)"
   // and answered "Walk forward and reach for the handle" while the user was
@@ -72,14 +72,13 @@ describe('relative depth may bring a thing nearer, never push it farther', () =>
   // filling the view has nothing to normalise against and collapses to zero.
   const atTheDoor = { cls: 'fridge' as const, box: [0.01, 0.06, 0.96, 0.92] as [number, number, number, number], score: 1, trackId: 1, near: 0 };
 
-  it('a thing filling the frame is close even when the depth grid says zero', () => {
-    expect(describeDetections([atTheDoor])).toBe('fridge ahead (close)');
+  it('a frame-filling box does not become a claim about physical distance', () => {
+    expect(describeDetections([atTheDoor])).toBe('fridge ahead (large in frame; distance unmeasured)');
     expect(proximityOf(0.88, 0)).toBe(2);
   });
 
-  it('still lets depth pull a small box nearer than its size implies', () => {
-    // A doorway across a room subtends little but the grid knows it is near.
-    expect(proximityOf(0.05, 0.9)).toBe(2);
+  it('ignores depth when reporting apparent box size', () => {
+    expect(proximityOf(0.05, 0.9)).toBe(1);
     expect(proximityOf(0.05, 0.5)).toBe(1);
   });
 
@@ -88,8 +87,8 @@ describe('relative depth may bring a thing nearer, never push it farther', () =>
     expect(proximityOf(0.01, undefined)).toBe(0);
   });
 
-  it('keeps calling genuinely distant things far', () => {
+  it('reports small image size without asserting that the object is far', () => {
     expect(describeDetections([{ cls: 'chair', box: [0.8, 0.5, 0.1, 0.1], score: 0.9, trackId: 2, near: 0.1 }]))
-      .toBe('chair right (far)');
+      .toBe('chair right (small in frame)');
   });
 });

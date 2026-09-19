@@ -743,3 +743,16 @@ native field); walking "keep going, three steps more", "keep walking forward", "
 passed the bananas". App 1232 tests, proxy 202, Swift harness 113. Rebuilt for a generic iOS
 destination; the phone was not reachable for the install at the time of writing — plug it in,
 unlock, and run `npm run ios:device` (the build is cached, so it installs in under a minute).
+
+2026-09-19 — Depth/voice repair: freezer retrieval now preserves all five checkpoints;
+relative depth and rounded steps no longer establish reach. Fridge geometry handles
+cropped height with a width prior; approach and item reach require distinct geometric
+observations, and cloud `done` cannot skip them. Voice retains continuous iOS segments
+and trailing partials, associates release with each capture, releases the mic before
+upload/planning, preserves Apple words on upload failure, and isolates UI attempt
+errors. OCR semantic facts are confidence/context filtered; model manifests describe
+expected installation. Replayed all 107 local frames, but none has measured distance
+labels: physical calibration and phone microphone acceptance remain unverified.
+See `DEPTH-VOICE-VALIDATION.md` for the replay command and device protocol, and
+`DEPTH-VOICE-CHECKPOINT.md` for resumable status. No native changes, paid CI activation or model-routing change in this repair;
+merged as #15 on top of #13 and #14.

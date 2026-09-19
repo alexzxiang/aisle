@@ -30,31 +30,36 @@ export interface VoicePortOptions {
  * suppressed (02 Task 5).
  */
 export function voicePortFrom(input: VoiceInputLike, opts: VoicePortOptions = {}): VoicePort {
-  let starting: Promise<void> | null = null;
-  let startFailed = false;
+  type Attempt = { starting: Promise<void>; stopping?: Promise<void> };
+  let active: Attempt | null = null;
   return {
     start() {
-      startFailed = false;
-      starting = input.begin().catch((err: unknown) => {
-        startFailed = true;
+      if (active && !active.stopping) return active.starting;
+      const attempt: Attempt = { starting: Promise.resolve() };
+      active = attempt;
+      attempt.starting = input.begin().catch((err: unknown) => {
         opts.onError?.('start', err);
-        input.cancel();
+        if (active === attempt) { input.cancel(); active = null; }
+        throw err; // the button must not show Listening after a failed start
       });
-      return starting;
+      return attempt.starting;
     },
     async stop() {
-      // Release cannot overtake press: wait for begin() to settle first.
-      if (starting) {
-        await starting;
-        starting = null;
-      }
-      if (startFailed) return; // don't parse an empty recording after audio-capture failed
-      try {
-        await input.end();
-      } catch (err) {
-        opts.onError?.('stop', err);
-        input.cancel();
-      }
+      const attempt = active;
+      if (!attempt) return;
+      if (attempt.stopping) return attempt.stopping;
+      attempt.stopping = (async () => {
+        try {
+          try { await attempt.starting; } catch { return; }
+          try { await input.end(); } catch (err) {
+            opts.onError?.('stop', err);
+            if (active === attempt) input.cancel();
+          }
+        } finally {
+          if (active === attempt) active = null;
+        }
+      })();
+      return attempt.stopping;
     },
   };
 }

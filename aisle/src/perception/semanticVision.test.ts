@@ -189,7 +189,7 @@ describe('createSemanticVision policy', () => {
     expect(req.seq).toBe(1);
     expect(req.mode).toBe('INDOOR_NAV');
     expect(req.image?.width).toBe(640);
-    expect(req.facts.ocr).toEqual(['3', 'DA1RY', '4', '99']);
+    expect(req.facts.ocr).toEqual(['3', 'DA1RY']);
     expect(req.facts.detections[0]?.cls).toBe('person');
     expect(req.facts.knownSigns).toEqual(['3', 'DAIRY']);
     expect(req.facts.headingDeg).toBe(91);
@@ -212,7 +212,7 @@ describe('createSemanticVision policy', () => {
     const transport = scripted((req) => okResponse(req.seq));
     const h = harness(transport);
     await h.sv.ask('aisle_disambiguate');
-    h.perception.emitOcr(['X1']);
+    h.perception.emitOcr(['DAIRY']);
     h.clock.advance(3000);
     expect((await h.sv.ask('aisle_disambiguate')).gate).toBe('interval');
     h.clock.advance(1000);

@@ -49,7 +49,7 @@ describe('voicePortFrom', () => {
       cancel: () => calls.push('cancel'),
     };
     const port = voicePortFrom(input, { onError: (stage) => errors.push(stage) });
-    await port.start();
+    await expect(port.start()).rejects.toThrow('not-allowed');
     expect(calls).toEqual(['begin', 'cancel']);
     expect(errors).toEqual(['start']);
     await port.stop();
@@ -74,6 +74,30 @@ describe('voicePortFrom', () => {
     await expect(port.stop()).resolves.toBeUndefined();
     expect(calls).toEqual(['begin', 'end', 'cancel']);
     expect(errors).toEqual(['stop']);
+  });
+
+  it('does not let a previous answer failure cancel the next recording', async () => {
+    const previous = deferred<unknown>();
+    const input = { begin: jest.fn(async () => {}), end: jest.fn(() => previous.promise), cancel: jest.fn() };
+    const port = voicePortFrom(input);
+    await port.start();
+    const stopping = port.stop();
+    await Promise.resolve();
+    await port.start();
+    previous.reject(new Error('old answer failed'));
+    await stopping;
+    expect(input.begin).toHaveBeenCalledTimes(2);
+    expect(input.cancel).not.toHaveBeenCalled();
+  });
+
+  it('can retry after a failed microphone start', async () => {
+    const input = { begin: jest.fn().mockRejectedValueOnce(new Error('busy')).mockResolvedValueOnce(undefined), end: jest.fn(async () => {}), cancel: jest.fn() };
+    const port = voicePortFrom(input);
+    await expect(port.start()).rejects.toThrow('busy');
+    await port.start();
+    await port.stop();
+    expect(input.begin).toHaveBeenCalledTimes(2);
+    expect(input.end).toHaveBeenCalledTimes(1);
   });
 });
 

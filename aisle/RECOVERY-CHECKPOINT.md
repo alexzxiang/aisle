@@ -1,5 +1,10 @@
 # Living-room recovery — 2026-09-19
 
+Latest depth/voice repair: [DEPTH-VOICE-CHECKPOINT.md](DEPTH-VOICE-CHECKPOINT.md).
+Implementation and automated verification are complete; measured distance calibration,
+phone microphone acceptance, and the PR/team decisions are recorded there. See
+[DEPTH-VOICE-VALIDATION.md](DEPTH-VOICE-VALIDATION.md) for reproduction and phone steps.
+
 User: Alex (person A). Request: pull teammate changes, restore audible/fast speech,
 expand prepared speech, and reliably carry "eggs from my fridge" through approach,
 opening, item identification, hand guidance and completion. Keep this file current.

@@ -201,6 +201,75 @@ describe('createVoiceInput', () => {
     expect(v.getLast()).toBe(out);
   });
 
+  it('keeps continuous iOS speech segments, including the final unfinished segment', async () => {
+    const r = fakeRecognizer();
+    const v = make(r.rec);
+    await v.begin();
+    r.partial('I need');
+    r.final('I need eggs');
+    r.partial(' in');
+    r.partial(' in the freezer');
+    r.final(' in the freezer');
+    r.partial(' on the top shelf');
+    r.end();
+    expect((await v.end()).transcript).toBe('I need eggs in the freezer on the top shelf');
+  });
+
+  it('stops a second recording while the first answer is still pending', async () => {
+    const r = fakeRecognizer();
+    let finish!: (text: string) => void;
+    const describe = jest.fn(() => new Promise<string>((resolve) => { finish = resolve; }));
+    const v = make(r.rec, { describe });
+    await v.begin();
+    r.final('describe');
+    const first = v.end();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(describe).toHaveBeenCalledTimes(1);
+    await v.begin();
+    r.final('I need milk');
+    const second = v.end();
+    expect(second).not.toBe(first);
+    expect(v.end()).toBe(second); // duplicate release is idempotent for THIS session
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(r.calls.filter((c) => c === 'stop')).toHaveLength(2);
+    expect(v.isListening()).toBe(false);
+    finish('A kitchen.');
+    expect((await first).transcript).toBe('describe');
+    expect((await second).transcript).toBe('I need milk');
+  });
+
+  it('preserves local words when Scribe fails', async () => {
+    const r = fakeRecognizer();
+    const v = make(r.rec, { sttUpload: async () => { throw new Error('offline'); } });
+    await v.begin();
+    r.final('I need eggs', 0.3);
+    r.audio('file:///voice.wav');
+    expect(await v.end()).toMatchObject({ transcript: 'I need eggs', sttPath: 'on-device' });
+  });
+
+  it('reopens the microphone while the previous clip is uploading and preserves both clips', async () => {
+    const r = fakeRecognizer();
+    let finishUpload!: (text: string) => void;
+    const upload = jest.fn(() => new Promise<string>((resolve) => { finishUpload = resolve; }));
+    const deleted: string[] = [];
+    const v = make(r.rec, { sttUpload: upload, deleteFile: (uri) => { deleted.push(uri); } });
+    await v.begin();
+    r.final('I need eggs', 0.2);
+    r.audio('file:///first.wav');
+    const first = v.end();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(upload).toHaveBeenCalledTimes(1);
+    await v.begin();
+    expect(v.isListening()).toBe(true);
+    expect(deleted).toEqual([]);
+    r.final('I need milk');
+    const second = v.end();
+    finishUpload('I need eggs');
+    expect((await first).transcript).toBe('I need eggs');
+    expect((await second).transcript).toBe('I need milk');
+    expect(deleted).toEqual(['file:///first.wav']);
+  });
+
   it('explicit fridge commands replace the mistaken outdoor route without consulting the planner', async () => {
     const unbind = bindStoreToBus(store, bus);
     const v = make(undefined);
@@ -534,9 +603,9 @@ describe('createVoiceInput', () => {
     }
   });
 
-  it('recognizer unavailable or permission denied: still tears down and replies with the fallback', async () => {
+  it('recognizer unavailable or permission denied: tears down and reports startup failure', async () => {
     let v = make(undefined);
-    await v.begin();
+    await expect(v.begin()).rejects.toThrow('unavailable');
     let out = await v.end();
     expect(out.sttPath).toBe('none');
     expect(audioModes).toEqual([true, false]);
@@ -544,7 +613,7 @@ describe('createVoiceInput', () => {
 
     const denied = fakeRecognizer({ granted: false });
     v = make(denied.rec);
-    await v.begin();
+    await expect(v.begin()).rejects.toThrow('permission denied');
     expect(denied.calls).toEqual([]);
     out = await v.end();
     expect(out.sttPath).toBe('none');

@@ -15,6 +15,11 @@ silent (silence, never a guess).
 
 ## Files
 
+`manifest.json` describes expected installations, not the current machine's files.
+`expected` means the weights must be exported/downloaded locally; `optional` means
+the stage is optional. Neither is a runtime availability claim. The native registry
+reports whether the bundled model actually loaded. Git ignores local weights.
+
 | File | Role | Input | Label order (index 0 first) | Source |
 |---|---|---|---|---|
 | `coco-yolo-nano.mlpackage` | vehicle / person detector (Tier 0, 15 fps) | RGB 640×640, letterboxed, pixels scaled 0–1 by the model, NMS embedded | 80-class COCO order (`person`=0, `bicycle`=1, `car`=2, `motorcycle`=3, `bus`=5, `truck`=7 …). The module keeps `car`, `bus`, `truck`, `motorcycle`, `bicycle`, `person`; `cart` is a heuristic label, not a class | stock Ultralytics YOLO11n (or YOLOv8n) export, `format=coreml imgsz=640 half=True nms=True` (10 §8) |

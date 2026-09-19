@@ -14,6 +14,7 @@ const COMMON_CORE = [
   'Never use the words: safe, clear, go, cross now, no cars, you can cross.',
   'Do not add pleasantries.',
   'If the image is dark, blurred or ambiguous, lower your confidence rather than guessing.',
+  'Detection box size and relative inverse depth do not measure physical distance. Never infer arm reach from near, box area, or shelves visible through glass. The app owns the reach decision. A door is open only with visible evidence of physical opening and unobstructed access; otherwise ask the user to confirm by touch.',
   'Food identification: color alone is not identity. A brown egg can resemble an orange: inspect smooth oval shell versus textured round citrus skin. Eggs may be in a molded multi-well carton, cardboard or plastic, open or closed. Use visible shape, packaging and readable labels together; do not invent a label. If ambiguous, state uncertainty and request a closer stable view. Do not substitute a likely food for the requested item.',
   // The two on-device sources are not interchangeable, and saying so is what stops
   // an egg carton arriving as "orange". onDeviceSees comes from an eighty-class COCO
@@ -90,9 +91,9 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
 });
 
 /** "couch ahead (large), tv left, cup right (small)" from normalized upright boxes: x → side, area → size. */
-/** far | a few steps | close, so the two distance cues can be compared. */
+/** Apparent size bins only; none of these establish physical proximity. */
 type Proximity = 0 | 1 | 2;
-const PROXIMITY_WORD = [' (far)', ' (a few steps)', ' (close)'] as const;
+const PROXIMITY_WORD = [' (small in frame)', '', ' (large in frame; distance unmeasured)'] as const;
 
 /**
  * Depth Anything is a *relative* depth map: it ranks what is nearer within one
@@ -102,27 +103,23 @@ const PROXIMITY_WORD = [' (far)', ' (a few steps)', ' (close)'] as const;
  * exactly when the user is close enough to touch the thing. Captured frames
  * showed a fridge filling 88 % of the view with `near: 0`.
  *
- * How much of the frame a known thing subtends is the absolute cue, which is
- * why `guide.stepsFromBox` derives distance from box height and lets `near`
- * only clamp it closer. This does the same: depth may bring something nearer,
- * never push it farther.
+ * Report apparent size only here. The on-device guide estimates distance
+ * using dimensions and lens geometry; neither area nor `near` proves reach.
  */
-export function proximityOf(area: number, near: number | undefined): Proximity {
+export function proximityOf(area: number, _near: number | undefined): Proximity {
   const fromArea: Proximity = area > 0.25 ? 2 : area < 0.02 ? 0 : 1;
-  if (typeof near !== 'number') return fromArea;
-  const fromDepth: Proximity = near >= 0.66 ? 2 : near >= 0.4 ? 1 : 0;
-  return Math.max(fromDepth, fromArea) as Proximity;
+  // This is image size only. Per-frame inverse depth has no metric scale.
+  return fromArea;
 }
 
 export function describeDetections(dets: VisionRequest['facts']['detections']): string {
   const side = (cx: number): string => (cx < 0.36 ? 'left' : cx > 0.64 ? 'right' : 'ahead');
-  const size = (area: number): string => (area > 0.25 ? ' (large, close)' : area < 0.02 ? ' (small, far)' : '');
   return dets
     .slice(0, 12)
     .map((d) => {
       const [x, , w, h] = d.box;
       const area = w * h;
-      const dist = typeof d.near === 'number' ? PROXIMITY_WORD[proximityOf(area, d.near)] : size(area);
+      const dist = PROXIMITY_WORD[proximityOf(area, d.near)];
       return `${d.cls.replace(/_/g, ' ')} ${side(x + w / 2)}${dist}`;
     })
     .join(', ');
