@@ -16,8 +16,16 @@
  *     `ERROR {scope: 'speech'}` on the bus; the long-phrase allow-list has one
  *     member (`disclaimer`) and never exempts the forbidden-word check;
  *   - forbidden words: throw in dev, drop + ERROR in prod;
+ *   - a phrase-table `cacheKey` speaks the table's wording (02 Task 4: the only
+ *     permitted wording); caller text that differs throws in dev and is replaced
+ *     + reported in prod; only runtime `tts:` keys carry caller text;
  *   - mode policy from the store (01 §3 table), checked at enqueue and again
  *     at dequeue so nothing queued before AT_CURB leaks into the curb silence;
+ *   - CRITICAL bypasses the mode table only for hazard classes (vehicle,
+ *     obstacle, scan, always); free text or a stream marked CRITICAL is
+ *     policy-dropped + ERROR, so the curb silence cannot be bought with a flag;
+ *   - dedupe / prompt timestamps are recorded only when the queue accepts the
+ *     item, so an INFO the queue dropped does not burn its cooldown;
  *   - Tier-1 prompt keys (`tilt_camera_up`, `turn_*_a_little`): ≤ 1 per 3 s and
  *     never while COURSE is buzzing; A's own `course_hint_*` are exempt.
  *
@@ -32,6 +40,7 @@ import {
   LONG_PHRASE_ALLOWLIST,
   MAX_PROMPT_WORDS,
   MAX_UTTERANCE_WORDS,
+  PHRASES,
   PHRASE_CATEGORY,
   TIER1_PROMPT_KEYS,
   checkPhrase,
@@ -59,7 +68,7 @@ export const RUNTIME_KEY_PREFIX = 'tts:';
 const PRIORITY_RANK: Readonly<Record<SpeechPriority, number>> = { INFO: 0, NAV: 1, CRITICAL: 2 };
 
 // ---------------------------------------------------------------------------
-// Mode policy (01 §3 table). CRITICAL is never gated: it is a hazard by definition.
+// Mode policy (01 §3 table). CRITICAL skips the table only for hazard classes.
 // ---------------------------------------------------------------------------
 
 export type SpeechClass = PhraseCategory | 'unknown' | 'stream';
@@ -100,8 +109,15 @@ export function classifyRequest(req: { cacheKey?: string; streamId?: string }): 
   return 'unknown';
 }
 
+/**
+ * The only classes CRITICAL may carry (01 §3: "CRITICAL interrupts" is for
+ * hazards). Anything else marked CRITICAL — free text, a Tier-1 stream, a leg
+ * cue — is policy-dropped and reported, in every mode.
+ */
+export const CRITICAL_CLASSES: ReadonlySet<SpeechClass> = new Set<SpeechClass>(['always', 'vehicle', 'obstacle', 'scan']);
+
 export function isAllowedInMode(mode: AppMode, cls: SpeechClass, priority: SpeechPriority): boolean {
-  if (priority === 'CRITICAL') return true;
+  if (priority === 'CRITICAL') return CRITICAL_CLASSES.has(cls);
   return MODE_POLICY[mode].has(cls);
 }
 
@@ -409,7 +425,8 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
 
   // --- enqueue ------------------------------------------------------------------
 
-  const enqueue = (item: QueueItem): void => {
+  /** Returns true when the item now sits in the queue (or started); false when the queue dropped it. */
+  const enqueue = (item: QueueItem): boolean => {
     if (item.priority === 'CRITICAL') {
       // Flush everything below; pre-empt anything that is not itself CRITICAL,
       // or a CRITICAL when asked to interrupt.
@@ -420,81 +437,117 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
       if (item.interrupt) criticals.unshift(item);
       else criticals.push(item);
       pump();
-      return;
+      return true;
     }
     if (item.priority === 'NAV') {
       if (pending) stats.queueDropped += 1;   // the older pending item loses (newest wins)
       pending = item;
       pump();
-      return;
+      return true;
     }
     // INFO: dropped if anything is queued.
     if (pending || criticals.length > 0) {
       stats.queueDropped += 1;
-      return;
+      return false;
     }
     pending = item;
     pump();
+    return true;
+  };
+
+  /**
+   * Keyed requests speak the phrase table, never the caller's text (02 Task 4).
+   * Returns the text to validate and the key to play (dev throws on a mismatch
+   * or an unknown key; prod repairs + reports).
+   */
+  const resolveKeyedText = (req: SpeechRequest): { text: string; cacheKey?: string } => {
+    const key = req.cacheKey;
+    if (key === undefined || key.startsWith(RUNTIME_KEY_PREFIX)) return { text: req.text, cacheKey: key };
+    if (isPhraseKey(key)) {
+      const canonical = PHRASES[key];
+      if (req.text === canonical) return { text: canonical, cacheKey: key };
+      const msg = `say({cacheKey: "${key}"}) text differs from the phrase table: "${req.text}"`;
+      if (isDev) throw new SpeechTextError(`[speech] ${msg}`, req.text);
+      stats.textRepaired += 1;
+      report(`${msg} — spoke the table wording`);
+      return { text: canonical, cacheKey: key };
+    }
+    // Neither a table key nor a runtime key: nothing is cached under it, and the
+    // caller cannot ride a privileged class on it.
+    const msg = `say({cacheKey: "${key}"}) is not a phrase key or a ${RUNTIME_KEY_PREFIX} key`;
+    if (isDev) throw new SpeechTextError(`[speech] ${msg}`, req.text);
+    report(`${msg} — spoke as free text`);
+    return { text: req.text };
+  };
+
+  const policyDrop = (what: string, cls: SpeechClass, priority: SpeechPriority): void => {
+    stats.policyDropped += 1;
+    // A non-hazard marked CRITICAL is a caller bug, not a quiet mode: say so on the bus.
+    if (priority === 'CRITICAL') report(`CRITICAL ${what} dropped: class "${cls}" is not a hazard class`);
   };
 
   const say = (req: SpeechRequest): void => {
     if (disposed) return;
-    const cls = classifyRequest(req);
-    const allowLong = req.cacheKey !== undefined && LONG_PHRASE_ALLOWLIST.has(req.cacheKey);
-    const isPrompt = cls === 'prompt' || (req.cacheKey !== undefined && TIER1_PROMPT_KEYS.has(req.cacheKey));
+    // Keyed requests speak the table; the class, the long-phrase exemption and
+    // the playback key all derive from the resolved key, never from caller text.
+    const resolved = resolveKeyedText(req);
+    const cacheKey = resolved.cacheKey;
+    const cls = classifyRequest({ cacheKey });
+    const allowLong = cacheKey !== undefined && LONG_PHRASE_ALLOWLIST.has(cacheKey);
+    const isPrompt = cls === 'prompt' || (cacheKey !== undefined && TIER1_PROMPT_KEYS.has(cacheKey));
 
     // Text guard: dev throws, prod repairs and reports (forbidden words drop).
-    const v = validateText(req.text, { allowLong, isPrompt, isDev });
+    const v = validateText(resolved.text, { allowLong, isPrompt, isDev });
     if (v.problems.length > 0) {
       stats.textRepaired += 1;
-      report(`say("${req.text}"): ${v.problems.join('; ')}${v.drop ? ' — dropped' : ' — truncated'}`);
+      report(`say("${resolved.text}"): ${v.problems.join('; ')}${v.drop ? ' — dropped' : ' — truncated'}`);
       if (v.drop) return;
     }
     const text = v.text;
 
-    // Mode policy (CRITICAL exempt).
+    // Mode policy (CRITICAL exempt only for hazard classes).
     if (!isAllowedInMode(mode(), cls, req.priority)) {
-      stats.policyDropped += 1;
+      policyDrop(`say("${text}")`, cls, req.priority);
       return;
     }
 
     // Tier-1 prompt gate: ≤ 1 per 3 s, never while the COURSE buzz runs.
-    if (isPrompt) {
-      const t = now();
-      if (opts.isCourseBuzzing?.() || t - lastPromptAt < PROMPT_MIN_INTERVAL_MS) {
-        stats.gateDropped += 1;
-        return;
-      }
-      lastPromptAt = t;
+    const t = now();
+    if (isPrompt && (opts.isCourseBuzzing?.() || t - lastPromptAt < PROMPT_MIN_INTERVAL_MS)) {
+      stats.gateDropped += 1;
+      return;
     }
 
     // Dedupe.
     if (req.dedupeKey) {
-      const t = now();
       const cooldown = req.cooldownMs ?? DEFAULT_COOLDOWN_MS;
       const last = lastFired.get(req.dedupeKey);
       if (last !== undefined && t - last < cooldown) {
         stats.dedupeDropped += 1;
         return;
       }
-      lastFired.set(req.dedupeKey, t);
     }
 
-    enqueue({
+    const accepted = enqueue({
       id: nextId++,
       priority: req.priority,
       cls,
       text,
-      cacheKey: req.cacheKey,
+      cacheKey,
       allowLong,
       interrupt: req.priority === 'CRITICAL' && req.interrupt === true,
     });
+    // Only an accepted item burns its cooldown / prompt slot: a queue-dropped
+    // INFO was never heard, so its natural retry must still play.
+    if (!accepted) return;
+    if (isPrompt) lastPromptAt = t;
+    if (req.dedupeKey) lastFired.set(req.dedupeKey, t);
   };
 
   const playStream = (streamId: string, priority: SpeechPriority): void => {
     if (disposed) return;
     if (!isAllowedInMode(mode(), 'stream', priority)) {
-      stats.policyDropped += 1;
+      policyDrop(`playStream("${streamId}")`, 'stream', priority);
       return;
     }
     enqueue({ id: nextId++, priority, cls: 'stream', text: '', streamId, allowLong: false, interrupt: false });

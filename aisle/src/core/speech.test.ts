@@ -3,6 +3,7 @@ import { createEventBus, type AppEventBus } from './bus';
 import { createAppStore, type AppStore } from './store';
 import { PHRASES } from './phrases';
 import {
+  CRITICAL_CLASSES,
   DEFAULT_COOLDOWN_MS,
   MIN_GAP_MS,
   MODE_POLICY,
@@ -155,7 +156,7 @@ describe('SpeechService', () => {
     svc.say({ text: PHRASES.turn_right_soon, priority: 'NAV', cacheKey: 'turn_right_soon' });
     fb.finish();
     jest.advanceTimersByTime(1000);
-    svc.say({ text: PHRASES.keep_going, priority: 'NAV', cacheKey: 'crossing_ahead_signalized' });
+    svc.say({ text: PHRASES.crossing_ahead_signalized, priority: 'NAV', cacheKey: 'crossing_ahead_signalized' });
     svc.say({ text: PHRASES.turn_right_now, priority: 'NAV', cacheKey: 'turn_right_now' });
     expect(fb.played).toHaveLength(1);                     // gap not yet elapsed
     expect(svc.getStats().pending).toBe(1);
@@ -213,14 +214,14 @@ describe('SpeechService', () => {
 
   it('drops a dedupeKey repeat inside its cooldown (default 8 s)', () => {
     make();
-    svc.say({ text: PHRASES.keep_going, priority: 'NAV', cacheKey: 'crossing_ahead_signalized', dedupeKey: 'x' });
+    svc.say({ text: PHRASES.crossing_ahead_signalized, priority: 'NAV', cacheKey: 'crossing_ahead_signalized', dedupeKey: 'x' });
     fb.finish();
     jest.advanceTimersByTime(MIN_GAP_MS);
-    svc.say({ text: PHRASES.keep_going, priority: 'NAV', cacheKey: 'crossing_ahead_signalized', dedupeKey: 'x' });
+    svc.say({ text: PHRASES.crossing_ahead_signalized, priority: 'NAV', cacheKey: 'crossing_ahead_signalized', dedupeKey: 'x' });
     expect(fb.played).toHaveLength(1);
     expect(svc.getStats().dedupeDropped).toBe(1);
     jest.advanceTimersByTime(DEFAULT_COOLDOWN_MS - MIN_GAP_MS);
-    svc.say({ text: PHRASES.keep_going, priority: 'NAV', cacheKey: 'crossing_ahead_signalized', dedupeKey: 'x' });
+    svc.say({ text: PHRASES.crossing_ahead_signalized, priority: 'NAV', cacheKey: 'crossing_ahead_signalized', dedupeKey: 'x' });
     expect(fb.played).toHaveLength(2);
     // A custom cooldown.
     fb.finish();
@@ -230,6 +231,28 @@ describe('SpeechService', () => {
     jest.advanceTimersByTime(MIN_GAP_MS);
     svc.say({ text: PHRASES.label_okay, priority: 'NAV', cacheKey: 'label_okay', dedupeKey: 'ok', cooldownMs: 1000 });
     expect(fb.played).toHaveLength(4);
+  });
+
+  it('an INFO the queue dropped does not burn its dedupe cooldown: the retry after the drain plays', () => {
+    make();
+    svc.say({ text: PHRASES.turn_right_soon, priority: 'NAV', cacheKey: 'turn_right_soon' });
+    svc.say({ text: PHRASES.turn_right_now, priority: 'NAV', cacheKey: 'turn_right_now' });   // pending
+    svc.say({ text: PHRASES.label_okay, priority: 'INFO', cacheKey: 'label_okay', dedupeKey: 'ok', cooldownMs: 30_000 });
+    expect(svc.getStats().queueDropped).toBe(1);
+    fb.finish();
+    jest.advanceTimersByTime(MIN_GAP_MS);
+    expect(fb.last().what).toBe('turn_right_now');
+    fb.finish();
+    jest.advanceTimersByTime(MIN_GAP_MS);
+    // 8 s later, well inside the 30 s cooldown: the user never heard it, so it plays.
+    svc.say({ text: PHRASES.label_okay, priority: 'INFO', cacheKey: 'label_okay', dedupeKey: 'ok', cooldownMs: 30_000 });
+    expect(fb.last().what).toBe('label_okay');
+    expect(svc.getStats().dedupeDropped).toBe(0);
+    // And an accepted item still arms it.
+    fb.finish();
+    jest.advanceTimersByTime(MIN_GAP_MS);
+    svc.say({ text: PHRASES.label_okay, priority: 'INFO', cacheKey: 'label_okay', dedupeKey: 'ok', cooldownMs: 30_000 });
+    expect(svc.getStats().dedupeDropped).toBe(1);
   });
 
   it('a watchdog releases the slot if a backend never reports done', () => {
@@ -261,7 +284,40 @@ describe('SpeechService', () => {
     expect(() => svc.say({ text: 'The road is clear', priority: 'NAV' })).toThrow(/forbidden/);
     expect(() => svc.say({ text: PHRASES.disclaimer, priority: 'NAV', cacheKey: 'disclaimer' })).not.toThrow();
     expect(() => svc.say({ text: PHRASES.disclaimer, priority: 'NAV' })).toThrow(/words/);
-    expect(() => svc.say({ text: `${PHRASES.disclaimer} It is safe.`, priority: 'NAV', cacheKey: 'disclaimer' })).toThrow(/forbidden/);
+    // The allow-list key cannot smuggle other text (forbidden or not): the mismatch guard fires first,
+    // and the table wording itself is lint-clean (phrases.test), so no forbidden word reaches the queue.
+    expect(() => svc.say({ text: `${PHRASES.disclaimer} It is safe.`, priority: 'NAV', cacheKey: 'disclaimer' })).toThrow(/differs from the phrase table/);
+  });
+
+  it('a phrase-table cacheKey speaks the table wording; dev throws when the caller text differs', () => {
+    make();
+    // A privileged key cannot carry other text past the policy or the 12-word rule.
+    expect(() => svc.say({ text: 'Forbes Avenue.', priority: 'CRITICAL', cacheKey: 'vehicle_left' })).toThrow(/differs from the phrase table/);
+    const fortyFive = Array.from({ length: 45 }, () => 'word').join(' ');
+    expect(() => svc.say({ text: fortyFive, priority: 'NAV', cacheKey: 'disclaimer' })).toThrow(/differs from the phrase table/);
+    // A key that is neither in the table nor a runtime key is a caller bug.
+    expect(() => svc.say({ text: 'Forbes Avenue.', priority: 'NAV', cacheKey: 'not_a_key' })).toThrow(/not a phrase key/);
+    expect(fb.played).toEqual([]);
+    // Runtime keys keep the caller's text.
+    svc.say({ text: 'Forbes Avenue.', priority: 'NAV', cacheKey: `${RUNTIME_KEY_PREFIX}deadbeef` });
+    expect(svc.isSpeaking()).toBe(true);
+  });
+
+  it('prod: a mismatched keyed text is replaced by the table wording and reported; an unknown key is stripped', async () => {
+    make('OUTDOOR_NAV', { isDev: false });
+    svc.say({ text: 'Car on your left, watch out.', priority: 'CRITICAL', cacheKey: 'vehicle_left' });
+    expect(fb.last()).toEqual(expect.objectContaining({ backend: 'cached', what: 'vehicle_left' }));
+    expect(svc.getStats().lastText).toBe(PHRASES.vehicle_left);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^speech: .*vehicle_left.*differs from the phrase table/);
+    expect(svc.getStats().textRepaired).toBe(1);
+    fb.finishAll();
+    jest.advanceTimersByTime(MIN_GAP_MS);
+    svc.say({ text: 'Forbes Avenue.', priority: 'NAV', cacheKey: 'not_a_key' });
+    await flush();
+    expect(errors).toHaveLength(2);
+    expect(errors[1]).toMatch(/not a phrase key/);
+    expect(fb.last().backend).toBe('file');       // spoken as free text, not looked up as a cached key
   });
 
   it('prod: truncates at 12 words, drops forbidden text, reports ERROR {scope: speech}', () => {
@@ -297,9 +353,47 @@ describe('SpeechService', () => {
     // Unknown live text is not curb speech either.
     svc.say({ text: 'Forbes Avenue.', priority: 'NAV' });
     expect(fb.played).toEqual([]);
-    // But CRITICAL is never gated.
+    // Nor does the CRITICAL flag buy it a way in: only hazard classes skip the table.
     svc.say({ text: 'Forbes Avenue.', priority: 'CRITICAL' });
-    expect(svc.isSpeaking()).toBe(true);
+    expect(fb.played).toEqual([]);
+    expect(svc.isSpeaking()).toBe(false);
+    svc.say({ text: PHRASES.vehicle_left, priority: 'CRITICAL', cacheKey: 'vehicle_left' });
+    expect(fb.last().what).toBe('vehicle_left');
+  });
+
+  it('CRITICAL admits only hazard classes (vehicle, obstacle, scan, always) and reports anything else', () => {
+    expect([...CRITICAL_CLASSES].sort()).toEqual(['always', 'obstacle', 'scan', 'vehicle']);
+    make('AT_CURB');
+    svc.say({ text: 'free text', priority: 'CRITICAL' });
+    expect(fb.played).toEqual([]);
+    expect(svc.getStats().policyDropped).toBe(1);
+    expect(errors).toEqual([expect.stringMatching(/^speech: CRITICAL say\("free text"\) dropped: class "unknown"/)]);
+    // A leg cue is not a hazard either, even keyed.
+    svc.say({ text: PHRASES.turn_right_now, priority: 'CRITICAL', cacheKey: 'turn_right_now' });
+    expect(fb.played).toEqual([]);
+    expect(svc.getStats().policyDropped).toBe(2);
+    // The hazard classes play at the curb, and obstacle plays there although the NAV table excludes it.
+    for (const k of ['vehicle_left', 'obstacle_ahead', 'no_vehicles_left', 'offline_notice'] as const) {
+      svc.say({ text: PHRASES[k], priority: 'CRITICAL', cacheKey: k });
+    }
+    fb.finishAll();
+    expect(fb.played.map((p) => p.what)).toEqual(['vehicle_left', 'obstacle_ahead', 'no_vehicles_left', 'offline_notice']);
+    expect(isAllowedInMode('CROSSING', 'stream', 'CRITICAL')).toBe(false);
+    expect(isAllowedInMode('INDOOR_NAV', 'stream', 'CRITICAL')).toBe(false);
+  });
+
+  it('a CRITICAL stream never plays, at the curb or anywhere else', () => {
+    make('AT_CURB');
+    svc.playStream('7', 'CRITICAL');
+    expect(fb.played).toEqual([]);
+    expect(svc.getStats().policyDropped).toBe(1);
+    expect(errors).toEqual([expect.stringMatching(/CRITICAL playStream\("7"\) dropped: class "stream"/)]);
+    store.getState().setMode('IDLE');
+    store.setState({ mode: 'INDOOR_NAV' });
+    svc.playStream('8', 'CRITICAL');
+    expect(fb.played).toEqual([]);
+    svc.playStream('9', 'NAV');
+    expect(fb.last().what).toBe('http://proxy/api/tts/stream/9');
   });
 
   it('CROSSING allows vehicle, countdown and far_curb; indoor modes allow aisle facts, not leg cues', () => {
@@ -358,6 +452,19 @@ describe('SpeechService', () => {
     expect(svc.getStats().gateDropped).toBe(2);
     svc.say({ text: PHRASES.course_hint_right, priority: 'NAV', cacheKey: 'course_hint_right' });
     expect(fb.last().what).toBe('course_hint_right');
+  });
+
+  it('a queue-dropped Tier-1 prompt does not burn the 3 s prompt slot', () => {
+    make('INDOOR_NAV');
+    svc.say({ text: PHRASES.keep_going, priority: 'NAV', cacheKey: 'keep_going' });
+    svc.say({ text: PHRASES.checkout_ahead, priority: 'NAV', cacheKey: 'checkout_ahead' });   // pending
+    svc.say({ text: PHRASES.tilt_camera_up, priority: 'INFO', cacheKey: 'tilt_camera_up' }); // queue-dropped
+    expect(svc.getStats().queueDropped).toBe(1);
+    svc.clearQueue('NAV');
+    jest.advanceTimersByTime(1000);
+    svc.say({ text: PHRASES.tilt_camera_up, priority: 'NAV', cacheKey: 'tilt_camera_up' });
+    expect(svc.getStats().gateDropped).toBe(0);
+    expect(svc.getStats().pending).toBe(1);                 // waiting on the 4 s gap, not gated
   });
 
   // --- rate and stats ------------------------------------------------------------

@@ -40,7 +40,6 @@ import { LatencyRing, liveMetrics, observePlanner, timedTransport, type LiveMetr
 import { createFixtureRouteClient, type FixtureTrack } from './fixtureRoute';
 import { withSpokenForms } from './speechFacade';
 import { wireTrip, type Trip, type TripSession } from './trip';
-import { PHRASES } from './phrases';
 import type { PerceptionNativeModule } from '../../modules/perception';
 import type { MockHarness, MockServices } from '../../mocks';
 import type { MockPerceptionService } from '../../mocks/perception';
@@ -135,7 +134,7 @@ export interface AppComposition {
   transitionPort: { forceEnter(): void; trace(): ReturnType<TransitionDetectorDebug['trace']> };
   /** Google's walking-routes sentence for HomeScreen (B's constant). */
   betaNotice: string;
-  /** Audio session, sensors, harness, prefs hydration, first-launch disclaimer. Idempotent. */
+  /** Audio session, sensors, harness, prefs hydration. Idempotent. The disclaimer belongs to onboarding. */
   start(): Promise<void>;
   dispose(): void;
 }
@@ -400,10 +399,9 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
       mocks?.harness.start();
       void resolver.ensureMap();
       await prefs.hydrated;
-      if (disposed) return;
-      if (store.getState().firstRun) {
-        speech.say({ text: PHRASES.disclaimer, priority: 'NAV', cacheKey: 'disclaimer', dedupeKey: 'disclaimer', cooldownMs: 60_000 });
-      }
+      // The first-launch disclaimer has one owner: OnboardingScreen step 0
+      // (cacheKey 'disclaimer', firstRunOnly), reached by IDLE → ONBOARDING on the
+      // first ITEM_REQUESTED (01 §1). Speaking it here too recited it twice.
     },
 
     dispose() {

@@ -189,7 +189,7 @@ describe('composeApp (mock mode)', () => {
     unbind();
   });
 
-  it('first launch: the disclaimer is spoken once prefs are hydrated; the manual-signal facade drives the ticker', async () => {
+  it('first launch: start() speaks nothing (OnboardingScreen step 0 owns the disclaimer); the manual-signal facade drives the ticker', async () => {
     const { bus, store, unbind } = setupStore();
     const mocks = createMockServices({ bus, store: bridgeAppStore(store), latencyScale: 0 });
     const platform = fakePlatform();
@@ -197,8 +197,10 @@ describe('composeApp (mock mode)', () => {
     const app = composeApp({ config: CONFIG, bus, store, platform, mocks, fixtureTrack: track, loadStoreMap: () => demoStore, outdoor: createOutdoorStore() });
     await app.start();
     expect(store.getState().firstRun).toBe(true);
-    expect(platform.spoken).toHaveLength(1);
-    expect(platform.spoken[0]).toMatch(/prototype, not a safety device/);
+    // One owner for the ~12 s disclaimer: the first-run onboarding step (cacheKey 'disclaimer'),
+    // reached by IDLE → ONBOARDING on the first ITEM_REQUESTED. start() must not recite it too.
+    expect(platform.spoken).toEqual([]);
+    expect(app.speech.getStats().spoken).toBe(0);
 
     app.crossingPort.setManualSignal('WALK');
     expect(app.audio.ticker.getState()).toBe('WALK');
