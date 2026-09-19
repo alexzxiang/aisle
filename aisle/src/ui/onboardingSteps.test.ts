@@ -1,7 +1,11 @@
 import { createStubHaptics, createStubSensors, createCallLog } from '../core/stubs';
 import type { SignalState } from '../core/contracts';
+import { PHRASES, PHRASE_KEYS, isPhraseKey } from '../core/phrases';
 import { MAX_UTTERANCE_WORDS, findForbidden, wordCount } from './copy';
-import { BEACON_DEMO_MS, COURSE_DEMO_MS, ONBOARDING_STEPS, TICKER_STEP_MS, stepsFor, type StepServices } from './onboardingSteps';
+import {
+  BEACON_DEMO_MS, COURSE_DEMO_MS, MAX_LINES_PER_STEP, ONBOARDING_STEPS, TICKER_STEP_MS,
+  heroFor, spokenLines, stepsFor, type StepServices,
+} from './onboardingSteps';
 
 function makeServices(): { s: StepServices; calls: ReturnType<typeof createCallLog>; ticks: SignalState[]; beacon: Array<{ bearingDeg: number } | null> } {
   const calls = createCallLog();
@@ -17,23 +21,39 @@ function makeServices(): { s: StepServices; calls: ReturnType<typeof createCallL
 }
 
 describe('onboarding script', () => {
-  it('covers the whole lesson: disclaimer, four patterns, beacon, ticker, gear, calibration', () => {
+  it('covers the whole lesson: disclaimer, four patterns, beacon, ticker, gear, calibration, done', () => {
     const ids = ONBOARDING_STEPS.map((s) => s.id);
-    expect(ids).toEqual(['disclaimer', 'intro', 'course', 'turn', 'stop', 'confirm', 'beacon', 'ticker-a', 'ticker-b', 'gear', 'lanyard', 'calibrate']);
+    expect(ids).toEqual(['disclaimer', 'intro', 'course-intro', 'course', 'turn', 'stop', 'confirm', 'beacon', 'ticker-a', 'ticker-b', 'gear', 'lanyard', 'calibrate', 'done']);
   });
 
-  it.each(ONBOARDING_STEPS.map((s) => [s.id, s] as const))('%s speaks within the rules', (_id, step) => {
-    expect(findForbidden(step.text)).toEqual([]);
+  it.each(ONBOARDING_STEPS.map((s) => [s.id, s] as const))('%s speaks within the rules, through pre-generated keys only', (_id, step) => {
+    expect(step.lines.length).toBeGreaterThanOrEqual(1);
+    expect(step.lines.length).toBeLessThanOrEqual(MAX_LINES_PER_STEP);   // NAV keeps one pending slot
+    for (const line of spokenLines(step)) {
+      expect(isPhraseKey(line.cacheKey)).toBe(true);
+      expect(line.cacheKey === 'disclaimer' || line.cacheKey.startsWith('onboarding_')).toBe(true);
+      expect(line.text).toBe(PHRASES[line.cacheKey]);                   // canonical text, never a paraphrase
+      expect(findForbidden(line.text)).toEqual([]);
+      expect(line.text).not.toMatch(/\d/);
+      if (line.cacheKey !== 'disclaimer') expect(wordCount(line.text)).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
+    }
+    expect(findForbidden(heroFor(step))).toEqual([]);
+    expect(wordCount(heroFor(step))).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
     expect(findForbidden(step.detail ?? '')).toEqual([]);
     expect(findForbidden(step.modeWord)).toEqual([]);
-    expect(step.text).not.toMatch(/\d/);
-    if (step.cacheKey === 'disclaimer') {
-      // The one allow-listed long phrase (01 §3).
-      expect(step.hero).toBeDefined();
-      expect(wordCount(step.hero as string)).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
-    } else {
-      expect(wordCount(step.text)).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
-    }
+  });
+
+  it('uses every generated onboarding_* clip and the disclaimer, each once', () => {
+    const used = ONBOARDING_STEPS.flatMap((s) => [...s.lines]);
+    const table = PHRASE_KEYS.filter((k) => k.startsWith('onboarding_'));
+    expect([...used].sort()).toEqual(['disclaimer', ...table].sort());
+  });
+
+  it('the hero defaults to the first spoken line; the disclaimer keeps a short hero', () => {
+    const intro = ONBOARDING_STEPS.find((s) => s.id === 'intro')!;
+    expect(heroFor(intro)).toBe(PHRASES.onboarding_intro);
+    const disclaimer = ONBOARDING_STEPS.find((s) => s.id === 'disclaimer')!;
+    expect(heroFor(disclaimer)).toBe('Aisle is a prototype, not a safety device.');
   });
 
   it('only the first run hears the disclaimer step', () => {

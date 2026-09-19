@@ -16,9 +16,10 @@ import { NavScreen, REPEAT_LABEL, STOP_ARMED_LABEL, STOP_LABEL } from './NavScre
 import { OnboardingScreen, DONE_LABEL, NEXT_LABEL, PLAY_AGAIN_LABEL, SKIP_LABEL } from './OnboardingScreen';
 import { DebugPanel, DEBUG_CLOSE_LABEL } from './DebugPanel';
 import { SettingsSheet, CLOSE_LABEL, FASTER_LABEL, SLOWER_LABEL, TRAINING_LABEL } from './SettingsSheet';
-import { StateBand, DEBUG_LONG_PRESS_MS } from './StateBand';
-import { TALK_HELD_LABEL, TALK_LABEL } from './TalkButton';
+import { StateBand, DEBUG_LONG_PRESS_MS, HERO_ANNOUNCE_GRACE_MS, shouldAnnounceHero } from './StateBand';
+import { TalkButton, TALK_HELD_LABEL, TALK_HINT_HOLD, TALK_HINT_TOGGLE, TALK_LABEL, TALK_TOGGLE_HELD_LABEL, TALK_TOGGLE_LABEL } from './TalkButton';
 import { stepsFor } from './onboardingSteps';
+import { PHRASES, isPhraseKey } from '../core/phrases';
 
 const T0 = 1_700_000_000_000;
 
@@ -227,6 +228,51 @@ describe('HomeScreen', () => {
   });
 });
 
+describe('TalkButton under a screen reader', () => {
+  it('direct touch: hold mode with the hold hint, no onPress', async () => {
+    setup('IDLE');
+    const r = await render(<TalkButton screenReader={false} />);
+    const talk = byLabel(r, TALK_LABEL);
+    expect(talk.props.accessibilityHint).toBe(TALK_HINT_HOLD);
+    expect(talk.props.onPress).toBeUndefined();
+    expect(typeof talk.props.onPressIn).toBe('function');
+    expectClean(r);
+  });
+
+  it('VoiceOver: a double-tap toggles the mic on, a second one toggles it off, busy while listening', async () => {
+    setup('IDLE');
+    const calls: string[] = [];
+    const voice = { start: () => void calls.push('start'), stop: () => void calls.push('stop') };
+    const r = await render(<TalkButton voice={voice} screenReader />);
+    const talk = byLabel(r, TALK_TOGGLE_LABEL);
+    // Press-in/out are not wired: a double-tap's instant press-in + press-out cannot open and close the mic.
+    expect(talk.props.onPressIn).toBeUndefined();
+    expect(talk.props.onPressOut).toBeUndefined();
+    expect(talk.props.accessibilityHint).toBe(TALK_HINT_TOGGLE);
+    expect(talk.props.accessibilityState).toEqual({ busy: false });
+    await press(talk);
+    expect(calls).toEqual(['start']);
+    const listening = byLabel(r, TALK_TOGGLE_HELD_LABEL);
+    expect(listening.props.accessibilityState).toEqual({ busy: true });
+    await press(listening);
+    expect(calls).toEqual(['start', 'stop']);
+    expect(labelsOf(r)).toContain(TALK_TOGGLE_LABEL);
+    expectClean(r);
+  });
+
+  it('VoiceOver: unmounting while listening closes the mic', async () => {
+    setup('IDLE');
+    const calls: string[] = [];
+    const voice = { start: () => void calls.push('start'), stop: () => void calls.push('stop') };
+    const r = await render(<TalkButton voice={voice} screenReader />);
+    await press(byLabel(r, TALK_TOGGLE_LABEL));
+    await act(async () => {
+      r.unmount();
+    });
+    expect(calls).toEqual(['start', 'stop']);
+  });
+});
+
 describe('NavScreen', () => {
   it('shows mode word, hero, the three slots and the four controls, in reading order', async () => {
     setup('OUTDOOR_NAV');
@@ -378,6 +424,87 @@ describe('StateBand', () => {
     expect(hero.props.allowFontScaling).toBe(true);
     expect(hero.props.maxFontSizeMultiplier).toBe(1.6);
   });
+
+  describe('VoiceOver announcement (iOS has no live region)', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('the rule: iOS + screen reader + app speech stayed silent', () => {
+      expect(shouldAnnounceHero({ platform: 'ios', screenReader: true, speaking: false, spokenSince: 0 })).toBe(true);
+      expect(shouldAnnounceHero({ platform: 'ios', screenReader: false, speaking: false, spokenSince: 0 })).toBe(false);
+      expect(shouldAnnounceHero({ platform: 'android', screenReader: true, speaking: false, spokenSince: 0 })).toBe(false); // TalkBack has the live region
+      expect(shouldAnnounceHero({ platform: 'ios', screenReader: true, speaking: true, spokenSince: 0 })).toBe(false);
+      expect(shouldAnnounceHero({ platform: 'ios', screenReader: true, speaking: false, spokenSince: 1 })).toBe(false);
+    });
+
+    it('announces a hero change the speech policy dropped, after the grace period, never the mount', async () => {
+      setup('OUTDOOR_NAV');
+      const announced: string[] = [];
+      const r = await render(<StateBand mode="OUTDOOR_NAV" hero="Keep walking" reduceMotion screenReader announce={(t) => announced.push(t)} />);
+      await act(async () => {
+        jest.advanceTimersByTime(HERO_ANNOUNCE_GRACE_MS * 2);
+      });
+      expect(announced).toEqual([]);
+      await act(async () => {
+        r.update(<StateBand mode="OUTDOOR_NAV" hero="Turn left soon" reduceMotion screenReader announce={(t) => announced.push(t)} />);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(HERO_ANNOUNCE_GRACE_MS - 1);
+      });
+      expect(announced).toEqual([]);
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(announced).toEqual(['Turn left soon']);
+    });
+
+    it('stays quiet when app speech carried the change (speaking, or an utterance started since)', async () => {
+      setup('OUTDOOR_NAV');
+      let spoken = 0;
+      let speaking = false;
+      const speech = stubs.speech as unknown as { isSpeaking: () => boolean; getStats?: () => { spoken: number } };
+      speech.isSpeaking = () => speaking;
+      speech.getStats = () => ({ spoken });
+      const announced: string[] = [];
+      const band = (hero: string) => <StateBand mode="OUTDOOR_NAV" hero={hero} reduceMotion screenReader announce={(t) => announced.push(t)} />;
+      const r = await render(band('Keep walking'));
+
+      // Case 1: the utterance is still playing when the grace period ends.
+      await act(async () => { r.update(band('Turn left soon')); });
+      speaking = true;
+      await act(async () => { jest.advanceTimersByTime(HERO_ANNOUNCE_GRACE_MS); });
+      expect(announced).toEqual([]);
+
+      // Case 2: it started and already finished inside the grace period.
+      speaking = false;
+      await act(async () => { r.update(band('Turn left now')); });
+      spoken += 1;
+      await act(async () => { jest.advanceTimersByTime(HERO_ANNOUNCE_GRACE_MS); });
+      expect(announced).toEqual([]);
+
+      // Case 3: nothing spoke → announced.
+      await act(async () => { r.update(band('Crossing ahead: Forbes')); });
+      await act(async () => { jest.advanceTimersByTime(HERO_ANNOUNCE_GRACE_MS); });
+      expect(announced).toEqual(['Crossing ahead: Forbes']);
+    });
+
+    it('a newer hero cancels the pending one, and nothing is announced without a screen reader', async () => {
+      setup('OUTDOOR_NAV');
+      const announced: string[] = [];
+      const band = (hero: string, sr = true) => <StateBand mode="OUTDOOR_NAV" hero={hero} reduceMotion screenReader={sr} announce={(t) => announced.push(t)} />;
+      const r = await render(band('Keep walking'));
+      await act(async () => { r.update(band('Turn left soon')); });
+      await act(async () => { jest.advanceTimersByTime(HERO_ANNOUNCE_GRACE_MS / 2); });
+      await act(async () => { r.update(band('Turn left now')); });
+      await act(async () => { jest.advanceTimersByTime(HERO_ANNOUNCE_GRACE_MS); });
+      expect(announced).toEqual(['Turn left now']);
+
+      const r2 = await render(band('Keep walking', false));
+      await act(async () => { r2.update(band('Turn right soon', false)); });
+      await act(async () => { jest.advanceTimersByTime(HERO_ANNOUNCE_GRACE_MS * 2); });
+      expect(announced).toEqual(['Turn left now']);
+    });
+  });
 });
 
 describe('OnboardingScreen', () => {
@@ -404,6 +531,14 @@ describe('OnboardingScreen', () => {
     const methods = stubs.log.calls.filter((c) => c.service === 'haptics').map((c) => `${c.method}:${String(c.args[0] ?? '')}`);
     expect(methods).toEqual(expect.arrayContaining(['startCourse:function', 'stopCourse:', 'play:TURN', 'play:STOP', 'play:CONFIRM']));
     expect(stubs.log.calls.some((c) => c.method === 'calibrateBodyOffset')).toBe(true);
+    // Every tutorial line went out under a pre-generated key: offline, one voice, no live TTS.
+    const says = stubs.log.calls.filter((c) => c.service === 'speech' && c.method === 'say').map((c) => c.args[0] as { cacheKey?: string; text: string });
+    expect(says.length).toBeGreaterThanOrEqual(n);
+    for (const say of says) {
+      expect(typeof say.cacheKey).toBe('string');
+      expect(isPhraseKey(say.cacheKey as string)).toBe(true);
+      expect(say.text).toBe(PHRASES[say.cacheKey as keyof typeof PHRASES]);
+    }
     expect(labelsOf(r)).toContain(DONE_LABEL);
     await press(byLabel(r, DONE_LABEL));
     expect(store.getState().onboardingComplete).toBe(true);
@@ -426,6 +561,7 @@ describe('OnboardingScreen', () => {
   it('"Play it again" re-speaks and re-demonstrates the current step', async () => {
     setup('ONBOARDING', { initial: { firstRun: false } });
     const r = await render(<OnboardingScreen reduceMotion />);
+    await press(byLabel(r, NEXT_LABEL)); // course-intro
     await press(byLabel(r, NEXT_LABEL)); // course
     await press(byLabel(r, NEXT_LABEL)); // turn
     const before = stubs.log.calls.filter((c) => c.method === 'play' && c.args[0] === 'TURN').length;
@@ -439,7 +575,7 @@ describe('OnboardingScreen', () => {
     const beacon = { setTarget: jest.fn() };
     const ticker = { setState: jest.fn() };
     const r = await render(<OnboardingScreen reduceMotion ports={{ beacon, ticker }} />);
-    for (let i = 0; i < 5; i += 1) await press(byLabel(r, NEXT_LABEL)); // -> beacon
+    for (let i = 0; i < 6; i += 1) await press(byLabel(r, NEXT_LABEL)); // -> beacon
     expect(beacon.setTarget).toHaveBeenCalledWith({ bearingDeg: 90 });
     await press(byLabel(r, NEXT_LABEL)); // -> ticker-a
     expect(beacon.setTarget).toHaveBeenLastCalledWith(null);

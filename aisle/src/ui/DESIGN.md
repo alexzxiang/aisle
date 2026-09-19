@@ -27,16 +27,31 @@ VoiceOver and the app's own speech. Ten rules; everything in `src/ui/` is built 
    — Signal, Vehicles, Aisle — each a plain sentence row that keeps its place when empty
    ("Signal: not seen"), so position alone identifies it.
 7. **Targets.** Push-to-talk is full-width and 96 pt ("Hold to talk", "Listening" while
-   held). The two secondary targets are 64 pt, side by side: "Repeat" and "Stop guidance"
-   (tap once to arm, tap again or hold two seconds to stop — never a single stray tap).
-   Nothing is smaller than 44 pt. Spacing scale: 4 / 8 / 12 / 16 / 24 / 32.
+   held). With a screen reader on it is a **toggle** ("Tap to talk" / "Listening. Tap to
+   stop", `accessibilityState.busy` while listening): a VoiceOver double-tap delivers
+   press-in and press-out milliseconds apart, so hold-to-talk would open and close the mic
+   at once. `TalkButton` reads `AccessibilityInfo.isScreenReaderEnabled` and follows
+   `screenReaderChanged`. The two secondary targets are 64 pt, side by side: "Repeat" and
+   "Stop guidance" (tap once to arm, tap again or hold two seconds to stop — never a single
+   stray tap). Nothing is smaller than 44 pt. Spacing scale: 4 / 8 / 12 / 16 / 24 / 32.
 8. **One deliberate motion.** The band colour cross-fades over 250 ms on mode or signal
    change; that is the only animation. Under reduce-motion it swaps instantly.
 9. **Accessibility contract.** Every control has `accessibilityRole` + label (and a hint
    where the gesture is not obvious); the hero is the single `accessibilityLiveRegion`
-   ("polite") / `aria-live` surface so VoiceOver announces exactly one changing thing; the
-   DebugPanel opens on a 1.5 s long-press of the mode word (never a three-finger tap or a
-   shake, which belong to VoiceOver and Expo).
+   ("polite") / `aria-live` surface so a screen reader announces exactly one changing
+   thing; the DebugPanel opens on a 1.5 s long-press of the mode word (never a three-finger
+   tap or a shake, which belong to VoiceOver and Expo).
+
+   **Decision — iOS has no live region, and that is mostly right.** React Native honours
+   `accessibilityLiveRegion` on Android (TalkBack) only. On iOS, the demo platform, the
+   app's own speech already carries every instruction, and reading each hero on top of it
+   is the double-speaking 08 flags as R22. So VoiceOver relies on app speech, with one
+   fallback: when a hero changes and app speech has not carried it (nothing is speaking and
+   no utterance started within `HERO_ANNOUNCE_GRACE_MS` = 1.5 s — the speech policy dropped
+   it, or there is no speech service), `StateBand` reads the new hero once through
+   `AccessibilityInfo.announceForAccessibility`. A newer hero cancels a pending
+   announcement; the mount never announces; without a screen reader nothing is announced.
+   The Android live region stays as it is.
 10. **Copy.** Sentence case, plain verbs, the same verb through a flow, numbers as words.
     Errors say what happened and what to do next (`derive.errorSentence`: route, voice,
     camera, network and location get a sentence; store/speech/ui errors stay in the

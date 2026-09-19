@@ -101,6 +101,28 @@ export function useReduceMotion(): boolean {
   return reduced;
 }
 
+/**
+ * VoiceOver / TalkBack on. The talk button switches to toggle mode and the
+ * state band announces hero changes app speech did not carry.
+ */
+export function useScreenReader(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void AccessibilityInfo.isScreenReaderEnabled()
+      .then((v) => {
+        if (alive) setOn(v);
+      })
+      .catch(() => undefined);
+    const sub = AccessibilityInfo.addEventListener('screenReaderChanged', (v: boolean) => setOn(v));
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, []);
+  return on;
+}
+
 /** Latest value in a ref, for callbacks that must not re-subscribe. */
 export function useLatest<T>(value: T): { readonly current: T } {
   const ref = useRef(value);

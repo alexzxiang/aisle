@@ -1,14 +1,17 @@
 /**
  * The one-minute lesson (02 Task 8) as data: one pattern per step, each
- * spoken line at most twelve words with numbers as words, so every line can
- * pass through SpeechService.say() unchanged. The disclaimer is the single
- * allow-listed long phrase (01 section 3) and goes out under its cache key.
+ * spoken line one of the pre-generated `onboarding_*` phrases (or the
+ * allow-listed `disclaimer`), so the never-cut tutorial is offline, in one
+ * voice, and never falls through to live TTS or expo-speech. A step speaks at
+ * most two lines: NAV holds one pending slot (01 section 3), so a third line
+ * would be dropped. Two-sentence lessons are therefore two steps.
  *
  * `run` performs the step's demonstration through the services it is handed
  * and returns a cleanup; the screen calls the cleanup when the step changes,
  * so no buzz, beacon or ticker outlives its step.
  */
-import type { CacheKey, HapticService, SensorService, SignalState } from '../core/contracts';
+import type { HapticService, SensorService, SignalState } from '../core/contracts';
+import { phraseText, type PhraseKey } from '../core/phrases';
 import { DISCLAIMER_TEXT } from './copy';
 import type { BeaconPort, TickerPort } from './ports';
 
@@ -23,14 +26,15 @@ export interface StepServices {
 
 export type Cleanup = () => void;
 
+/** The most lines one step may speak (NAV: one playing + one pending). */
+export const MAX_LINES_PER_STEP = 2;
+
 export interface OnboardingStep {
   id: string;
-  /** Spoken. <= 12 words, numbers as words (except the allow-listed disclaimer). */
-  text: string;
-  /** Hero on the band when `text` is too long to be one; defaults to `text`. */
+  /** Spoken in order, each through its cache key. 1..MAX_LINES_PER_STEP entries. */
+  lines: readonly PhraseKey[];
+  /** Hero on the band; defaults to the first line's text (the disclaimer is too long to be one). */
   hero?: string;
-  /** Present when the line is one of the pre-generated phrases. */
-  cacheKey?: CacheKey;
   /** Shorter word on the band above the hero. */
   modeWord: string;
   /** Second line under the hero: what to do with your hands. */
@@ -41,7 +45,22 @@ export interface OnboardingStep {
   firstRunOnly?: boolean;
 }
 
-export const COURSE_DEMO_MS = 10000;
+export interface SpokenLine {
+  cacheKey: PhraseKey;
+  text: string;
+}
+
+/** What the screen hands to `say()` for this step: canonical text under its key. */
+export function spokenLines(step: OnboardingStep): SpokenLine[] {
+  return step.lines.map((cacheKey) => ({ cacheKey, text: phraseText(cacheKey) }));
+}
+
+export function heroFor(step: OnboardingStep): string {
+  return step.hero ?? phraseText(step.lines[0]);
+}
+
+/** Long enough for both spoken lines (4 s apart) and a turn away and back. */
+export const COURSE_DEMO_MS = 15000;
 export const BEACON_DEMO_MS = 10000;
 export const TICKER_STEP_MS = 3000;
 
@@ -70,21 +89,26 @@ function tickerCycle(ticker: TickerPort | undefined, states: SignalState[]): Cle
 export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   {
     id: 'disclaimer',
-    text: DISCLAIMER_TEXT,
+    lines: ['disclaimer'],
     hero: 'Aisle is a prototype, not a safety device.',
     detail: DISCLAIMER_TEXT,
-    cacheKey: 'disclaimer',
     modeWord: 'Before we start',
     firstRunOnly: true,
   },
   {
     id: 'intro',
-    text: "Aisle uses four vibrations and two sounds. Let's learn them.",
+    lines: ['onboarding_intro'],
     modeWord: 'Practice',
   },
   {
+    id: 'course-intro',
+    lines: ['onboarding_course_intro'],
+    detail: 'Silence is the reward.',
+    modeWord: 'Course',
+  },
+  {
     id: 'course',
-    text: 'On course, Aisle stays silent. Turn away and feel the buzz.',
+    lines: ['onboarding_course_turn_away', 'onboarding_turn_back'],
     detail: 'Turn back until the buzzing stops.',
     modeWord: 'Course',
     run(s) {
@@ -99,7 +123,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   },
   {
     id: 'turn',
-    text: 'This is turn.',
+    lines: ['onboarding_this_is_turn'],
     detail: 'Three rising pulses: rotate now.',
     modeWord: 'Turn',
     run(s) {
@@ -108,7 +132,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   },
   {
     id: 'stop',
-    text: 'This is stop. It means a vehicle or an obstacle.',
+    lines: ['onboarding_this_is_stop'],
     detail: 'One long sharp buzz. Nothing else feels like it.',
     modeWord: 'Stop',
     run(s) {
@@ -117,7 +141,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   },
   {
     id: 'confirm',
-    text: 'This is okay.',
+    lines: ['onboarding_this_is_okay'],
     detail: 'One soft tap: acknowledged, arrived, or back on course.',
     modeWord: 'Okay',
     run(s) {
@@ -126,7 +150,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   },
   {
     id: 'beacon',
-    text: 'This pulse points where to walk. Turn until it is centred.',
+    lines: ['onboarding_beacon'],
     detail: 'An extra tick means the target is straight ahead.',
     modeWord: 'Beacon',
     run(s) {
@@ -142,7 +166,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   },
   {
     id: 'ticker-a',
-    text: "Slow ticks mean don't walk. Fast ticks mean walk.",
+    lines: ['onboarding_ticker_slow_fast'],
     detail: 'Listen: slow, then fast.',
     modeWord: 'Signal ticks',
     run(s) {
@@ -151,7 +175,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   },
   {
     id: 'ticker-b',
-    text: 'Medium ticks mean countdown. No ticks means the signal is unseen.',
+    lines: ['onboarding_ticker_countdown'],
     detail: 'Listen: medium, then silence.',
     modeWord: 'Signal ticks',
     run(s) {
@@ -160,19 +184,19 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   },
   {
     id: 'gear',
-    text: 'Keep your cane or dog. Use open-ear headphones.',
+    lines: ['onboarding_keep_cane'],
     detail: 'You must still hear the traffic.',
     modeWord: 'Before you walk',
   },
   {
     id: 'lanyard',
-    text: 'Wear the phone on the lanyard, screen out. Ring switch on.',
-    detail: 'The camera has to see the street and the signs.',
+    lines: ['onboarding_wear_phone', 'onboarding_ring_switch'],
+    detail: 'Ring switch on. The camera has to see the street and the signs.',
     modeWord: 'Before you walk',
   },
   {
     id: 'calibrate',
-    text: 'Now walk straight for five seconds.',
+    lines: ['onboarding_walk_straight'],
     detail: 'This teaches Aisle how you hold the phone.',
     modeWord: 'Calibrate',
     run(s) {
@@ -189,6 +213,12 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
         alive = false;
       };
     },
+  },
+  {
+    id: 'done',
+    lines: ['onboarding_done'],
+    detail: 'That is the whole lesson.',
+    modeWord: 'Ready',
   },
 ];
 

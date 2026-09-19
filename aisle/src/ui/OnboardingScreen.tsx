@@ -12,7 +12,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StateBand } from './StateBand';
 import { Button } from './Button';
 import { useBus, useMode, useOptionalService, useStoreSlice } from './hooks';
-import { stepsFor, type OnboardingStep, type StepServices } from './onboardingSteps';
+import { heroFor, spokenLines, stepsFor, type OnboardingStep, type StepServices } from './onboardingSteps';
 import type { OnboardingPorts } from './ports';
 import { colors, fontScaleCap, sizes, space, type } from './theme';
 import { services } from '../core/services';
@@ -60,15 +60,19 @@ export function OnboardingScreen({ onOpenDebug, ports, reduceMotion }: Onboardin
     };
   }, [haptics, sensors, ports?.beacon, ports?.ticker, setBodyOffsetDeg]);
 
-  // Speak and demonstrate on every step change and on "Play it again".
+  // Speak and demonstrate on every step change and on "Play it again". Every
+  // line goes out under its pre-generated key (offline, one voice); a step has
+  // at most two lines because NAV keeps one pending slot.
   useEffect(() => {
-    speech?.say({
-      text: step.text,
-      priority: 'NAV',
-      cacheKey: step.cacheKey,
-      dedupeKey: `onboarding_${step.id}_${replay}`,
-      cooldownMs: 0,
-    });
+    for (const line of spokenLines(step)) {
+      speech?.say({
+        text: line.text,
+        priority: 'NAV',
+        cacheKey: line.cacheKey,
+        dedupeKey: `onboarding_${step.id}_${line.cacheKey}_${replay}`,
+        cooldownMs: 0,
+      });
+    }
     let cleanup: (() => void) | void;
     if (stepServices && step.run) {
       try {
@@ -105,7 +109,7 @@ export function OnboardingScreen({ onOpenDebug, ports, reduceMotion }: Onboardin
       <StateBand
         mode={mode}
         modeWord={step.modeWord}
-        hero={step.hero ?? step.text}
+        hero={heroFor(step)}
         onLongPressMode={onOpenDebug}
         reduceMotion={reduceMotion}
         style={styles.band}
