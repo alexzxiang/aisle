@@ -524,6 +524,10 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       if (session) return;
       const s: Session = { handle: null, results: [], finalTranscript: null, audioUri: null, ended: false, error: null, done: false, waiters: [] };
       session = s;
+      // Stop the app talking into its own microphone (B-1): clear the queue and cut the
+      // current utterance the instant the talk button opens the mic. Half the bad transcripts
+      // were the recogniser hearing Aisle narrate.
+      opts.speech.clearQueue();
       opts.haptics?.setSuspended(true);
       try {
         await opts.audio?.setRecordingMode(true);

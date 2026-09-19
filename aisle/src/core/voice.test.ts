@@ -135,6 +135,7 @@ describe('createVoiceInput', () => {
   let events: string[];
   let audioModes: boolean[];
   let suspended: boolean[];
+  let cleared: number;
   let fetchBody: unknown;
   let fetchStatus: number;
   let fetchCalls: Array<{ url: string; body: unknown }>;
@@ -142,7 +143,7 @@ describe('createVoiceInput', () => {
 
   const speech = {
     say: (r: SpeechRequest) => { said.push(r); },
-    playStream: () => {}, clearQueue: () => {}, isSpeaking: () => false, setRate: () => {},
+    playStream: () => {}, clearQueue: () => { cleared += 1; }, isSpeaking: () => false, setRate: () => {},
   };
 
   const make = (rec: Recognizer | undefined, extra: Partial<Parameters<typeof createVoiceInput>[0]> = {}): VoiceInput =>
@@ -162,6 +163,7 @@ describe('createVoiceInput', () => {
     events = [];
     audioModes = [];
     suspended = [];
+    cleared = 0;
     fetchCalls = [];
     fetchStatus = 200;
     fetchBody = { job: 'parseIntent', output: { intent: 'find_item', item: 'eggs', reply: 'Eggs. Route ready: two legs.' }, fallback: false, latencyMs: 640 };
@@ -197,6 +199,15 @@ describe('createVoiceInput', () => {
     expect(suspended).toEqual([true, false]);
     expect(v.isListening()).toBe(false);
     expect(v.getLast()).toBe(out);
+  });
+
+  it('begin() stops the app talking into its own microphone (clears the speech queue)', async () => {
+    const r = fakeRecognizer();
+    const v = make(r.rec);
+    expect(cleared).toBe(0);
+    await v.begin();
+    expect(cleared).toBeGreaterThanOrEqual(1);   // the queue was cut the moment the mic opened
+    v.cancel();
   });
 
   it('falls back to the local keyword parser when the planner fails, times out or returns fallback', async () => {
