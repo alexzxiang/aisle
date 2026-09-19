@@ -152,7 +152,7 @@ describe('placeholder path (native view unavailable)', () => {
     const perception = fakePerception({ base64: null });
     const r = await render(<CameraPreview perception={perception} testID="cam" />);
     expect(texts(r)).toContain(PREVIEW_LABEL);
-    expect(texts(r)).toContain('Not available on this build');
+    expect(texts(r)).toContain('Rebuild the app to see the camera');
     expect(r.root.findAll((n: ReactTestInstance) => n.props.testID === 'cam-native')).toHaveLength(0);
     for (const s of texts(r)) expect(findForbidden(s)).toEqual([]);
     const host = r.root.findAll((n: ReactTestInstance) => n.props.testID === 'cam' && typeof n.type === 'string')[0];

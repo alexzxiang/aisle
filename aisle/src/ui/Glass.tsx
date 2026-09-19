@@ -21,10 +21,22 @@ interface BlurLike {
   BlurView: React.ComponentType<{ intensity?: number; tint?: string; style?: StyleProp<ViewStyle>; children?: React.ReactNode }>;
 }
 
+/** The JS package is always installed; the native `ExpoBlur` module only exists in a build made after it was added. */
+export function hasNativeBlur(): boolean {
+  try {
+    const core = require('expo-modules-core') as { requireOptionalNativeModule?: (name: string) => unknown };
+    if (typeof core.requireOptionalNativeModule !== 'function') return true; // Jest / no registry: trust the package
+    return core.requireOptionalNativeModule('ExpoBlur') !== null;
+  } catch {
+    return false;
+  }
+}
+
 let blur: BlurLike | null = null;
 try {
-  // Optional at runtime: a build without the native module still renders solid glass.
-  blur = require('expo-blur') as BlurLike;
+  // Optional at runtime: a build without the native module still renders solid glass
+  // (and never asks RN for a view config it cannot have: the "ExpoBlurView" warning).
+  blur = hasNativeBlur() ? (require('expo-blur') as BlurLike) : null;
   if (typeof blur?.BlurView !== 'function' && typeof blur?.BlurView !== 'object') blur = null;
 } catch {
   blur = null;

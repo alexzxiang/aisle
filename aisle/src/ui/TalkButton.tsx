@@ -17,6 +17,7 @@
  * The mic is closed on unmount either way, so a screen change can never leave
  * a recording session (and therefore suppressed haptics) behind.
  */
+import { hasNativeBlur } from './Glass';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, fontScaleCap, glass, motion, signalColors, sizes, space, type } from './theme';
@@ -45,7 +46,7 @@ export interface TalkButtonProps {
 
 let blurView: React.ComponentType<{ intensity?: number; tint?: string; style?: StyleProp<ViewStyle> }> | null = null;
 try {
-  blurView = (require('expo-blur') as { BlurView: typeof blurView }).BlurView;
+  blurView = hasNativeBlur() ? (require('expo-blur') as { BlurView: typeof blurView }).BlurView : null;
 } catch {
   blurView = null;
 }

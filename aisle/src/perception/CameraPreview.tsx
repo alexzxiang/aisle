@@ -191,7 +191,7 @@ export function CameraPreview(props: CameraPreviewProps): React.JSX.Element {
       <View style={styles.placeholder} pointerEvents="none">
         <Text style={styles.placeholderTitle} allowFontScaling maxFontSizeMultiplier={1.4}>{PREVIEW_LABEL}</Text>
         <Text style={styles.placeholderMeta} allowFontScaling maxFontSizeMultiplier={1.4}>
-          {frameUri ? 'Replaying recorded frames' : 'Not available on this build'}
+          {frameUri ? 'Replaying recorded frames' : 'Rebuild the app to see the camera'}
         </Text>
       </View>
       {overlay}

@@ -22,6 +22,7 @@ export type ConfigEnv = Partial<Record<'EXPO_PUBLIC_PROXY_URL' | 'EXPO_PUBLIC_PR
 
 /** Local proxy per 05 (`npm run proxy` binds 0.0.0.0:8787). */
 export const DEFAULT_PROXY_URL = 'http://localhost:8787';
+export const DEFAULT_PROXY_PORT = 8787;
 export const DEFAULT_WS_PATH = '/ws';
 
 const HTTP_RE = /^https?:\/\/[^/\s]+/i;
@@ -31,9 +32,23 @@ function stripTrailingSlash(s: string): string {
   return s.replace(/\/+$/, '');
 }
 
-export function normalizeProxyUrl(raw: string | undefined): string {
+/**
+ * The proxy runs on the Mac that runs Metro, so with no `EXPO_PUBLIC_PROXY_URL`
+ * a dev client aims at Metro's host (`Constants.expoConfig.hostUri`, e.g.
+ * "172.26.16.221:8081") on the proxy port. `localhost` only ever reaches the
+ * phone itself, which is what "Offline" on the first launch was.
+ */
+export function proxyUrlFromDevHost(hostUri: string | null | undefined, port: number = DEFAULT_PROXY_PORT): string | null {
+  const v = (hostUri ?? '').trim();
+  if (!v) return null;
+  const host = v.replace(/^[a-z]+:\/\//i, '').split('/')[0]?.split(':')[0] ?? '';
+  if (!host || host === 'localhost' || host === '127.0.0.1') return null;
+  return `http://${host}:${port}`;
+}
+
+export function normalizeProxyUrl(raw: string | undefined, devHostUri?: string | null): string {
   const v = (raw ?? '').trim();
-  if (!v || !HTTP_RE.test(v)) return DEFAULT_PROXY_URL;
+  if (!v || !HTTP_RE.test(v)) return proxyUrlFromDevHost(devHostUri) ?? DEFAULT_PROXY_URL;
   return stripTrailingSlash(v);
 }
 
@@ -53,13 +68,23 @@ export function parseMockFlag(raw: string | undefined): boolean {
   return (raw ?? '').trim() === '1';
 }
 
-export function readConfig(env: ConfigEnv): AppConfig {
-  const proxyUrl = normalizeProxyUrl(env.EXPO_PUBLIC_PROXY_URL);
+export function readConfig(env: ConfigEnv, devHostUri?: string | null): AppConfig {
+  const proxyUrl = normalizeProxyUrl(env.EXPO_PUBLIC_PROXY_URL, devHostUri);
   return {
     proxyUrl,
     proxyWs: normalizeProxyWs(env.EXPO_PUBLIC_PROXY_WS, proxyUrl),
     mock: parseMockFlag(env.EXPO_PUBLIC_MOCK),
   };
+}
+
+function devHostUri(): string | null {
+  try {
+    // Lazy so the pure functions above stay importable under Node (tests, scripts).
+    const Constants = (require('expo-constants') as { default?: { expoConfig?: { hostUri?: string | null } | null } }).default;
+    return Constants?.expoConfig?.hostUri ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Literal references so Expo's bundler can inline them. */
@@ -68,7 +93,7 @@ export const config: Readonly<AppConfig> = Object.freeze(
     EXPO_PUBLIC_PROXY_URL: process.env.EXPO_PUBLIC_PROXY_URL,
     EXPO_PUBLIC_PROXY_WS: process.env.EXPO_PUBLIC_PROXY_WS,
     EXPO_PUBLIC_MOCK: process.env.EXPO_PUBLIC_MOCK,
-  }),
+  }, devHostUri()),
 );
 
 /** Latency budget (01 §11) — one source of truth for DebugPanel and tests. */

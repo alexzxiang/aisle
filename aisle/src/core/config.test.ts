@@ -7,6 +7,7 @@ import {
   normalizeProxyWs,
   parseMockFlag,
   readConfig,
+  proxyUrlFromDevHost,
   wsFromProxyUrl,
 } from './config';
 
@@ -40,6 +41,21 @@ describe('config', () => {
     expect(normalizeProxyUrl('ftp://x')).toBe(DEFAULT_PROXY_URL);
     expect(normalizeProxyUrl('   ')).toBe(DEFAULT_PROXY_URL);
     expect(normalizeProxyWs('http://not-ws', 'http://h:1')).toBe('ws://h:1/ws');
+  });
+
+  it('with no EXPO_PUBLIC_PROXY_URL, a dev client aims at Metro\'s host on the proxy port', () => {
+    expect(proxyUrlFromDevHost('172.26.16.221:8081')).toBe('http://172.26.16.221:8787');
+    expect(proxyUrlFromDevHost('exp://172.26.16.221:8081/--/x')).toBe('http://172.26.16.221:8787');
+    expect(proxyUrlFromDevHost('localhost:8081')).toBeNull();
+    expect(proxyUrlFromDevHost('')).toBeNull();
+    expect(proxyUrlFromDevHost(undefined)).toBeNull();
+    const c = readConfig({}, '172.26.16.221:8081');
+    expect(c.proxyUrl).toBe('http://172.26.16.221:8787');
+    expect(c.proxyWs).toBe('ws://172.26.16.221:8787/ws');
+    // An explicit URL still wins.
+    expect(readConfig({ EXPO_PUBLIC_PROXY_URL: 'http://10.0.0.5:9000' }, '172.26.16.221:8081').proxyUrl).toBe('http://10.0.0.5:9000');
+    // No Metro host (a release build): the old default.
+    expect(readConfig({}, null).proxyUrl).toBe(DEFAULT_PROXY_URL);
   });
 
   it('treats only the literal "1" as mock', () => {
