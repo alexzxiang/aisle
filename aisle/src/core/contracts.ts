@@ -112,7 +112,7 @@ export type CacheKey =
   | 'turn_left_soon' | 'turn_right_soon' | 'turn_left_now' | 'turn_right_now' | 'entering_store'
   | 'keep_going' | 'passed_it_turn_around' | 'checkout_ahead' | 'obstacle_ahead' | 'tilt_camera_up'
   | 'turn_left_a_little' | 'turn_right_a_little' | 'reach_out' | 'higher' | 'lower' | 'left' | 'right'
-  | 'touching' | 'ask_staff' | 'offline_notice';
+  | 'touching' | 'ask_staff' | 'offline_notice' | 'reach_forward';
 
 // ---------------------------------------------------------------------------
 // 4. SensorService (Agent A implements; pose comes from Agent C's module)
@@ -175,7 +175,7 @@ export type HazardKind = 'PERSON_AHEAD' | 'CART_AHEAD';       // indoor, INFO pr
 export type TransitionReason = 'FUSED' | 'MANUAL';
 export type CameraDirection = 'up' | 'down' | 'left' | 'right' | 'closer' | 'none';
 export type UserAction = 'none' | 'turn_left' | 'turn_right' | 'walk_forward' | 'stop' | 'reach';
-export type HandHint = 'left' | 'right' | 'higher' | 'lower' | 'touching' | 'not_seen';
+export type HandHint = 'left' | 'right' | 'higher' | 'lower' | 'forward' | 'touching' | 'not_seen';   // 'forward' (round 6c): reach further
 export type VehiclesSeen = 'none' | 'distant' | 'approaching' | 'unclear';
 
 export type AppEvent =

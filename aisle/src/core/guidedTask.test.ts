@@ -65,14 +65,24 @@ interface Harness {
   log: string[];
 }
 
-function harness(opts: { plan?: TaskPlanOutput; askImpl?: (userText: string) => Promise<AskOutcome>; plannerImpl?: () => Promise<PlannerResult<TaskPlanOutput>> } = {}): Harness {
+function harness(opts: { plan?: TaskPlanOutput; askImpl?: (userText: string) => Promise<AskOutcome>; plannerImpl?: () => Promise<PlannerResult<TaskPlanOutput>>; handHints?: Array<VisionResponse['hand']['hint']> } = {}): Harness {
   const bus = createEventBus();
   const store = createAppStore({ bus, warn: () => undefined, initial: { firstRun: false } });
   bindStoreToBus(store, bus);
   const said: SpeechRequest[] = [];
   const haptic: string[] = [];
   const log: string[] = [];
-  const asks = jest.fn(opts.askImpl ? (_q: string, o: { userText?: string }) => opts.askImpl!(o.userText ?? '') : async () => applied({ done: false, confidence: 0.2 }));
+  // `hand_guidance` (the reach step, round 6c) answers "touching" unless a test says otherwise, so plans still complete.
+  const handHints: Array<VisionResponse['hand']['hint']> = opts.handHints ? [...opts.handHints] : [];
+  const handAnswer = async (): Promise<AskOutcome> => {
+    const hint = handHints.length > 0 ? handHints.shift()! : 'touching';
+    const r = visionResponse({ done: false, confidence: 0 });
+    return { status: 'applied', seq: 1, response: { ...r, hand: { hint } }, streamed: false, latencyMs: 300 };
+  };
+  const asks = jest.fn((q: string, o: { userText?: string }) => {
+    if (q === 'hand_guidance') return handAnswer();
+    return opts.askImpl ? opts.askImpl(o.userText ?? '') : Promise.resolve(applied({ done: false, confidence: 0.2 }));
+  });
   const planner = jest.fn(opts.plannerImpl ?? (async () => ({ job: 'taskPlan' as const, output: opts.plan ?? PLAN, fallback: false, latencyMs: 900 })));
   const describe = jest.fn(async () => 'A kitchen with a fridge on the left.');
   const deps: GuidedTaskDeps = {
@@ -174,9 +184,10 @@ describe('createGuidedTask', () => {
       PLAN.steps[0].instruction,
       PHRASES.task_step_done, PLAN.steps[1].instruction,
       PHRASES.task_step_done, PLAN.steps[2].instruction,
+      PHRASES.hold_out_hand, PHRASES.grab_it,   // the reach step is the hand loop (round 6c)
       PHRASES.task_done,
     ]);
-    expect(h.haptic).toEqual(['CONFIRM', 'CONFIRM', 'CONFIRM']);
+    expect(h.haptic).toEqual(['CONFIRM', 'CONFIRM', 'CONFIRM', 'CONFIRM']);   // two step closes, the touch, the completion
     expect(task.isActive()).toBe(false);
     const asksAtDone = h.asks.mock.calls.length;
     await flush(TASK_TICK_MS * 3);
@@ -287,6 +298,26 @@ describe('createGuidedTask', () => {
     await flush(TASK_TICK_MS);
     expect(task2.getDebugState().step).toBe(1);
     task2.dispose();
+  });
+
+  it('the reach step steers the hand word by word — "Hold out your hand." … "Higher." "Left." "Grab it." — then closes the task (round 6c)', async () => {
+    const h = harness({ handHints: ['not_seen', 'not_seen', 'higher', 'left', 'forward', 'touching'] });
+    const task = createGuidedTask({ ...h.deps, tickMs: 200 });
+    h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush();
+    task.advance();           // → step two (open the fridge door)
+    task.advance();           // → step three: "Reach for the eggs on the door shelf."
+    expect(task.getDebugState().step).toBe(2);
+    await flush(200);         // the tick hands over to the hand guide
+    expect(h.said.map((r) => r.text)).toContain(PHRASES.hold_out_hand);
+    // 2 s per hand reading: not_seen, not_seen (camera down), Higher., Left., Reach forward., Grab it.
+    await flush(2000 * 6 + 100);
+    const hand = h.said.map((r) => r.text).filter((s) => [PHRASES.higher, PHRASES.left, PHRASES.reach_forward, PHRASES.grab_it, 'Tilt the camera down.'].includes(s));
+    expect(hand).toEqual(['Tilt the camera down.', PHRASES.higher, PHRASES.left, PHRASES.reach_forward, PHRASES.grab_it]);
+    expect(h.asks.mock.calls.filter((c) => c[0] === 'hand_guidance')[0]![1]).toMatchObject({ targetItem: 'eggs', image: 640, silent: true });
+    expect(h.deps.store.getState().mode).toBe('DONE');
+    expect(h.haptic.filter((p) => p === 'CONFIRM').length).toBeGreaterThanOrEqual(2);
+    task.dispose();
   });
 
   it('a failed look and a vision error do not stop the task', async () => {

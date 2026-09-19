@@ -52,9 +52,9 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
   ].join(' '),
   hand_guidance: [
     COMMON,
-    'Question: the user is reaching for a package on a shelf. You get the target item and, when known, a package hint.',
-    'Return exactly one hint in hand.hint: left, right, higher, lower, touching, or not_seen. Speech is that single word (for example "Higher.") or empty when not_seen.',
-    'You are guiding a hand, not identifying a product; if the package is not visible say not_seen.',
+    'Question: the user is holding out a hand toward the target item — a package on a shelf, a carton or eggs in a fridge, an object on a table. You get the target item (targetItem) and, when known, a package hint.',
+    'Find the hand and the target in the frame. Return exactly one hint in hand.hint for the hand\'s next move: left, right, higher, lower, forward (reach further), touching (the hand is on the item — grab), or not_seen (the target is not visible; say nothing about the hand). Speech is that single word (for example "Higher.") or empty when not_seen.',
+    'Prefer the larger correction first; when the hand is within about a hand-width on every axis, say forward; when it is on the item, touching. You are guiding a hand, not identifying a product.',
   ].join(' '),
   task_step: [
     COMMON,

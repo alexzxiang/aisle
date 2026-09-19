@@ -650,6 +650,54 @@
       "bytes": 16553,
       "estimatedMs": 2069,
       "generatedAt": "2026-09-19T02:51:58.793Z"
+    },
+    "reach_forward": {
+      "key": "reach_forward",
+      "file": "reach_forward.mp3",
+      "textSha1": "34a8fd309b446f932ac0e7b90f4514b37c3a15b7",
+      "bytes": 9866,
+      "estimatedMs": 1233,
+      "generatedAt": "2026-09-19T17:06:45.614Z"
+    },
+    "hold_out_hand": {
+      "key": "hold_out_hand",
+      "file": "hold_out_hand.mp3",
+      "textSha1": "a6331e83ca24de7cf29ed8846a44e47ac728cfe1",
+      "bytes": 9448,
+      "estimatedMs": 1181,
+      "generatedAt": "2026-09-19T17:06:45.614Z"
+    },
+    "move_hand_slowly": {
+      "key": "move_hand_slowly",
+      "file": "move_hand_slowly.mp3",
+      "textSha1": "608a50b5474fb524dbb4a19b228e3a8ea7430f4b",
+      "bytes": 16135,
+      "estimatedMs": 2017,
+      "generatedAt": "2026-09-19T17:06:45.614Z"
+    },
+    "grab_it": {
+      "key": "grab_it",
+      "file": "grab_it.mp3",
+      "textSha1": "af7b0f108c93705be09b220a486df81c0f8302ac",
+      "bytes": 6940,
+      "estimatedMs": 868,
+      "generatedAt": "2026-09-19T17:06:45.614Z"
+    },
+    "onboarding_practice_scene": {
+      "key": "onboarding_practice_scene",
+      "file": "onboarding_practice_scene.mp3",
+      "textSha1": "9addae3914b8ed5494ad1cd477afeb6a86356ae8",
+      "bytes": 16553,
+      "estimatedMs": 2069,
+      "generatedAt": "2026-09-19T17:06:45.614Z"
+    },
+    "task_still_looking": {
+      "key": "task_still_looking",
+      "file": "task_still_looking.mp3",
+      "textSha1": "c6061619239320cc6a6bea21f34c72e77e24955a",
+      "bytes": 15090,
+      "estimatedMs": 1886,
+      "generatedAt": "2026-09-19T17:06:45.614Z"
     }
   }
 }

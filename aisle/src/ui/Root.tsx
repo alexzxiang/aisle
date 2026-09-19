@@ -21,8 +21,9 @@ import { HomeScreen } from './HomeScreen';
 import { NavScreen } from './NavScreen';
 import { OnboardingScreen } from './OnboardingScreen';
 import { DebugPanel } from './DebugPanel';
+import { HoldToTalk } from './HoldToTalk';
 import { SettingsSheet } from './SettingsSheet';
-import { useMode, useRegisteredConversation } from './hooks';
+import { useMode, useOptionalService, useRegisteredConversation } from './hooks';
 import type { AudioPorts, ConversationLogPort, DebugMetrics, DescribeNow, VoicePort } from './ports';
 import { colors } from './theme';
 
@@ -53,6 +54,7 @@ export function Root(props: RootProps): React.JSX.Element {
   const mode = useMode();
   const [debugOpen, setDebugOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const haptics = useOptionalService('haptics');
 
   const openDebug = useCallback(() => setDebugOpen(true), []);
   const closeDebug = useCallback(() => setDebugOpen(false), []);
@@ -90,7 +92,10 @@ export function Root(props: RootProps): React.JSX.Element {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
-      {screen}
+      {/* Press and hold anywhere that is not a control to talk (round 6c). */}
+      <HoldToTalk voice={voice} onStart={() => haptics?.play('CONFIRM')} reduceMotion={reduceMotion}>
+        {screen}
+      </HoldToTalk>
       <DebugPanel visible={debugOpen} onClose={closeDebug} metrics={metrics} audio={audio} mockControls={mockControls} />
       <SettingsSheet visible={settingsOpen} onClose={closeSettings} reduceMotion={reduceMotion} />
     </View>

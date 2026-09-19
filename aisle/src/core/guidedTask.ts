@@ -34,6 +34,7 @@ import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit, phraseTex
 import type { SemanticVision } from '../perception/semanticVision';
 import type { PlannerClient } from '../outdoor/planner';
 import { templateTaskPlan } from '../outdoor/plannerJobs';
+import { createHandGuide, itemOfGoal, type HandGuide } from './handGuide';
 
 export const TASK_TICK_MS = 3000;
 /** A `done` reading at or above this counts toward closing the step on camera evidence alone. */
@@ -58,6 +59,12 @@ export const TASK_CHECK_TTL_MS = 15_000;
  */
 export const TASK_OBSERVE_MS = 8000;
 const OBSERVE_RE = /\b(turn slowly|look around|show me|so i can see|let me see|scan)\b/i;
+/** A step that ends with the item in hand: the hand guide takes over from the step loop (round 6c). */
+const REACH_RE = /\b(reach|grab|pick up|take the|take a|get the|grasp|hold the|feel for)\b/i;
+
+export function isReachStep(instruction: string): boolean {
+  return REACH_RE.test(instruction);
+}
 
 export function isObservationStep(instruction: string): boolean {
   return OBSERVE_RE.test(instruction);
@@ -93,6 +100,8 @@ export interface GuidedTaskDeps {
   scene?: () => string | null;
   /** Scene memory: "fridge to your left, couch behind you" — what was seen and where it is now. */
   seen?: () => string;
+  /** The reach step's hand loop (handGuide.ts). Default: built from vision / speech / haptics. */
+  handGuide?: HandGuide;
   conversation?: Pick<ConversationLog, 'pushAisle'>;
   now?: () => number;
   tickMs?: number;
@@ -155,6 +164,8 @@ interface RunState {
   description: string | null;
   /** Steps already put to the user once (a "no" means: watch, do not ask again). */
   checked: Set<number>;
+  /** The hand loop is running for this step (reach steps only). */
+  handing: boolean;
 }
 
 export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
@@ -171,6 +182,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const clearT: typeof clearTimeout = deps.clearTimeoutFn ?? clearTimeout;
   const { bus, store, speech } = deps;
 
+  const handGuide: HandGuide = deps.handGuide ?? createHandGuide({ vision: deps.vision, speech, haptics: deps.haptics, bus, conversation: deps.conversation, now });
   let run: RunState | null = null;
   let generation = 0;
   let disposed = false;
@@ -201,6 +213,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const stop = (): void => {
     if (!run) return;
     clearTimers(run);
+    if (handGuide.isRunning()) handGuide.stop();
     run = null;
     generation += 1;
   };
@@ -253,6 +266,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (run !== r || mode() !== 'GUIDED_TASK') return;
     r.doneReadings = 0;
     r.check = null;
+    if (r.handing) {
+      handGuide.stop();
+      r.handing = false;
+    }
     if (r.step >= r.steps.length - 1) {
       complete(r);
       return;
@@ -297,7 +314,19 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       stop();
       return;
     }
-    if (!r.asking) {
+    const step = r.steps[r.step];
+    if (step && isReachStep(step.instruction) && !r.handing) {
+      // The reach: steer the hand word by word until it touches the item, then close the task step.
+      r.handing = true;
+      const item = itemOfGoal(r.goal);
+      void handGuide.start(item).then((res) => {
+        if (run !== r) return;
+        r.handing = false;
+        if (res.done === 'touching') advanceRun(r, false);
+        // gave up / stopped: the step stays open; the reminder and the next reach retry it.
+      });
+    }
+    if (!r.asking && !r.handing) {
       r.asking = true;
       asks += 1;
       lastAskAt = now();
@@ -376,7 +405,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
-    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description };
+    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false };
     run = r;
     deps.conversation?.pushAisle(`Plan: ${plan.steps.length === 1 ? 'one step' : `${plan.steps.length} steps`} to ${goal}.`, 'prompt');
     speakStep(r, false);

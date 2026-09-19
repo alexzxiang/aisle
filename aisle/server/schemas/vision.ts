@@ -16,7 +16,7 @@ const CAMERA_DIRECTIONS = ['up', 'down', 'left', 'right', 'closer', 'none'] as c
 const USER_ACTIONS = ['none', 'turn_left', 'turn_right', 'walk_forward', 'stop', 'reach'] as const;
 const VEHICLES_SEEN = ['none', 'distant', 'approaching', 'unclear'] as const;
 const SIGNAL_STATES = ['WALK', 'DONT_WALK', 'COUNTDOWN', 'UNKNOWN'] as const;
-const HAND_HINTS = ['left', 'right', 'higher', 'lower', 'touching', 'not_seen'] as const;
+const HAND_HINTS = ['left', 'right', 'higher', 'lower', 'forward', 'touching', 'not_seen'] as const;
 const SCENE_SETTINGS = ['street', 'crossing', 'entrance', 'store', 'home', 'kitchen', 'hallway', 'room', 'vehicle', 'unknown'] as const;
 
 const obj = (properties: Record<string, unknown>): Record<string, unknown> => ({

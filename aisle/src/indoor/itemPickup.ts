@@ -51,6 +51,7 @@ const HINT_KEY: Readonly<Record<Exclude<HandHint, 'not_seen' | 'touching'>, Cach
   right: 'right',
   higher: 'higher',
   lower: 'lower',
+  forward: 'reach_forward',
 });
 
 /** Opening line, pre-synthesized at store load by storeResolver. */

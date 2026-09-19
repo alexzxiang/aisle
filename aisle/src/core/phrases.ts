@@ -130,7 +130,8 @@ export type ASideKey =
   | 'route_unavailable' | 'no_route_data'
   | 'need_location' | 'no_store_nearby' | 'say_item_one_word' | 'describe_nothing'
   | 'let_me_see' | 'planning_route' | 'no_place_found' | 'arrived_destination' | 'task_done' | 'task_next' | 'task_step_done' | 'task_still_looking'
-  | 'show_surroundings' | 'tell_me_where' | 'noted';
+  | 'show_surroundings' | 'tell_me_where' | 'noted'
+  | 'grab_it' | 'hold_out_hand' | 'move_hand_slowly';
 
 export type PhraseKey = CacheKey | ASideKey;
 
@@ -213,6 +214,10 @@ export const PHRASE_LIST: readonly Phrase[] = [
   P('left', 'Left.', 'indoor'),
   P('right', 'Right.', 'indoor'),
   P('touching', 'Touching.', 'indoor'),
+  P('reach_forward', 'Reach forward.', 'indoor'),
+  P('grab_it', 'Grab it.', 'indoor', true),
+  P('hold_out_hand', 'Hold out your hand.', 'indoor', true),
+  P('move_hand_slowly', 'I do not see it. Move your hand slowly.', 'indoor', true),
   P('ask_staff', 'Ask staff for help finding it.', 'indoor'),
   P('offline_notice', 'Offline. Signal reading and directions still work.', 'always'),
   P('route_unavailable', 'Route unavailable. Try again shortly.', 'always', true),
@@ -286,7 +291,7 @@ export const CONTRACT_CACHE_KEYS: readonly CacheKey[] = [
   'turn_left_soon', 'turn_right_soon', 'turn_left_now', 'turn_right_now', 'entering_store',
   'keep_going', 'passed_it_turn_around', 'checkout_ahead', 'obstacle_ahead', 'tilt_camera_up',
   'turn_left_a_little', 'turn_right_a_little', 'reach_out', 'higher', 'lower', 'left', 'right',
-  'touching', 'ask_staff', 'offline_notice',
+  'touching', 'ask_staff', 'offline_notice', 'reach_forward',
 ];
 
 /** Tier-1 prompt keys: the only class gated "never while COURSE is buzzing" (02 Task 4). */

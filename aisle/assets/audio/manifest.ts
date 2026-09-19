@@ -25,7 +25,9 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   dont_walk: require('./dont_walk.mp3') as number,
   entering_store: require('./entering_store.mp3') as number,
   far_curb: require('./far_curb.mp3') as number,
+  grab_it: require('./grab_it.mp3') as number,
   higher: require('./higher.mp3') as number,
+  hold_out_hand: require('./hold_out_hand.mp3') as number,
   keep_going: require('./keep_going.mp3') as number,
   label_okay: require('./label_okay.mp3') as number,
   label_stop: require('./label_stop.mp3') as number,
@@ -35,6 +37,7 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   listen_then_cross: require('./listen_then_cross.mp3') as number,
   looking_for_signs: require('./looking_for_signs.mp3') as number,
   lower: require('./lower.mp3') as number,
+  move_hand_slowly: require('./move_hand_slowly.mp3') as number,
   need_location: require('./need_location.mp3') as number,
   no_place_found: require('./no_place_found.mp3') as number,
   no_route_data: require('./no_route_data.mp3') as number,
@@ -52,6 +55,7 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   onboarding_done: require('./onboarding_done.mp3') as number,
   onboarding_intro: require('./onboarding_intro.mp3') as number,
   onboarding_keep_cane: require('./onboarding_keep_cane.mp3') as number,
+  onboarding_practice_scene: require('./onboarding_practice_scene.mp3') as number,
   onboarding_ring_switch: require('./onboarding_ring_switch.mp3') as number,
   onboarding_this_is_okay: require('./onboarding_this_is_okay.mp3') as number,
   onboarding_this_is_stop: require('./onboarding_this_is_stop.mp3') as number,
@@ -64,6 +68,7 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   passed_it_turn_around: require('./passed_it_turn_around.mp3') as number,
   planning_route: require('./planning_route.mp3') as number,
   push_button_likely: require('./push_button_likely.mp3') as number,
+  reach_forward: require('./reach_forward.mp3') as number,
   reach_out: require('./reach_out.mp3') as number,
   right: require('./right.mp3') as number,
   route_unavailable: require('./route_unavailable.mp3') as number,
@@ -74,6 +79,7 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   task_done: require('./task_done.mp3') as number,
   task_next: require('./task_next.mp3') as number,
   task_step_done: require('./task_step_done.mp3') as number,
+  task_still_looking: require('./task_still_looking.mp3') as number,
   tell_me_where: require('./tell_me_where.mp3') as number,
   tilt_camera_up: require('./tilt_camera_up.mp3') as number,
   touching: require('./touching.mp3') as number,
@@ -93,8 +99,8 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
 });
 
 export const AUDIO_MANIFEST_META = Object.freeze({
-  generatedAt: "2026-09-19T02:51:58.793Z",
+  generatedAt: "2026-09-19T17:06:45.614Z",
   voiceId: "77PfBlxcTFzlg9xS12zb",
   model: "eleven_flash_v2_5",
-  count: 81,
+  count: 87,
 });
