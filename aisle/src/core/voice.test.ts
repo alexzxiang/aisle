@@ -234,6 +234,29 @@ describe('createVoiceInput', () => {
     v.cancel();
   });
 
+  it('delegates the audio session to native capture and waits for actual readiness', async () => {
+    const r = fakeRecognizer();
+    let ready!: () => void;
+    const originalListen = r.rec.listen;
+    r.rec.managesAudioSession = true;
+    r.rec.listen = (o, h) => ({ ...originalListen(o, h), ready: new Promise<void>((resolve) => { ready = resolve; }) });
+    const mode = jest.fn(async (_on: boolean, _nativeOwnsSession?: boolean) => {});
+    const diagnostic = jest.fn();
+    const v = make(r.rec, { audio: { setRecordingMode: mode }, onDiagnostic: diagnostic });
+    let listening = false;
+    const begin = v.begin().then(() => { listening = true; });
+    await Promise.resolve(); await Promise.resolve();
+    expect(mode).toHaveBeenCalledWith(true, true);
+    expect(r.calls).toEqual(['listen']);
+    expect(listening).toBe(false);
+    ready(); await begin;
+    expect(listening).toBe(true);
+    expect(diagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'ready', startupMs: expect.any(Number), nativeMs: expect.any(Number) }));
+    r.final('eggs');
+    await v.end();
+    expect(mode).toHaveBeenLastCalledWith(false);
+  });
+
   it('an unrecognised question goes to the camera as a free question, not "say the item again" (B-3)', async () => {
     const r = fakeRecognizer();
     fetchStatus = 503;   // planner miss → local parser → unknown

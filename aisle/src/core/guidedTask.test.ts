@@ -3,6 +3,8 @@ import { createEventBus } from './bus';
 import { bindStoreToBus, createAppStore } from './store';
 import { PHRASES } from './phrases';
 import { createGuide } from './guide';
+import { createVoiceInput } from './voice';
+import { checkPhrase } from './phrases';
 import { createGuidedTask, isAdvanceRequest, TASK_REMIND_MS, TASK_TICK_MS, type GuidedTaskDeps } from './guidedTask';
 import type { AskOutcome } from '../perception/semanticVision';
 
@@ -115,6 +117,103 @@ describe('createGuidedTask', () => {
     jest.setSystemTime(T0);
   });
   afterEach(() => jest.useRealTimers());
+
+  it('asks where to search for unseen eggs, follows a confirmed fridge hypothesis, then resumes from camera evidence', async () => {
+    let detections: Detection[] = [];
+    const guide = createGuide({ detections: () => detections, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
+    const h = harness();
+    const task = createGuidedTask({ ...h.deps, guide, tickMs: 500 });
+    const voice = createVoiceInput({
+      bus: h.bus, store: h.deps.store as ReturnType<typeof createAppStore>,
+      speech: { say: h.deps.speech.say, clearQueue() {}, playStream() {}, isSpeaking: () => false, setRate() {} },
+      proxyUrl: '', knownItems: () => ['eggs'], sceneContext: () => 'unknown',
+      intercept: (text) => task.intercept(text), fetchImpl: (async () => { throw new Error('offline'); }) as typeof fetch,
+    });
+    await voice.submitText('find eggs');
+    expect(h.said.at(-1)?.text).toBe('Are you looking at home or in a store?');
+    expect(h.bus.history().some((r) => r.event.type === 'ITEM_REQUESTED')).toBe(false);
+    await voice.submitText('at home');
+    await flush();
+    expect(h.said.at(-1)?.text).toContain('check the fridge');
+    expect(h.planner).not.toHaveBeenCalled();
+    await voice.submitText('yes');
+    await flush();
+    expect(task.getDebugState()).toMatchObject({ goal: 'eggs in the fridge', stage: 'approach', step: 0 });
+    expect(h.said.at(-1)?.text).toContain('Which direction');
+    await voice.submitText('the fridge is to my left');
+    expect(h.said.at(-1)?.text).toBe('Stay still. Pan the camera left slowly.');
+    await flush(1500);
+    expect(h.said.some((r) => /walk forward|reach out/i.test(r.text))).toBe(false);
+    await voice.submitText('yes');
+    expect(task.getDebugState().step).toBe(0);
+    detections = [{ cls: 'fridge', box: [0.1, 0.2, 0.3, 0.4], score: 0.9, trackId: 1 }];
+    await flush(1000);
+    expect(h.said.at(-1)?.text).toMatch(/Turn left.*fridge/i);
+    expect(task.getDebugState().goal).toContain('eggs');
+    for (const r of h.said) expect(checkPhrase(r.text)).toEqual([]);
+    const manual = await voice.submitText('next');
+    await task.onVoiceOutcome(manual);
+    expect(task.getDebugState().step).toBe(1); // the intercept and outcome must not advance twice
+    await voice.submitText('stop');
+    await flush();
+    expect(task.isActive()).toBe(false);
+    expect(task.intercept('left')).toBe(false);
+    task.dispose();
+  });
+
+  it('accepts a rejected hypothesis and another location without losing the item', async () => {
+    const h = harness();
+    const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
+    const task = createGuidedTask({ ...h.deps, guide });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs', context: 'home', source: 'keyboard' });
+    await flush();
+    expect(task.intercept('no')).toBe(true);
+    expect(h.said.at(-1)?.text).toContain('Where did you last keep it');
+    task.intercept('on the table');
+    await flush();
+    expect(task.getDebugState()).toMatchObject({ goal: 'eggs on the table', stage: null, step: 0 });
+    expect(h.said.at(-1)?.text).toContain('Which direction');
+    task.dispose();
+  });
+
+  it('bounds scans and questions when the user does not know, and never trusts done without a target', async () => {
+    const h = harness({ askImpl: async () => applied({ done: true, confidence: 0.99 }) });
+    const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
+    const task = createGuidedTask({ ...h.deps, guide, tickMs: 500 });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush();
+    task.intercept("I don't know");
+    expect(h.said.at(-1)?.text).toBe('Stay still. Pan the camera slowly across the room.');
+    await flush(12000);
+    expect(h.said.at(-1)?.text).toContain('room or nearby landmark');
+    await flush(16000);
+    expect(h.said.at(-1)?.text).toContain('Search paused');
+    const count = h.said.length;
+    await flush(45000);
+    expect(h.said).toHaveLength(count);
+    expect(task.getDebugState()).toMatchObject({ active: true, step: 0 });
+    task.intercept('retry');
+    expect(h.said.at(-1)?.text).toContain('Which direction');
+    task.dispose();
+  });
+
+  it('asks which shelf to inspect when eggs are missing inside the open fridge', async () => {
+    const h = harness();
+    const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56 });
+    const task = createGuidedTask({ ...h.deps, guide });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush();
+    task.advance(); // the user confirms standing at the fridge
+    task.intercept('the door is open');
+    expect(task.getDebugState().stage).toBe('find_item');
+    expect(h.said.at(-1)?.text).toContain('Which shelf');
+    task.intercept('lower shelf');
+    expect(h.said.at(-1)?.text).toBe('Stay still. Tilt the camera down slowly.');
+    await flush(3000);
+    expect(h.asks.mock.calls.at(-1)?.[1].userText).toContain('Search target: eggs');
+    expect(task.getDebugState().stage).toBe('find_item');
+    task.dispose();
+  });
 
   it('TASK_REQUESTED: "Let me see your surroundings." → describe → planner taskPlan with camera facts → step one spoken and on the band', async () => {
     const h = harness();

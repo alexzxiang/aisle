@@ -159,7 +159,7 @@ export interface AudioChannels {
   /** `setAudioModeAsync` with the 02 Task 5 defaults; call once at app start. */
   configureSession(): Promise<void>;
   /** Push-to-talk only: `allowsRecording` on for the utterance, off the moment it ends. */
-  setRecordingMode(on: boolean): Promise<void>;
+  setRecordingMode(on: boolean, nativeOwnsSession?: boolean): Promise<void>;
   isRecordingMode(): boolean;
   getDebugState(): {
     mode: AppMode; tickerState: SignalState; tickerActive: boolean; beaconActive: boolean;
@@ -213,7 +213,7 @@ export function createAudioChannels(opts: AudioChannelsOptions): AudioChannels {
     const t = now();
     const mode = store.getState().mode;
     const plan = channelPlan({
-      mode, tickerState, hasBeaconTarget: target !== null, speaking: opts.speaking(), tickerMuted, beaconMuted,
+      mode, tickerState, hasBeaconTarget: target !== null, speaking: recording || opts.speaking(), tickerMuted, beaconMuted,
     });
     tickerActive = plan.ticker;
     beaconActive = plan.beacon;
@@ -241,7 +241,7 @@ export function createAudioChannels(opts: AudioChannelsOptions): AudioChannels {
       if (pulse.centred) {
         const h = setTimeout(() => {
           pendingCentreTicks.delete(h);
-          if (!opts.speaking()) backend.tick.play(BEACON_CENTER_TICK_VOLUME);
+          if (!recording && !opts.speaking()) backend.tick.play(BEACON_CENTER_TICK_VOLUME);
         }, BEACON_CENTER_TICK_DELAY_MS);
         pendingCentreTicks.add(h);
       }
@@ -305,7 +305,7 @@ export function createAudioChannels(opts: AudioChannelsOptions): AudioChannels {
       recording = false;
       await backend.setAudioMode(sessionMode);
     },
-    async setRecordingMode(on) {
+    async setRecordingMode(on, nativeOwnsSession = false) {
       // iOS keeps a separate, quieter output level for the play-and-record category. Leaving it
       // on after an utterance is "the voice got quiet" (round 6c: heard in guided tasks, where the
       // user answers often). So: the flag flips only when the mode really applied, turning it OFF
@@ -314,7 +314,12 @@ export function createAudioChannels(opts: AudioChannelsOptions): AudioChannels {
       sessionMode = { ...sessionMode, allowsRecording: on };
       if (on) {
         if (recording) return;
-        await backend.setAudioMode(sessionMode);
+        backend.beaconLeft.stop();
+        backend.beaconRight.stop();
+        backend.tick.stop();
+        // expo-speech-recognition sets and activates its own category. Doing this
+        // first causes two serial native session transitions before audio capture.
+        if (!nativeOwnsSession) await backend.setAudioMode(sessionMode);
         recording = true;
         return;
       }

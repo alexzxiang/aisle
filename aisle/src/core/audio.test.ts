@@ -160,6 +160,22 @@ describe('createAudioChannels', () => {
     ch.dispose();
   });
 
+  it('mutes tones without an extra session switch when native capture owns setup, then restores playback', async () => {
+    const ch = make('AT_CURB');
+    ch.ticker.setState('WALK');
+    await ch.configureSession();
+    await ch.setRecordingMode(true, true);
+    expect(ch.isRecordingMode()).toBe(true);
+    expect(be.modes).toEqual([DEFAULT_AUDIO_MODE]);
+    jest.advanceTimersByTime(1000);
+    expect(be.plays).toEqual([]);
+    await ch.setRecordingMode(false);
+    expect(be.modes.at(-1)).toMatchObject({ allowsRecording: false });
+    jest.advanceTimersByTime(1000);
+    expect(be.plays.length).toBeGreaterThan(0);
+    ch.dispose();
+  });
+
   it('ticker: WALK ticks 4/s, DONT_WALK 1/s, UNKNOWN is silence; a state change restarts at once', () => {
     const ch = make('AT_CURB');
     ch.ticker.setState('WALK');

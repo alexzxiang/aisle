@@ -39,6 +39,7 @@ import type { Guide, GuideInstruction, TargetBox } from './guide';
 import { classForWords } from './sceneMemory';
 import { fridgeMission, FRIDGE_STAGES, type FridgeStage } from './fridgeMission';
 import { MISSION_PHRASES } from './preparedGuidance';
+import { answerTargetSearch, searchTimeout, startTargetSearch, suggestedLocation, type TargetSearch } from './targetSearch';
 
 export const TASK_TICK_MS = 3000;
 /** A `done` reading at or above this counts toward closing the step on camera evidence alone. */
@@ -76,7 +77,7 @@ export const TASK_GUIDE_AFTER_STEP_MS = 4000;
  */
 export function stepTarget(instruction: string, lookFor: string, goal: string): string {
   const place = goal.match(/\b(?:in|on|at|inside|from)\s+(?:the |my |a )?(.+?)$/i)?.[1]?.trim() ?? null;
-  if (isReachStep(instruction)) return itemOfGoal(goal);
+  if (isReachStep(instruction) || /^Look for the item\b/i.test(instruction)) return itemOfGoal(goal);
   // Walking steps aim at the goal's place whenever the phone can see or remember it (the
   // fridge, the couch); a plan's intermediate "kitchen counter" / "door frame" only when the
   // detector knows that thing — otherwise the guide would hunt for a counter it cannot see
@@ -185,7 +186,7 @@ export interface GuidedTaskDebugState {
 
 export interface GuidedTask {
   /** App routes every parsed voice outcome here (like `trip.onVoiceOutcome`). */
-  onVoiceOutcome(o: Pick<VoiceOutcome, 'output' | 'transcript'>): Promise<void>;
+  onVoiceOutcome(o: Pick<VoiceOutcome, 'output' | 'transcript'> & Partial<Pick<VoiceOutcome, 'localIntent'>>): Promise<void>;
   /** Voice, before the planner: "yes" / "no" to an open step check. True when consumed. */
   intercept(transcript: string): boolean;
   /** Move to the next step by hand (a button, a voice "next"). No-op when idle. */
@@ -198,6 +199,7 @@ export interface GuidedTask {
 }
 
 interface RunState {
+  search: TargetSearch | null;
   fridge: boolean;
   lastVisionAt: number;
   gen: number;
@@ -295,6 +297,41 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     deps.conversation?.pushAisle(phraseText(key), 'prompt');
   };
 
+  const speakSearch = (r: RunState): void => {
+    if (!r.search) return;
+    speech.say({ text: r.search.text, priority: 'NAV', dedupeKey: 'task-search', cooldownMs: 1500 });
+    deps.conversation?.pushAisle(r.search.text, 'prompt');
+    bus.emit({ type: 'TASK_STEP', index: r.step, total: r.steps.length, instruction: r.search.text });
+    deps.trace?.('target_search', { goal: r.goal, target: r.search.target, phase: r.search.phase, text: r.search.text });
+  };
+
+  const searchForMissingTarget = (r: RunState): boolean => {
+    if (!deps.guide) return false;
+    const step = r.steps[r.step];
+    const eligible = r.fridge ? r.step === 0 || r.step === 2 : step && (isWalkingStep(step.instruction) || isReachStep(step.instruction) || /^Look for the item\b/i.test(step.instruction));
+    if (!eligible && !r.search) return false;
+    const target = r.search?.target ?? (r.fridge ? r.step === 0 ? 'fridge' : itemOfGoal(r.goal) : stepTarget(step.instruction, step.lookFor, r.goal));
+    const instruction = deps.guide.instructionFor(target, r.modelTarget);
+    if (instruction && instruction.kind !== 'scan_unknown') {
+      if (r.search) {
+        r.search = null;
+        r.guided = null;
+        r.stepAt = now();
+        scheduleGiveUp(r);
+        scheduleReassure(r);
+        bus.emit({ type: 'TASK_STEP', index: r.step, total: r.steps.length, instruction: step.instruction });
+      }
+      return false;
+    }
+    if (!r.search) {
+      r.search = startTargetSearch(target, now(), suggestedLocation(r.goal, r.context));
+      if (r.fridge && r.step === 2) r.search.text = 'Which shelf should I check? Say upper, lower, or unsure.';
+      r.doneReadings = 0;
+      speakSearch(r);
+    } else if (searchTimeout(r.search, now())) speakSearch(r);
+    return true;
+  };
+
   const clearTimers = (r: RunState): void => {
     if (r.timer !== null) clearT(r.timer);
     if (r.remindTimer !== null) clearT(r.remindTimer);
@@ -318,6 +355,11 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     const s = r.steps[r.step];
     if (!s) return;
     if (!reminder) r.stepAt = now();
+    if (r.search || searchForMissingTarget(r)) {
+      if (reminder && r.search?.phase !== 'paused') speakSearch(r);
+      scheduleRemind(r);
+      return;
+    }
     const geometrySpoke = deps.guide && (r.fridge ? r.step === 0 : false) ? speakGeometry(r) : false;
     if (!geometrySpoke) speech.say({ text: s.instruction, priority: 'NAV', dedupeKey: `task-step-${r.step}`, cooldownMs: reminder ? 0 : 1500 });
     if (!reminder) {
@@ -347,7 +389,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (r.reassureTimer !== null) clearT(r.reassureTimer);
     r.reassureTimer = setT(() => {
       r.reassureTimer = null;
-      if (run !== r || mode() !== 'GUIDED_TASK' || r.check !== null) return;
+      if (run !== r || mode() !== 'GUIDED_TASK' || r.check !== null || r.search) return;
       const text = phraseText('task_still_looking');
       speech.say({ text, priority: 'INFO', cacheKey: 'task_still_looking', dedupeKey: 'task-reassure', cooldownMs: reassureMs });
       deps.conversation?.pushAisle(text, 'prompt');
@@ -368,6 +410,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
 
   const giveUp = (r: RunState): void => {
     if (run !== r) return;
+    if (r.search) return;
     if (r.fridge) {
       speech.say({ text: MISSION_PHRASES.mission_paused, priority: 'NAV' });
       scheduleGiveUp(r);
@@ -392,6 +435,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (run !== r || mode() !== 'GUIDED_TASK') return;
     r.doneReadings = 0;
     r.check = null;
+    r.search = null;
     if (r.handing) {
       handGuide.stop();
       r.handing = false;
@@ -414,6 +458,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     const where = place ? ` Place: ${place}.` : '';
     const seen = deps.seen?.();
     const memory = seen ? ` Seen: ${seen}.` : '';
+    if (r.search) return `Goal: ${r.goal}.${r.fridge ? ` Stage: ${FRIDGE_STAGES[r.step]}.` : ''} Search target: ${r.search.target}. It has not been located. Return a box only if that target is visible. User guidance: ${r.search.text} Do not claim arrival or completion. No walking instructions.${where}${memory}`.slice(0, 500);
     return `Goal: ${r.goal}. Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${s.lookFor}.${r.fridge ? ` Stage: ${FRIDGE_STAGES[r.step]}. Preserve this mission; do not describe the room or plan a route.` : ''}${where}${memory}`.slice(0, 500);
   };
 
@@ -447,12 +492,13 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     r.timer = setT(() => { void tick(r); }, deps.guide ? Math.min(tickMs, 500) : tickMs);
     const step = r.steps[r.step];
     if (r.fridge && r.step === 4) return; // only the person's confirmation completes pickup
-    const geometric = speakGeometry(r);
+    const searching = searchForMissingTarget(r);
+    const geometric = !searching && speakGeometry(r);
     if (geometric && r.doneReadings >= doneStreak) {
       advanceRun(r, false);
       return;
     }
-    if (step && (r.fridge ? r.step === 3 || (r.step === 1 && !r.checked.has(-1)) : isReachStep(step.instruction)) && !r.handing) {
+    if (!searching && step && (r.fridge ? r.step === 3 || (r.step === 1 && !r.checked.has(-1)) : isReachStep(step.instruction)) && !r.handing) {
       // The reach: steer the hand word by word until it touches the item, then close the task step.
       r.handing = true;
       const handleStage = r.fridge && r.step === 1;
@@ -485,6 +531,12 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         deps.trace?.('task_step', { step: r.step, geometric, status: out.status, speech: out.response?.speech ?? null, done: out.response?.task ?? null, target: out.response?.target ?? null, latencyMs: out.latencyMs });
         if (run === r && out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= 0.4) {
           r.modelTarget = { box: out.response.target.box, at: now() - (out.latencyMs ?? 0) };
+        }
+        if (searching || r.search) {
+          if (searchForMissingTarget(r)) return;
+          // Reacquisition can count toward finding the item, but a model's bare
+          // "done" never completes an unseen approach or a pending question.
+          if (!(r.fridge && r.step === 2)) return;
         }
         if (r.fridge && r.step === 2) {
           const found = out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= doneConfidence;
@@ -542,13 +594,16 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     return { detections, ocr, ...(scene ? { scene } : {}), ...(desc ? { description: desc } : {}) };
   };
 
-  const begin = async (goal: string, context: TaskContext): Promise<void> => {
+  const begin = async (goal: string, context: TaskContext, confirmedPlace?: string): Promise<void> => {
     stop();
     const gen = ++generation;
     const fixed = deps.guide ? fridgeMission(goal) : null;
-    if (!fixed) sayPhrase('let_me_see', 0);
+    const proposal = !fixed && deps.guide ? suggestedLocation(goal, context) : null;
+    const itemDirection = proposal ? deps.guide?.instructionFor(itemOfGoal(goal)) : null;
+    const propose = proposal && (!itemDirection || itemDirection.kind === 'scan_unknown');
+    if (!fixed && !propose && !confirmedPlace) sayPhrase('let_me_see', 0);
     let description: string | null = null;
-    if (!fixed && deps.describe) {
+    if (!fixed && !propose && !confirmedPlace && deps.describe) {
       try {
         description = await deps.describe();
       } catch {
@@ -561,6 +616,21 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     try {
       const facts = factsForPlanner(description);
       if (fixed) { plan = fixed; plannerFallback = false; }
+      else if (propose) {
+        plan = { askFirst: '', steps: [
+          { instruction: 'Look for the item without reaching yet.', lookFor: `${itemOfGoal(goal)} visible in the scene` },
+          { instruction: 'Reach for the item when it is visible.', lookFor: `${itemOfGoal(goal)} held in the user's hand` },
+        ] };
+        plannerFallback = true;
+      }
+      else if (confirmedPlace) {
+        plan = { askFirst: '', steps: [
+          { instruction: `Face the ${confirmedPlace}.`, lookFor: `${confirmedPlace} centered and within reach` },
+          { instruction: 'Look for the item without reaching yet.', lookFor: `${itemOfGoal(goal)} visible at the confirmed search location` },
+          { instruction: 'Reach for the item when it is visible.', lookFor: `${itemOfGoal(goal)} held in the user's hand` },
+        ] };
+        plannerFallback = true;
+      }
       else {
         const result = await deps.planner.run('taskPlan', { goal, context, ...(facts ? { facts } : {}) });
         plan = result.output;
@@ -573,9 +643,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
-    const r: RunState = { fridge: fixed !== null, lastVisionAt: -Infinity, gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, giveUpTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false, guided: null, modelTarget: null };
+    const r: RunState = { search: propose ? startTargetSearch(itemOfGoal(goal), now(), proposal) : null, fridge: fixed !== null, lastVisionAt: -Infinity, gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, giveUpTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false, guided: null, modelTarget: null };
     run = r;
     deps.conversation?.pushAisle(`Plan: ${plan.steps.length === 1 ? 'one step' : `${plan.steps.length} steps`} to ${goal}.`, 'prompt');
+    if (r.search) speakSearch(r);
     speakStep(r, false);
     r.timer = setT(() => { void tick(r); }, tickMs);
   };
@@ -594,6 +665,8 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   return {
     async onVoiceOutcome(o) {
       if (!run || mode() !== 'GUIDED_TASK') return;
+      if (o.localIntent === 'intercepted') return;
+      if (run.search && !isAdvanceRequest(o.transcript)) { speakSearch(run); return; }
       const intent = o.output.intent;
       if (intent === 'repeat') {
         speakStep(run, true);
@@ -605,7 +678,19 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       const r = run;
       if (!r || mode() !== 'GUIDED_TASK') return false;
       const t = transcript.trim();
+      // Explicit manual advancement remains available; a yes to a search question
+      // is handled separately and can never masquerade as camera confirmation.
       if (isAdvanceRequest(t)) { advanceRun(r, true); return true; }
+      if (r.search) {
+        const answer = answerTargetSearch(r.search, t, now());
+        if (!answer) return false;
+        if (answer.kind === 'location') {
+          const item = itemOfGoal(r.goal);
+          const prep = ['table', 'counter', 'desk', 'bed'].includes(answer.place) ? 'on' : 'in';
+          void begin(`${item} ${prep} the ${answer.place}`, r.context, answer.place);
+        } else speakSearch(r);
+        return true;
+      }
       if (/^(?:repeat|what next|what am i doing|what is my task|what's my task|how far(?: is it)?)\??$/i.test(t)) {
         r.guided = null;
         speakStep(r, true);

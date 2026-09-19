@@ -236,6 +236,8 @@ export interface ListenOptions {
 }
 
 export interface Recognizer {
+  /** Native capture configures its own audio session; avoid a duplicate transition. */
+  managesAudioSession?: boolean;
   isAvailable(): boolean;
   supportsOnDevice(): boolean;
   requestPermissions(): Promise<boolean>;
@@ -251,7 +253,7 @@ export interface VoiceInputOptions {
   /** Item + aisle vocabulary (store map); used for contextual strings, Scribe keyterms and the fallback parser. */
   knownItems: () => string[];
   recognizer?: Recognizer;
-  audio?: { setRecordingMode(on: boolean): Promise<void> };
+  audio?: { setRecordingMode(on: boolean, nativeOwnsSession?: boolean): Promise<void> };
   haptics?: { setSuspended(suspended: boolean): void };
   /** Upload the persisted clip to `/api/stt`; resolves to the transcript or null. Absent = never persist audio. */
   sttUpload?: (uri: string, keyterms: string[], timeoutMs: number) => Promise<string | null>;
@@ -332,6 +334,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   let last: VoiceOutcome | null = null;
   let unclearStreak = 0;
   let confirmationMisses = 0;
+  let pendingItemContext: { item: string; misses: number } | null = null;
   /** A task goal or a route destination spoken back for a yes/no before the big commitment starts (v2 B-4). */
   let pendingConfirm:
     | { kind: 'task'; goal: string; context: TaskContext }
@@ -454,6 +457,13 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         startTask(output.item, scene);
         return;
       }
+      if (!ON_TRIP.has(opts.store.getState().mode) && (!scene || scene === 'unknown')) {
+        pendingItemContext = { item: output.item, misses: 0 };
+        const text = 'Are you looking at home or in a store?';
+        opts.speech.say({ text, priority: 'NAV', dedupeKey: 'item-context', cooldownMs: 1000 });
+        opts.conversation?.pushAisle(text, 'prompt');
+        return;
+      }
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
     } else if (output.intent === 'navigate_to' && output.destination) {
       // Voice: confirm the place first ("The CVS on Forbes — right?"). Keyboard: the echo
@@ -488,11 +498,35 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     }
     pushUser(transcript, source);
     const previousGoal = opts.store.getState().taskGoal ?? (pendingConfirm?.kind === 'task' ? pendingConfirm.goal : null);
-    const previousItem = previousGoal ?? opts.store.getState().targetItem ?? last?.output.item;
+    const previousItem = previousGoal ?? pendingItemContext?.item ?? opts.store.getState().targetItem ?? last?.output.item;
     const placeCorrection = /^(?:in|from|inside) (?:my|the) (?:fridge|refrigerator)[.!]?$/i.test(transcript.trim());
     const homeGoal = placeCorrection && previousItem
       ? `${previousItem.replace(/\s+(?:in|from|inside)\s+.*$/i, '')} in my fridge`
       : explicitHomeGoal(transcript);
+    if (pendingItemContext) {
+      const pending = pendingItemContext;
+      const t = transcript.trim().toLowerCase();
+      const context = /^(?:(?:i am|i'm|im|at|in)\s+)*(?:my |the |a )?(home|house|kitchen|bedroom|living room)[.!]?$/.test(t) ? 'home'
+        : /^(?:(?:i am|i'm|im|at|in)\s+)*(?:the |a )?(store|shop|supermarket|grocery store)[.!]?$/.test(t) ? 'store' : null;
+      if (context) {
+        pendingItemContext = null;
+        if (opts.store.getState().mode !== 'IDLE') opts.store.getState().abort();
+        opts.bus.emit({ type: 'TASK_REQUESTED', goal: pending.item, context, source });
+        last = { output: { intent: 'guided_task', item: null, goal: pending.item, reply: '' }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+        return last;
+      }
+      const replacement = parseIntentFallback(transcript, opts.knownItems());
+      if (!homeGoal && !['abort', 'find_item', 'guided_task', 'navigate_to'].includes(replacement.intent)) {
+        pending.misses += 1;
+        const text = pending.misses < 2 ? 'Say home or store, or tell me where to look.' : 'Search paused. Tell me what you need and where to look.';
+        if (pending.misses >= 2) pendingItemContext = null;
+        opts.speech.say({ text, priority: 'NAV', dedupeKey: 'item-context', cooldownMs: 1000 });
+        opts.conversation?.pushAisle(text, 'prompt');
+        last = { output: { intent: 'unknown', item: null, reply: text }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+        return last;
+      }
+      pendingItemContext = null;
+    }
     // A confirm-back is waiting ("Eggs in my fridge. Did I get that right?"): consume yes/no
     // here, before the planner or any other intercept. Unclear answers retain the
     // pending goal: never send a failed confirmation to the camera question handler.
@@ -613,6 +647,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
 
   return {
     async begin() {
+      const pressedAt = now();
       if (ending) await ending;
       if (session) return;
       const s: Session = { handle: null, results: [], finalTranscript: null, audioUri: null, ended: false, error: null, done: false, waiters: [] };
@@ -624,17 +659,19 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       opts.speech.setSuspended?.(true);
       opts.haptics?.setSuspended(true);
       try {
-        await opts.audio?.setRecordingMode(true);
+        await opts.audio?.setRecordingMode(true, opts.recognizer?.managesAudioSession);
       } catch {
         // continue: the recognizer configures its own category on iOS
       }
       const rec = opts.recognizer;
+      const sessionAt = now();
       if (!rec || !rec.isAvailable()) {
         s.error = 'unavailable';
         s.ended = true;
         return;
       }
       const granted = await rec.requestPermissions();
+      const permissionsAt = now();
       if (!granted) {
         s.error = 'not-allowed';
         s.ended = true;
@@ -671,6 +708,8 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         },
       );
       await s.handle.ready;
+      opts.onDiagnostic?.({ phase: 'ready', startupMs: now() - pressedAt, sessionMs: sessionAt - pressedAt,
+        permissionsMs: permissionsAt - sessionAt, nativeMs: now() - permissionsAt });
     },
 
     end() {
@@ -726,7 +765,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     },
 
     isListening: () => session !== null && !session.ended,
-    isAwaitingConfirmation: () => pendingConfirm !== null,
+    isAwaitingConfirmation: () => pendingConfirm !== null || pendingItemContext !== null,
 
     async submitText(text) {
       return finishWith(text.trim(), 'keyboard', 'keyboard');
@@ -744,7 +783,11 @@ export function createExpoRecognizer(): Recognizer {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const SR = require('expo-speech-recognition') as typeof import('expo-speech-recognition');
   const M = SR.ExpoSpeechRecognitionModule;
+  // Read existing grants before the button is pressed. This neither prompts nor
+  // activates the microphone. Native start still checks for revoked permissions.
+  let permissions = M.getPermissionsAsync().then((p) => p.granted, () => false);
   return {
+    managesAudioSession: true,
     isAvailable: () => {
       try {
         return M.isRecognitionAvailable();
@@ -761,7 +804,10 @@ export function createExpoRecognizer(): Recognizer {
     },
     async requestPermissions() {
       try {
-        return (await M.requestPermissionsAsync()).granted;
+        if (await permissions) return true;
+        const granted = (await M.requestPermissionsAsync()).granted;
+        permissions = Promise.resolve(granted);
+        return granted;
       } catch {
         return false;
       }
@@ -778,7 +824,10 @@ export function createExpoRecognizer(): Recognizer {
       const subs = [
         M.addListener('audiostart', markReady),
         M.addListener('result', (e) => h.onResult({ isFinal: e.isFinal, results: e.results.map((r) => ({ transcript: r.transcript, confidence: r.confidence })) })),
-        M.addListener('error', (e) => { clearTimeout(readyTimer); readyReject(new Error(e.error)); h.onError(e.error); }),
+        M.addListener('error', (e) => {
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') permissions = Promise.resolve(false);
+          clearTimeout(readyTimer); readyReject(new Error(e.error)); h.onError(e.error);
+        }),
         M.addListener('end', () => {
           clearTimeout(readyTimer);
           readyReject(new Error('Recording ended before microphone became ready'));

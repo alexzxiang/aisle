@@ -706,3 +706,23 @@ Verified end to end against the live API with a placeholder fixture frame (captu
 scored recorded / Haiku 2.4 s / Sonnet 3.1 s). That proves the machinery, not accuracy: no
 real living-room frames are labelled yet, so v2's ≥ 80 % target-box acceptance is unmeasured.
 Next step for whoever runs the living-room test: start the proxy with `CAPTURE_FRAMES=1`.
+
+## C — 2026-09-19: unseen-target dialogue and microphone startup
+
+Follow-up fixes span the app's guidance and voice services because these decisions happen
+on the phone. An item request with unknown surroundings now asks home/store before choosing
+a trip. Unseen eggs can lead to a tentative fridge suggestion, then a direction question;
+an open fridge with no item visible prompts for a shelf. Answers preserve the requested item,
+and a suggested location or spoken direction only initiates a camera search. Visible targets
+or remembered bearings resume the existing guide. Unanswered questions/scans pause after a
+bounded sequence; retry, another location, stop, and explicit manual advancement remain
+available. Consumed voice answers cannot advance the task twice.
+
+Microphone startup lets the native recognizer configure its own audio session, removing the
+preceding duplicate expo-audio transition. Existing permission grants are read before press
+without prompting or opening the microphone; missing permissions are requested on press.
+Tones stop during capture and playback mode is restored on release. `voice_capture` records
+`phase: ready`, `startupMs`, `sessionMs`, `permissionsMs`, and `nativeMs` for device diagnosis.
+Verified locally: app lint/typecheck and 1146 tests (77 suites); proxy typecheck and 202 tests.
+These are JS changes: reload the installed app. Actual iPhone capture latency and the spoken
+search flow still need a device rehearsal; no measured reduction in the reported delay yet.

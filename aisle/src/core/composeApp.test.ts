@@ -208,7 +208,7 @@ describe('composeApp (mock mode)', () => {
     // four-second gap, so the look prompt follows it and the step comes after.
     expect(platform.spoken).toEqual(['Eggs in my fridge. Got it.']);
     await jest.advanceTimersByTimeAsync(4000);
-    expect(platform.spoken).toEqual(['Eggs in my fridge. Got it.', 'Fridge not visible. Stay still and scan slowly.']);
+    expect(platform.spoken).toEqual(['Eggs in my fridge. Got it.', 'Which direction should I look? You can say you are unsure.']);
     expect(app.guidedTask.isActive()).toBe(true);
     const dbg = app.guidedTask.getDebugState();
     expect(dbg.total).toBeGreaterThanOrEqual(3);
@@ -240,10 +240,10 @@ describe('composeApp (mock mode)', () => {
       'you:take me to the eggs in my fridge',
       'aisle:Eggs in my fridge. Got it.',
       'aisle:Plan: 5 steps to eggs in my fridge.',
-      'aisle:Fridge not visible. Stay still and scan slowly.',
+      'aisle:Which direction should I look? You can say you are unsure.',
       'aisle:Next step.',
       'aisle:Stop at the fridge. Find its handle and open the door.',
-      'aisle:Keep still. Point the camera inside the open fridge.',
+      'aisle:Which shelf should I check? Say upper, lower, or unsure.',
       'aisle:Keep the item and your outstretched hand in the camera view.',
       'aisle:Have you picked it up? Say yes when you have it.',
       'aisle:Done. Task complete.',
