@@ -7,8 +7,8 @@
  * job also starts Haiku at t = 0 with the same prompt, schema-in-prompt and
  * input; Nemotron's answer is used when it lands in time, otherwise whatever
  * Haiku has by the deadline plus a short grace, and only then the template.
- * The Haiku call is aborted when Nemotron wins, so it costs a few hundred
- * input tokens per miss and nothing more.
+ * The unused call is aborted when a winner is selected; providers may still
+ * bill tokens processed before cancellation.
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../config';

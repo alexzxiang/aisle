@@ -99,7 +99,8 @@ export interface HealthDeps {
 }
 
 export interface HealthService {
-  report(opts?: { force?: boolean }): Promise<HealthReport>;
+  /** `timeoutMs` bounds this call's own upstream probes only; cached/fresh results are unaffected. */
+  report(opts?: { force?: boolean; timeoutMs?: number }): Promise<HealthReport>;
 }
 
 interface CacheEntry {
@@ -114,12 +115,12 @@ export function createHealthService(deps: HealthDeps): HealthService {
   const ttl = (name: UpstreamName | 'overpass'): number =>
     deps.cacheMs?.[name] ?? (name === 'elevenlabs_tts' || name === 'elevenlabs_stt' || name === 'google_routes' || name === 'overpass' ? HEALTH_SLOW_CACHE_MS : HEALTH_CACHE_MS);
 
-  const runCheck = async (name: UpstreamName | 'overpass', fn: CheckFn, force: boolean): Promise<UpstreamStatus> => {
+  const runCheck = async (name: UpstreamName | 'overpass', fn: CheckFn, force: boolean, timeoutMs?: number): Promise<UpstreamStatus> => {
     const cached = cache.get(name);
     if (!force && cached && now() - cached.at < ttl(name)) return { ...cached.status, fromCache: true };
     const t0 = now();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? HEALTH_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs ?? deps.timeoutMs ?? HEALTH_TIMEOUT_MS);
     let status: UpstreamStatus;
     try {
       const extra = (await fn(controller.signal)) ?? {};
@@ -142,8 +143,12 @@ export function createHealthService(deps: HealthDeps): HealthService {
     async report(opts = {}) {
       const force = opts.force === true;
       const names: UpstreamName[] = ['anthropic', 'nvidia', 'openrouter', 'elevenlabs_tts', 'elevenlabs_stt', 'google_routes'];
-      const results = await Promise.all(names.map((n) => runCheck(n, deps.checks[n], force)));
-      const overpass = await runCheck('overpass', deps.checks.overpass, force);
+      // Overpass runs alongside the upstreams, not after them, so a cold report is bounded by
+      // one timeout instead of two (the doctor's short budget depends on this).
+      const [results, overpass] = await Promise.all([
+        Promise.all(names.map((n) => runCheck(n, deps.checks[n], force, opts.timeoutMs))),
+        runCheck('overpass', deps.checks.overpass, force, opts.timeoutMs),
+      ]);
       const upstreams = {} as Record<UpstreamName, UpstreamStatus>;
       names.forEach((n, i) => {
         const r = results[i]!;

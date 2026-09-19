@@ -510,3 +510,56 @@ cells as a `path:` fact, scene memory extended to Apple-classifier things (eggs,
 image-wide bearings, "where's the X?" answered from memory for anything named, the "Sees:"
 strip tagging the closest thing. Native changes compiled (`ios:check`); the phone was
 unplugged, so the rebuild is pending — `npm run ios:device` when it is back.
+
+## C — 2026-09-19: the brain's reliability round
+
+- **Planner race.** Both providers now start together and both are judged: a repaired
+  (field-invalid) Nemotron answer no longer ends the race, the backup gets its grace
+  window, and the loser is cancelled once. Every call logs a per-provider attempt
+  (`status`, `elapsedMs`, `firstTokenMs`), so `plan.eval.md` §5 shows completed counts,
+  p50/p95 and invalid/error/timeout/cancelled per provider. `parseIntent` flips to Haiku
+  first only after five Nemotron samples with a rolling median above 3 s; `routeCompile`
+  stays Nemotron.
+- **taskPlan grounding.** Five goldens (kitchen/fridge, living room/keys, store/eggs,
+  street/entrance, unknown) in `plan.eval.ts`, checked by `plan.eval.test.ts`: step one
+  must name an observed landmark and keep its observed side, and an unknown scene must
+  start with a stationary scan. The template fallback reads `facts.description` for that
+  anchor instead of inventing the old doorway route, and refuses negated or hedged
+  mentions ("No fridge on the left."). Offline: 5/5 grounded, intent accuracy 98.3 %
+  (clean 20/20, noisy 19/20, off-task 20/20).
+- **Places.** `placesReply` distinguishes "Found the nearest matching place." from
+  "Found the one on Forbes Avenue." and never claims a street match it did not get. An
+  Overpass outage falls back to the last result for the same position and radius, marked
+  `stale-cache` and re-filtered for the current name and street, capped at an hour, and
+  the cached timestamp is not refreshed so an outage cannot make old data immortal.
+- **Doctor.** `npm run doctor [url]` prints `/api/health` one line per upstream in
+  colour and exits nonzero on a required red; `failureKind` separates a dead key
+  (`MISSING KEY`, `AUTH / PERMISSION`), a `QUOTA` and a dead `NETWORK`, and no response
+  body or URL is ever printed (they can carry credentials). A cold report used to be two
+  serial 10 s waits (upstreams, then Overpass), which the doctor could only report as a
+  generic timeout: Overpass now runs alongside the rest and `GET /api/health?budgetMs=`
+  bounds each fresh probe, so the diagnosis lands in about two seconds. Measured against
+  a keyless local proxy: six `MISSING KEY` lines plus Overpass `OK` in 1.8 s; with
+  `?force=1&budgetMs=300` the 337 ms Overpass probe correctly reports `timeout` at 307 ms.
+- **Live eval, with keys (`plan.eval.md`, 2026-09-19 16:32 UTC).** All five upstreams green
+  through `npm run doctor` in 1.4 s. Model grounding on the five goldens is **5/5** live,
+  every one from Nemotron with no fallback. Per-job totals p50/p95 ms: parseIntent 756/4508
+  (n = 60), answer 1512/4508, crossingAnnounce 1206/8011, disambiguate 4504/4508,
+  routeCompile 5613/8012, taskPlan 6034/8010. No thinking leaked on any job.
+- **What the attempt table shows, and it is the argument for the race.** On `parseIntent`
+  Nemotron completed 4 of its tries (14 errors, 3 timeouts, 39 cancelled) while Haiku
+  completed 59 at p50 751 ms, so the rolling-median rule has already flipped the next
+  `parseIntent` primary to `anthropic` — the switch is doing its job rather than sitting
+  unused. Fallback to the template was 1.7 % over the 60 utterances.
+- **Two honest negatives.** Live intent accuracy is **93.3 %** against the template's
+  98.3 % (clean 19/20, noisy 19/20, off-task 18/20, item match 95 %): the model recovers
+  "how fart is it" where the regex cannot, but loses more elsewhere, so the template is
+  not merely a safety net here. And `routeCompile` on Nemotron is p50 4239 ms with 2
+  timeouts against Haiku's 923 ms; the plan keeps Nemotron first there for the directional
+  navigation story, so the cost of that choice is now measured, not assumed.
+- **Still open.** `server/.env.example` does not exist although the setup block tells
+  teammates to copy it. `OPENROUTER_API_KEY` is unset, so the NIM failover path is
+  unexercised (grey, informational).
+
+Gates on this checkout: server `tsc --noEmit` clean, 183 vitest (19 files); app typecheck,
+phrase and deps lint, 1029 Jest tests (70 suites) green.
