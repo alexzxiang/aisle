@@ -184,6 +184,8 @@ export function createPlanRouter(deps: PlanDeps = {}): Router {
         latencyMs: result.latencyMs,
         firstTokenMs: result.firstTokenMs,
         provider: result.provider,
+        model: result.model,
+        reason: result.reason,   // 'first_token_deadline' | 'total_deadline' | 'upstream_error' | 'validation' | null
       };
       res.json(body);
     } catch (e) {
