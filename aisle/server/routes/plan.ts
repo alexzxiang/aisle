@@ -177,7 +177,7 @@ export function createPlanRouter(deps: PlanDeps = {}): Router {
     const { job, input } = parsed.data;
     try {
       const result = await runPlannerJob(job, input as unknown as JobInput<typeof job>, deps);
-      const body: PlannerResult<unknown> & { firstTokenMs: number | null; provider: string | null } = {
+      const body: PlannerResult<unknown> & { firstTokenMs: number | null; provider: string | null; model: string | null; reason: string | null } = {
         job: result.job,
         output: result.output,
         fallback: result.fallback,
