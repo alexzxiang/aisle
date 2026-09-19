@@ -4,6 +4,23 @@ User: Alex (person A). Request: pull teammate changes, restore audible/fast spee
 expand prepared speech, and reliably carry "eggs from my fridge" through approach,
 opening, item identification, hand guidance and completion. Keep this file current.
 
+## Latest — empty speech captures after CV recovery
+
+User confirms CV is back. Trace contains one recognized "Eggs" between many empty
+captures that were misclassified as unclear intents. Speech changes: continuous
+recognition until button release, preserve partial text against empty final result,
+wait for native end/recording finalization before fallback upload or playback reset,
+serialize duplicate releases and new capture startup, remove delayed playback reset
+that could interfere with the next recording. Empty capture now emits a dedicated
+notice at most once per 15 seconds, never increments unclear-item/confirmation
+counters and never discards the pending goal. Add voice_capture diagnostics (error,
+ended, hasClip, resultCount, transcriptLength, STT source; not recorded audio).
+
+Full app lint and 1137 tests passed before the last pending-confirmation regression
+and delayed-reset removal; targeted voice checks run after those final changes.
+This is JS-only; full reload is sufficient. Real microphone recognition still needs
+the user's retest; do not claim capture accuracy from mocks.
+
 ## Latest — detector stopped / reconciliation audit
 
 Trace: detector events stop after timestamp 1789846268367 (last frame had chair and

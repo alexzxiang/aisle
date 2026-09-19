@@ -326,6 +326,45 @@ describe('createVoiceInput', () => {
     await v2.end();
   });
 
+  it('keeps a useful partial when the final is empty and processes duplicate releases once', async () => {
+    const r = fakeRecognizer();
+    const v = make(r.rec);
+    await v.begin();
+    r.partial('eggs');
+    r.final('');
+    r.end();
+    const first = v.end();
+    const duplicate = v.end();
+    expect(duplicate).toBe(first);
+    expect((await first).transcript).toBe('eggs');
+    expect(r.calls.filter((c) => c === 'stop')).toHaveLength(1);
+    const spoken = said.length;
+    await v.end();
+    expect(said.length).toBe(spoken);
+  });
+
+  it('waits for native end and the audio file before Scribe fallback', async () => {
+    let handlers!: RecognizerHandlers;
+    let finishNative!: () => void;
+    const ended = new Promise<void>((resolve) => { finishNative = resolve; });
+    const rec: Recognizer = {
+      isAvailable: () => true, supportsOnDevice: () => true, requestPermissions: async () => true,
+      listen: (_o, h) => { handlers = h; return { ended, stop() {}, abort() {} }; },
+    };
+    const upload = jest.fn(async () => 'yes');
+    const v = make(rec, { sttUpload: upload, finalTimeoutMs: 0 });
+    await v.begin();
+    const result = v.end();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(upload).not.toHaveBeenCalled();
+    expect(audioModes).toEqual([true]);
+    handlers.onAudioEnd('file:///recording.wav');
+    handlers.onEnd();
+    finishNative();
+    expect((await result).transcript).toBe('yes');
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
   it('deletes the persisted clip once end() is through with it, whether or not it was uploaded', async () => {
     const deleted: string[] = [];
     const deleteFile = (uri: string) => { deleted.push(uri); };
@@ -384,7 +423,7 @@ describe('createVoiceInput', () => {
     await expect(v.end()).resolves.toMatchObject({ transcript: 'eggs' });
   });
 
-  it('nothing heard → "Say the item again", no event, session torn down', async () => {
+  it('nothing heard reports capture failure, not an unclear item, and tears down', async () => {
     jest.useFakeTimers();
     try {
       const r = fakeRecognizer();
@@ -394,7 +433,7 @@ describe('createVoiceInput', () => {
       jest.advanceTimersByTime(150);
       const out = await p;
       expect(out).toMatchObject({ transcript: '', sttPath: 'none', planner: false });
-      expect(out.output.reply).toBe(PHRASES.say_item_again);
+      expect(out.output.reply).toContain('No speech recorded');
       expect(events).toEqual([]);
       expect(fetchCalls).toEqual([]);
       expect(audioModes).toEqual([true, false]);
@@ -489,7 +528,7 @@ describe('createVoiceInput', () => {
       } finally {
         jest.useRealTimers();
       }
-      expect(lines().slice(4)).toEqual([`aisle/speech:${PHRASES.say_item_again}`]);
+      expect(lines().slice(4)).toEqual(['aisle/speech:No speech recorded. Wait for listening, then speak while holding.']);
     });
 
     it('a canonical phrase reply carries its cache key so it plays from the bundle', async () => {
@@ -749,6 +788,19 @@ describe('goal confirmation when a spoken item is uncertain', () => {
     expect(events.some((e) => e.type === 'TASK_REQUESTED')).toBe(false);
     await v.submitText('take me to my fridge and find my eggs');
     expect(events).toContainEqual(expect.objectContaining({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge' }));
+  });
+
+  it('empty microphone captures neither cancel confirmation nor escalate item prompts', async () => {
+    const { v, rec, said, events } = setup('home');
+    await v.begin(); rec.final('find pasta'); await v.end();
+    for (let i = 0; i < 3; i += 1) {
+      await v.begin(); rec.end(); await v.end();
+    }
+    expect(v.isAwaitingConfirmation()).toBe(true);
+    expect(said.filter((s) => s.text.startsWith('No speech recorded'))).toHaveLength(1);
+    expect(said.some((s) => s.text === PHRASES.say_item_one_word)).toBe(false);
+    await v.begin(); rec.final('yes'); await v.end();
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TASK_REQUESTED', goal: 'pasta' }));
   });
 
   it('a spoken route is confirmed before it starts; "yes" then launches the trip (v2 B-4)', async () => {

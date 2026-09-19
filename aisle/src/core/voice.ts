@@ -222,6 +222,7 @@ export interface RecognizerHandlers {
 export interface RecognizerSession {
   /** Resolves on the native audio-capture event, not merely after calling start(). */
   ready?: Promise<void>;
+  ended?: Promise<void>;
   stop(): void;
   abort(): void;
 }
@@ -242,6 +243,7 @@ export interface Recognizer {
 }
 
 export interface VoiceInputOptions {
+  onDiagnostic?: (data: Record<string, unknown>) => void;
   speech: SpeechService & { setSuspended?(on: boolean): void };
   bus: AppEventBus;
   store: AppStore;
@@ -325,6 +327,8 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   const persistAudio = opts.sttUpload !== undefined;
   const deleteFile = opts.deleteFile ?? createExpoFileDelete();
   let session: Session | null = null;
+  let ending: Promise<VoiceOutcome> | null = null;
+  let lastEmptyNotice = -Infinity;
   let last: VoiceOutcome | null = null;
   let unclearStreak = 0;
   let confirmationMisses = 0;
@@ -471,6 +475,17 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   };
 
   const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource): Promise<VoiceOutcome> => {
+    if (!transcript.trim() && source === 'voice') {
+      // Capture failure is not an unclear intent or a rejected confirmation.
+      const reply = 'No speech recorded. Wait for listening, then speak while holding.';
+      if (now() - lastEmptyNotice >= 15_000) {
+        lastEmptyNotice = now();
+        opts.speech.say({ text: reply, priority: 'NAV', dedupeKey: 'voice-empty', cooldownMs: 15_000 });
+        opts.conversation?.pushAisle(reply, 'speech');
+      }
+      last = { output: { intent: 'unknown', item: null, reply }, transcript: '', sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+      return last;
+    }
     pushUser(transcript, source);
     const previousGoal = opts.store.getState().taskGoal ?? (pendingConfirm?.kind === 'task' ? pendingConfirm.goal : null);
     const previousItem = previousGoal ?? opts.store.getState().targetItem ?? last?.output.item;
@@ -592,15 +607,13 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // the session comes back on the next configureSession()
     }
     opts.speech.setSuspended?.(false);
-    // Belt and braces: once the recogniser has surely let go of the audio engine, apply
-    // playback again so the speaker level never stays at the record category's (round 6c).
-    setTimeout(() => {
-      if (!session) opts.audio?.setRecordingMode(false).catch(() => undefined);
-    }, 1500);
+    // Native end is awaited before teardown. Do not schedule another playback
+    // reset: its async retries can otherwise overwrite the next recording session.
   };
 
   return {
     async begin() {
+      if (ending) await ending;
       if (session) return;
       const s: Session = { handle: null, results: [], finalTranscript: null, audioUri: null, ended: false, error: null, done: false, waiters: [] };
       session = s;
@@ -634,6 +647,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         { lang: 'en-US', onDevice: opts.preferOnDeviceStt === true && rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()), persistAudio },
         {
           onResult(e) {
+            if (!bestTranscript(e.results)) return; // an empty final must not erase useful partials
             s.results = e.results;
             if (e.isFinal) {
               s.finalTranscript = bestTranscript(e.results);
@@ -659,13 +673,20 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       await s.handle.ready;
     },
 
-    async end() {
+    end() {
+      if (ending) return ending;
+      ending = (async () => {
       const s = session;
-      if (!s) return finishWith('', 'none', 'voice');
+      if (!s) return { output: { intent: 'unknown' as const, item: null, reply: '' }, transcript: '', sttPath: 'none' as const, planner: false, plannerLatencyMs: null };
       try {
         s.handle?.stop();
         await waitForFinal(s);
-        let transcript = s.finalTranscript ?? bestTranscript(s.results);
+        if (s.handle?.ended && !s.ended) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          await Promise.race([s.handle.ended, new Promise<void>((resolve) => { timer = setTimeout(resolve, 2000); })]);
+          if (timer) clearTimeout(timer);
+        }
+        let transcript = s.finalTranscript || bestTranscript(s.results);
         let sttPath: VoiceOutcome['sttPath'] = transcript ? 'on-device' : 'none';
         const confidence = Math.max(...s.results.map((r) => r.confidence ?? -1));
         const uncertain = confidence >= 0 && confidence < 0.45;
@@ -676,6 +697,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
             sttPath = 'scribe';
           }
         }
+        opts.onDiagnostic?.({ error: s.error, ended: s.ended, hasClip: !!s.audioUri, resultCount: s.results.length, transcriptLength: transcript.length, sttPath });
         session = null;
         await teardown(s);
         return await finishWith(transcript, sttPath, 'voice');
@@ -684,6 +706,10 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         await teardown(s);
         return finishWith('', 'none', 'voice');
       }
+      })();
+      const result = ending;
+      void result.then(() => { ending = null; }, () => { ending = null; });
+      return result;
     },
 
     cancel() {
@@ -744,6 +770,8 @@ export function createExpoRecognizer(): Recognizer {
       let readyResolve!: () => void;
       let readyReject!: (error: Error) => void;
       const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+      let endResolve!: () => void;
+      const ended = new Promise<void>((resolve) => { endResolve = resolve; });
       void ready.catch(() => undefined); // start() can throw before begin() attaches its await
       const readyTimer = setTimeout(() => readyReject(new Error('Microphone startup timed out')), 5000);
       const markReady = (): void => { clearTimeout(readyTimer); readyResolve(); };
@@ -755,6 +783,7 @@ export function createExpoRecognizer(): Recognizer {
           clearTimeout(readyTimer);
           readyReject(new Error('Recording ended before microphone became ready'));
           h.onEnd();
+          endResolve();
           for (const s of subs) s.remove();
         }),
         M.addListener('audioend', (e) => h.onAudioEnd(e.uri)),
@@ -762,7 +791,7 @@ export function createExpoRecognizer(): Recognizer {
       M.start({
         lang: o.lang,
         interimResults: true,
-        continuous: false,
+        continuous: true, // push-to-talk ends on release, not the first brief silence
         requiresOnDeviceRecognition: o.onDevice,
         contextualStrings: o.contextualStrings,
         iosTaskHint: 'search',
@@ -779,6 +808,7 @@ export function createExpoRecognizer(): Recognizer {
       });
       return {
         ready,
+        ended,
         stop: () => M.stop(),
         abort: () => M.abort(),
       };

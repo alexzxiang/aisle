@@ -372,6 +372,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     return Array.from(words);
   };
   const voice = createVoiceInput({
+    onDiagnostic: (data) => trace('voice_capture', data),
     speech,
     bus,
     store,
