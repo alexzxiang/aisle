@@ -110,3 +110,26 @@ describe('visionTimeoutFor', () => {
     expect(VISION_TIMEOUT_SLACK_MS).toBeGreaterThan(VISION_TIMEOUT_MS);
   });
 });
+
+describe('which questions get the stronger model', () => {
+  // Measured on four captured frames of an open fridge: Haiku said the step was
+  // not done ("reach for the handle") 4/4, Sonnet said done ("already open") 4/4,
+  // for ~300 ms more. Dropping the on-device facts and the "Seen:" line left
+  // Haiku wrong both times, so the model is the variable, not the prompt.
+  it('sends the two judgement questions to Sonnet', () => {
+    expect(modelFor('curb_crop')).toBe(MODELS.sonnet);
+    expect(modelFor('task_step')).toBe(MODELS.sonnet);
+  });
+
+  it('leaves the describing questions on Haiku', () => {
+    for (const q of ['situate', 'free', 'storefront', 'aisle_disambiguate', 'scan_left', 'scan_right'] as const) {
+      expect({ q, model: modelFor(q) }).toEqual({ q, model: MODELS.haiku });
+    }
+  });
+
+  it('keeps task_step on the slack-tolerant timeout, not the curb budget', () => {
+    // The crossing read is time-critical; a guided step is not.
+    expect(visionTimeoutFor('task_step')).toBe(visionTimeoutFor('situate'));
+    expect(visionTimeoutFor('curb_crop')).toBeLessThan(visionTimeoutFor('task_step'));
+  });
+});
