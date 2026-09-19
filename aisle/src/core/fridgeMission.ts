@@ -1,17 +1,20 @@
 import type { TaskPlanOutput } from './contracts';
 import { MISSION_PHRASES } from './preparedGuidance';
-import { itemOfGoal } from './handGuide';
+import { itemOfGoal, normalizeGoal } from './handGuide';
 
 export type FridgeStage = 'approach' | 'open' | 'find_item' | 'reach' | 'confirm_pickup';
 export const FRIDGE_STAGES: readonly FridgeStage[] = ['approach', 'open', 'find_item', 'reach', 'confirm_pickup'];
 
 /** A retrieval mission has prerequisites that a free-form planner cannot omit/reorder. */
-export function fridgeMission(goal: string): TaskPlanOutput | null {
+export function fridgeMission(rawGoal: string): TaskPlanOutput | null {
+  const goal = normalizeGoal(rawGoal);
   if (!/\b(fridge|refrigerator|freezer)\b/i.test(goal)) return null;
   const appliance = /\bfreezer\b/i.test(goal) ? 'freezer' : 'fridge';
   const wording = (text: string): string => text.replace(/\bfridge\b/g, appliance);
   const item = itemOfGoal(goal);
-  if (/\b(fridge|refrigerator|freezer)\b/i.test(item)) return {
+  // Only a bare "the fridge" is an errand that ends at the door; any other words name a thing to get.
+  const applianceOnly = /^(?:(?:take me to|bring me to|walk me to|go to|find|open|reach)\s+)?(?:the |my )?(?:fridge|refrigerator|freezer)(?: door)?$/i.test(item);
+  if (applianceOnly) return {
     askFirst: `Find the ${appliance}.`,
     steps: [{ instruction: `Find the ${appliance}.`, lookFor: `${appliance} centered and close enough to reach its handle` }],
   };

@@ -28,7 +28,7 @@ import type { DetectionClass, HapticPattern } from './contracts';
 import type { Guide, GuideInstruction, TargetBox } from './guide';
 import { stepsWords } from './guide';
 import { classForWords, spokenName } from './sceneMemory';
-import { itemOfGoal } from './handGuide';
+import { itemOfGoal, normalizeGoal } from './handGuide';
 import { isAffirmative, isNegative, normalizeAnswer } from './yesNo';
 import type { SearchExplorer } from './searchExplorer';
 import { checkedLine, hypothesisLine, rankHypotheses, spoken, statedPlaceIn, type PlaceEvidence, type PlaceHypothesis } from './hypotheses';
@@ -67,7 +67,7 @@ const ROOM_WORDS = /^(?:kitchen|living room|lounge|bedroom|bathroom|hallway|hall
  * fridge mission (they have an "open" stage); this returns null for them.
  */
 export function parseMissionGoal(goal: string): MissionGoal | null {
-  const g = goal.trim().replace(/[.!?]+$/, '');
+  const g = normalizeGoal(goal.trim().replace(/[.!?]+$/, ''));
   if (g.length === 0 || /\b(fridge|refrigerator|freezer)\b/i.test(g)) return null;
   const item = itemOfGoal(g);
   if (!item) return null;

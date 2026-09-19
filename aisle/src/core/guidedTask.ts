@@ -136,6 +136,9 @@ export interface GuidedTaskDeps {
   adaptiveSearch?: boolean;
   heading?: () => number | null;
   steps?: () => number;
+  /** Round 12: ARKit pose and the depth grid's bottom row, for exploring a big space by coverage. */
+  pose?: () => import('./contracts').Pose | null;
+  path?: () => { center: number; left?: number; right?: number } | null;
   bus: Pick<AppEventBus, 'on' | 'emit'>;
   store: Pick<AppStore, 'getState' | 'subscribe'>;
   speech: Pick<SpeechService, 'say'>;
@@ -731,7 +734,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         instruction: 'It may be in the fridge. Find the fridge first.',
       };
     }
-    const search = deps.adaptiveSearch && deps.guide && (context === 'home' || context === 'store') ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, now }) : null;
+    const search = deps.adaptiveSearch && deps.guide && (context === 'home' || context === 'store') ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, pose: deps.pose, path: deps.path, now }) : null;
     const missionGoal = deps.guide && !fixedFridge && (context === 'home' || (context === 'store' && search)) ? parseMissionGoal(goal) : null;
     const mission = missionGoal ? createMissionRunner(missionGoal, { guide: deps.guide!, sceneLabel: deps.scene, search: search ?? undefined, now }) : null;
 

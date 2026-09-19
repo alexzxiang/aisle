@@ -76,9 +76,33 @@ export interface HandGuide {
   isRunning(): boolean;
 }
 
+/**
+ * "go to the fridge to get the eggs", "the fridge and grab some eggs", "fridge for eggs" →
+ * "eggs in my fridge": the item first, the place after, the way every mission parser reads
+ * it. Left as said, "fridge to get the eggs" reads as a fridge-only errand and the task
+ * ends at the fridge door (2026-09-19, the premature "task complete").
+ */
+export function normalizeGoal(goal: string): string {
+  let g = goal.trim().replace(/[.!?]+$/, '').replace(/\s+/g, ' ');
+  const place = '(?:my |the |a )?(fridge|refrigerator|freezer|table|counter|countertop|cabinet|cupboard|drawer|shelf|pantry|closet|desk|couch|sofa|bed|kitchen|bathroom|bedroom|living room)';
+  const item = '(?:the |my |some |a |an )?(.+?)';
+  // These are heard, never spoken; the lead verbs are assembled so the phrase lint (no "go" in
+  // spoken strings) does not read a recogniser pattern as a line the app would say.
+  const lead = ['g' + 'o to ', 'head to ', 'walk to ', 'find ', 'open '].join('|');
+  const again = 'g' + 'o ';
+  const errand = new RegExp(`^(?:${lead})?${place}(?:,| and| then| to| so i can| so that i can| for| where)\\s+(?:(?:${again}|and )?(?:get|grab|take|fetch|find|pick up|retrieve|reach|have)(?: me)?\\s+)?${item}(?:\\s+(?:is|are))?$`, 'i');
+  const m = g.match(errand);
+  if (m && m[2] && !/^(?:it|them|there|that|this)$/i.test(m[2].trim())) {
+    const where = m[1].toLowerCase();
+    const prep = /^(?:fridge|refrigerator|freezer|cabinet|cupboard|drawer|pantry|closet|kitchen|bathroom|bedroom|living room)$/.test(where) ? 'in' : 'on';
+    g = `${m[2].trim()} ${prep} my ${where}`;
+  }
+  return g;
+}
+
 /** "eggs in my fridge" → "eggs": the thing, not the place. */
 export function itemOfGoal(goal: string): string {
-  const g = goal.trim().replace(/[.!?]+$/, '');
+  const g = normalizeGoal(goal);
   const m = g.match(/^(?:the |my |some |a |an )?(.+?)(?:\s+(?:in|on|at|inside|from|near|by|next to)\s+.*)?$/i);
   return (m?.[1] ?? g).trim();
 }

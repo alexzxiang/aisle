@@ -782,3 +782,15 @@ that names what was checked and asks, a look-around before the room question, re
 ("try the cabinet") and "where have we looked". Claude gets the hypothesis and the checked
 list in userText and its landmarks feed the navigator's evidence. App 1284 tests, proxy 215.
 JS only — Metro reload. Not yet tried in the room.
+
+### Round 12 (Stream A) — 2026-09-20, small hours
+No teammate commits to merge. Two things from the room: (1) "go to the fridge to get the eggs"
+ended with "task complete" at the fridge door because the goal parsed as a fridge-only errand —
+`normalizeGoal()` now rewrites every "<place> to get / and grab / for <item>" into "<item> in
+my <place>" ahead of all parsers, and the fridge mission only ends at the door for a bare
+"the fridge"; the item must be confirmed in hand before any retrieval completes. (2) Exploring
+a big space: `explorationMap.ts` keeps ARKit-position coverage (1.5 m cells, scanned cells,
+blocked headings) and the explorer walks legs toward unvisited ground with heading hold and
+blockage stops when Claude offers no landmark; the item's own section is searched shelf by
+shelf before proposing to leave it. App 1301 tests, proxy 215. JS only — Metro reload. Not yet
+walked in a store.

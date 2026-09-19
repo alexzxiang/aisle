@@ -458,10 +458,14 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   // --- Round 4: guided tasks (no route; Tier 2 plans the steps, Tier 1 confirms each) ---
   let searchSteps = 0;
   unsubs.push(sensors.subscribeSteps((steps) => { searchSteps = steps; }));
+  let latestPose: import('./contracts').Pose | null = null;
+  unsubs.push(perception.onPose((p) => { latestPose = p; }));
   const guidedTask = createGuidedTask({
     adaptiveSearch: !mocks,
     heading: () => sceneMemory.facing(),
     steps: () => searchSteps,
+    pose: () => (latestPose && now() - latestPose.timestamp <= 2000 && latestPose.trackingState !== 'NOT_AVAILABLE' ? latestPose : null),
+    path: () => (latestDepth && now() - latestDepth.at <= 1000 ? latestDepth : null),
     bus,
     store,
     speech,

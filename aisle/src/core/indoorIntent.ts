@@ -1,3 +1,5 @@
+import { normalizeGoal } from './handGuide';
+
 /** Explicit home commands win over a model's grocery-route guess. Questions remain questions. */
 export function explicitHomeGoal(transcript: string): string | null {
   let t = transcript.trim().replace(/[.!?]+$/, '').toLowerCase();
@@ -10,5 +12,6 @@ export function explicitHomeGoal(transcript: string): string | null {
   if (retrieval) t = `${retrieval[2]} in my fridge`;
   // ASR sometimes appends a second way of asking the same question.
   t = t.replace(/\s+how (?:do i|can i) get to.*$/, '').trim();
+  t = normalizeGoal(t);   // "fridge to get the eggs" → "eggs in my fridge"
   return t.length > 0 && t.length <= 120 ? t : null;
 }

@@ -101,7 +101,7 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1284 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1301 tests
 cd aisle/server && npx tsc --noEmit && npx vitest run   # 215 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
@@ -310,6 +310,25 @@ step one spoken line:
 The explorer (`searchExplorer`) takes a tick only when the navigator flags `explore` (nothing
 geometric to say). Tests: `hypotheses.test.ts`, `itemMission.test.ts` (elimination, container,
 redirect), `adaptiveSearch.test.ts`.
+
+## Round 12 (Stream A): the errand parse, and exploring big spaces by coverage
+- **"Go to the fridge to get the eggs" ended at the fridge door.** `itemOfGoal` read it as a
+  fridge-only errand. `normalizeGoal()` (handGuide.ts) rewrites "<place> to get / and grab /
+  for <item>" into "<item> in my <place>" before every parser (explicitHomeGoal, fridgeMission,
+  parseMissionGoal); `fridgeMission` builds the five stages for anything that names a thing and
+  ends at the door only for a bare "the fridge". Test: `normalizeGoal.test.ts`.
+- **Coverage exploration** (`src/core/explorationMap.ts`): ARKit position at 10 Hz on a 1.5 m
+  grid — visited cells, scanned cells, blocked headings per cell. When the explorer has no
+  landmark to head for it picks the heading with the most unvisited cells the depth grid does
+  not veto (ahead preferred, then a quarter turn, then around): "Turn left, then walk about ten
+  steps. New ground there." → "Keep turning left." until aligned → "Drifting right. A little to
+  the left." → "Stop here. Let me look around." (6 m, 10 steps or 15 s; a blockage stops it at
+  once and is remembered). Five-minute budget, then "I have covered this area. Ask someone
+  nearby." Without a position (mocks) the old five-steps-three-times fallback runs.
+- **The right section gets a close search first**: apples and oranges in view while hunting
+  bananas → "This is the right section. Let me search these shelves closely." (upper, middle,
+  lower) before any proposal to leave.
+`coverage()` on the explorer reports visited/scanned cells (DebugPanel via `searchAreas` soon).
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

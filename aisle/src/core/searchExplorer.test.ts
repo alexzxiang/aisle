@@ -121,6 +121,68 @@ describe('active search with trip memory', () => {
   });
 });
 
+describe('the right section gets a close search before moving on (round 12)', () => {
+  it('apples and oranges in view while hunting bananas → search these shelves closely, then propose elsewhere', () => {
+    const h = setup();
+    const lines: string[] = [];
+    for (let i = 0; i < 9; i += 1) { const r = h.tick({ items: ['apples', 'oranges'], landmarks: [] }); if (r?.text) lines.push(r.text); }
+    expect(lines).toContain('Apples and oranges here. This seems to be produce.');
+    const close = lines.indexOf('This is the right section. Let me search these shelves closely.');
+    expect(close).toBeGreaterThan(0);
+    expect(lines.slice(close + 1, close + 4)).toEqual(['Pan slowly across the upper shelf.', 'Now pan across the middle shelf.', 'Tilt down and scan the lower shelf.']);
+    expect(h.search.memory()[0]?.closeSearched).toBe(true);
+  });
+});
+
+describe('exploring a big space by coverage (round 12)', () => {
+  function rig() {
+    let t = 100000; let seq = 0;
+    const pose = { x: 0, z: 0, y: 0, yawDeg: 0, trackingState: 'NORMAL' as const, timestamp: t };
+    let path: { center: number; left?: number; right?: number } | null = { center: 0.1, left: 0.1, right: 0.1 };
+    const guide = jest.fn((): GuideInstruction | null => null);
+    const search = createSearchExplorer({ item: 'bananas', context: 'store', guide: { instructionFor: guide }, now: () => t, pose: () => ({ ...pose, timestamp: t }), path: () => path });
+    const tick = (ms = 6000) => {
+      t += ms;
+      search.observe(observation({ landmarks: [] }), ++seq, t);
+      return search.tick('bananas', null, {});
+    };
+    return { search, tick, pose, setPath: (p: typeof path) => { path = p; }, texts: [] as string[] };
+  }
+
+  it('with no landmark it walks a leg into unvisited ground, holds the heading, stops after the leg and looks again', () => {
+    const h = rig();
+    const lines: string[] = [];
+    for (let i = 0; i < 4; i += 1) { const r = h.tick(); if (r?.text) lines.push(r.text); }
+    expect(lines.at(-1)).toBe('Walk forward about ten steps. New ground that way.');
+    expect(h.search.status()).toBe('advance');
+    // Drifting right of the heading earns a nudge to the left.
+    h.pose.yawDeg = 40;
+    expect(h.tick(3000)?.text).toBe('Drifting right. A little to the left.');
+    h.pose.yawDeg = 0;
+    // Six metres on: the leg is done, look around here.
+    h.pose.z = -6.5;
+    expect(h.tick(3000)?.text).toBe('Stop here. Let me look around.');
+    expect(h.search.status()).toBe('scan');
+    expect(h.search.coverage()).toEqual({ visited: 2, scanned: 2 });
+  });
+
+  it('a blocked way stops the leg and is remembered; the next leg goes another way', () => {
+    const h = rig();
+    for (let i = 0; i < 4; i += 1) h.tick();
+    expect(h.search.status()).toBe('advance');
+    h.setPath({ center: 0.9, left: 0.2, right: 0.2 });
+    const stop = h.tick(3000);
+    expect(stop?.text).toBe('Something ahead. Stop. Let me look around.');
+    expect(stop?.haptic).toBe('STOP');
+    h.setPath({ center: 0.1, left: 0.1, right: 0.1 });
+    const lines: string[] = [];
+    for (let i = 0; i < 4; i += 1) { const r = h.tick(); if (r?.text) lines.push(r.text); }
+    expect(lines.at(-1)).toMatch(/^Turn (?:half )?(?:left|right), then walk about ten steps\. New ground there\.$/);
+    // Until the person has turned onto the heading, the nudge is "keep turning", not "drifting".
+    expect(h.tick(3000)?.text).toMatch(/^Keep turning (?:left|right)\.$/);
+  });
+});
+
 describe('food and observation evidence', () => {
   it('supports groceries without treating packaging or a category as identity', () => {
     expect(foodSection('organic brown eggs')).toBe('dairy');
