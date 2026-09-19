@@ -376,6 +376,21 @@ describe('createGuidedTask', () => {
     task.dispose();
   });
 
+  it('gives up gracefully after a long stall: "Ask staff…" and the task completes', async () => {
+    const h = harness({ askImpl: async () => applied({ done: false, confidence: 0.1 }) });
+    const task = createGuidedTask({ ...h.deps, giveUpMs: 30_000 });
+    h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'pasta', context: 'store', source: 'voice' });
+    await flush();
+    expect(task.isActive()).toBe(true);
+    // The step never confirms; after the give-up window the task ends with "ask staff".
+    await flush(30_000);
+    expect(h.said.map((r) => r.text)).toContain(PHRASES.ask_staff);
+    expect(h.bus.history().filter((r) => r.event.type === 'TASK_COMPLETED')).toHaveLength(1);
+    expect(h.deps.store.getState().mode).toBe('DONE');
+    expect(task.isActive()).toBe(false);
+    task.dispose();
+  });
+
   it('isAdvanceRequest matches the hands-free confirmations only', () => {
     for (const t of ['next', 'Next step.', 'done', 'I did it', 'okay, next', 'skip this step', 'got it', 'continue']) expect(isAdvanceRequest(t)).toBe(true);
     for (const t of ['what is next to me', 'is it done yet', 'eggs', 'the door is open', '']) expect(isAdvanceRequest(t)).toBe(false);
