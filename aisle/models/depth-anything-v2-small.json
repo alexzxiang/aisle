@@ -1,0 +1,40 @@
+{
+  "name": "depth-anything-v2-small",
+  "arch": "depth-anything-v2-vits",
+  "source": "apple/coreml-depth-anything-v2-small (Hugging Face), file DepthAnythingV2SmallF16.mlpackage",
+  "sourceCommit": "cfef6f6f2a70783dedc0bfae40cecbc2052285d3",
+  "downloadedAt": "2026-09-18",
+  "licence": "Apache-2.0 (model card, verified 2026-09-18)",
+  "input": {
+    "name": "image",
+    "width": 518,
+    "height": 392,
+    "letterbox": false,
+    "colour": "RGB",
+    "scale": "model-embedded (feed 0-255 RGB image)"
+  },
+  "output": {
+    "name": "depth",
+    "kind": "imageType",
+    "shape": [
+      392,
+      518
+    ],
+    "meaning": "relative inverse depth, unitless; larger = nearer; normalise per frame"
+  },
+  "labels": [],
+  "profiles": [
+    "OUTDOOR_NAV",
+    "APPROACH_CROSSING",
+    "CROSSING",
+    "INDOOR_NAV",
+    "ITEM_PICKUP"
+  ],
+  "targetFps": 10,
+  "reportedLatencyMs": {
+    "iPhone 12 Pro Max": 31.1,
+    "iPhone 15 Pro Max": 33.9,
+    "source": "model card"
+  },
+  "validated": "coremltools prediction on ultralytics bus.jpg on a Mac, 2026-09-18"
+}

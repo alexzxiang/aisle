@@ -227,19 +227,19 @@
       "name": "depth-anything-v2-small",
       "file": "depth-anything-v2-small.mlpackage",
       "manifest": "depth-anything-v2-small.json",
-      "status": "expected",
+      "status": "present",
       "role": "depth",
       "arch": "depth-anything-v2-vits",
       "input": {
         "width": 518,
-        "height": 518,
+        "height": 392,
         "letterbox": false,
         "colour": "RGB",
-        "scale": "imagenet",
-        "verify": "exact CoreML input size and per-frame ms on the demo phone"
+        "scale": "model-embedded",
+        "name": "image"
       },
       "labels": [],
-      "output": "relative inverse depth, unitless; 1 = nearest after the module's per-frame normalisation",
+      "output": "relative inverse depth, unitless; larger = nearer; normalise per frame (output 'depth', shape [392, 518])",
       "profiles": [
         "OUTDOOR_NAV",
         "APPROACH_CROSSING",
@@ -250,7 +250,8 @@
       "targetFps": 10,
       "calibration": "NEAR / MID / FAR thresholds are per phone, set by walking at a wall from 4 m (09 section 5.3); defaults in ObstacleEstimator.swift",
       "source": "published CoreML conversion of Depth Anything V2 Small, or coremltools from the PyTorch checkpoint (10 section 8)",
-      "licence": "Apache-2.0 expected for the small variant [verify] \u2014 see LICENSES.md"
+      "licence": "Apache-2.0 (verified on the Apple model card, 2026-09-18) \u2014 see LICENSES.md",
+      "downloadedAt": "2026-09-18"
     },
     {
       "name": "walkable-seg",
