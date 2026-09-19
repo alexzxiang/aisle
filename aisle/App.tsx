@@ -126,6 +126,8 @@ export default function App(): React.JSX.Element {
       metrics={app.metrics}
       mockControls={mockControls}
       betaNotice={app.betaNotice}
+      conversation={app.conversation}
+      describeNow={() => app.describer.describeNow()}
     />
   );
 }
