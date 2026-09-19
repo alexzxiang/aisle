@@ -321,8 +321,11 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   let session: Session | null = null;
   let last: VoiceOutcome | null = null;
   let unclearStreak = 0;
-  /** A guided-task goal spoken back for a yes/no when the parse was uncertain (noisy STT / no model). */
-  let pendingGoal: { goal: string; context: TaskContext } | null = null;
+  /** A task goal or a route destination spoken back for a yes/no before the big commitment starts (v2 B-4). */
+  let pendingConfirm:
+    | { kind: 'task'; goal: string; context: TaskContext }
+    | { kind: 'route'; destination: string }
+    | null = null;
 
   const pushUser = (transcript: string, source: VoiceSource): void => {
     if (transcript.length > 0) opts.conversation?.pushUser(transcript, source);
@@ -393,27 +396,37 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     return output;
   };
 
-  const act = (output: ParseIntentOutput, source: VoiceSource, uncertain = false): void => {
+  const act = (output: ParseIntentOutput, source: VoiceSource): void => {
     const reply = (): void => {
       const cacheKey = phraseKeyForText(output.reply);
       opts.speech.say({ text: output.reply, priority: 'NAV', dedupeKey: `voice-reply`, cooldownMs: 1000, ...(cacheKey ? { cacheKey } : {}) });
       opts.conversation?.pushAisle(output.reply, 'speech');
     };
-    // Start a guided task — or, when the parse is uncertain (noisy STT, no model), speak the
-    // goal back for a yes/no first, so a misheard item in a loud store does not launch a wrong
-    // step-by-step search. "Yes" (consumed in finishWith) then starts it; "no" asks again.
+    // Confirm-back before a big commitment (v2 B-4): a spoken task or route is read back for a
+    // yes/no first, so a misheard goal does not launch a wrong search or route. "Yes" (consumed
+    // in finishWith) starts it; "no" asks again. Typed input is deliberate, so it starts at once.
+    const askConfirm = (q: string, pending: NonNullable<typeof pendingConfirm>): void => {
+      pendingConfirm = pending;
+      opts.speech.say({ text: q, priority: 'NAV', dedupeKey: 'confirm-back', cooldownMs: 5000 });
+      opts.conversation?.pushAisle(q, 'prompt');
+    };
     const startTask = (goal: string, context: TaskContext): void => {
-      if (uncertain) {
-        const q = goalConfirmQuestion(goal);
-        if (q) {
-          pendingGoal = { goal, context };
-          opts.speech.say({ text: q, priority: 'NAV', dedupeKey: 'goal-confirm', cooldownMs: 5000 });
-          opts.conversation?.pushAisle(q, 'prompt');
-          return;
-        }
+      const q = source === 'voice' ? goalConfirmQuestion(goal) : null;
+      if (q) {
+        askConfirm(q, { kind: 'task', goal, context });
+        return;
       }
       reply();
       opts.bus.emit({ type: 'TASK_REQUESTED', goal, context, source });
+    };
+    const startRoute = (destination: string): void => {
+      const q = source === 'voice' ? goalConfirmQuestion(destination) : null;
+      if (q) {
+        askConfirm(q, { kind: 'route', destination });
+        return;
+      }
+      reply();
+      opts.bus.emit({ type: 'DESTINATION_REQUESTED', name: destination, source });
     };
     if (output.intent === 'find_item' && output.item) {
       // No surveyed store map: when the awareness loop already places the user in a store
@@ -428,10 +441,9 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       }
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
     } else if (output.intent === 'navigate_to' && output.destination) {
-      // Round 4: the echo ("CVS. Got it.") first, then the trip's own prompts
-      // ("Let me see your surroundings.", "Planning your route.") queue behind it.
-      reply();
-      opts.bus.emit({ type: 'DESTINATION_REQUESTED', name: output.destination, source });
+      // Voice: confirm the place first ("The CVS on Forbes — right?"). Keyboard: the echo
+      // ("CVS. Got it.") then the trip's own prompts queue behind it.
+      startRoute(output.destination);
       return;
     } else if (output.intent === 'guided_task' && output.goal) {
       const m = opts.store.getState().mode;
@@ -448,26 +460,30 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
 
   const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource): Promise<VoiceOutcome> => {
     pushUser(transcript, source);
-    // A goal confirmation is waiting ("Pasta. Did I get that right?"): consume yes/no here,
-    // before the planner or any other intercept. Anything else drops it and parses normally.
-    if (transcript.length > 0 && pendingGoal) {
+    // A confirm-back is waiting ("Eggs in my fridge. Did I get that right?"): consume yes/no
+    // here, before the planner or any other intercept. Anything else drops it and parses anew.
+    if (transcript.length > 0 && pendingConfirm) {
       const t = transcript.trim();
+      const c = pendingConfirm;
       if (CONFIRM_YES_RE.test(t)) {
-        const { goal, context } = pendingGoal;
-        pendingGoal = null;
+        pendingConfirm = null;
         unclearStreak = 0;
-        opts.bus.emit({ type: 'TASK_REQUESTED', goal, context, source });
-        last = { output: { intent: 'guided_task', item: null, destination: null, goal, reply: '' }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+        if (c.kind === 'task') opts.bus.emit({ type: 'TASK_REQUESTED', goal: c.goal, context: c.context, source });
+        else opts.bus.emit({ type: 'DESTINATION_REQUESTED', name: c.destination, source });
+        const output: ParseIntentOutput = c.kind === 'task'
+          ? { intent: 'guided_task', item: null, destination: null, goal: c.goal, reply: '' }
+          : { intent: 'navigate_to', item: null, destination: c.destination, goal: null, reply: '' };
+        last = { output, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
         return last;
       }
       if (CONFIRM_NO_RE.test(t)) {
-        pendingGoal = null;
+        pendingConfirm = null;
         opts.speech.say({ text: PHRASES.say_item_again, priority: 'NAV', cacheKey: 'say_item_again', dedupeKey: 'voice-reply', cooldownMs: 1000 });
         opts.conversation?.pushAisle(PHRASES.say_item_again, 'speech');
         last = { output: { intent: 'unknown', item: null, reply: PHRASES.say_item_again }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
         return last;
       }
-      pendingGoal = null;
+      pendingConfirm = null;
     }
     if (transcript.length > 0 && opts.intercept?.(transcript)) {
       unclearStreak = 0;
@@ -493,10 +509,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       ? await plan(transcript)
       : { output: parseIntentFallback('', []), planner: false, latencyMs: null };
     const output = withUnclearPrompt(r.output);
-    // Uncertain = spoken (not typed) and either the model missed (local keyword fallback) or the
-    // transcript came from the noisy Scribe fallback. Only the guided-task path acts on it.
-    const uncertain = source === 'voice' && transcript.length > 0 && (!r.planner || sttPath === 'scribe');
-    act(output, source, uncertain);
+    act(output, source);
     last = { output, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs };
     return last;
   };
