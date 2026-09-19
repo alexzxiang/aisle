@@ -69,3 +69,7 @@ describe('coerceVisionResponse', () => {
     expect(coerceVisionResponse('x', 1)).toBeNull();
   });
 });
+
+it.each([[0.2, 0.2, 0, 0.3], [0.9, 0.2, 0.4, 0.3], [0.2, 0.9, 0.3, 0.4]])('rejects unusable target geometry %j', (...box) => {
+  expect(coerceVisionResponse({ target: { box, confidence: 0.9 } }, 1)?.target.box).toBeNull();
+});

@@ -53,7 +53,7 @@ import type { AppEventBus } from '../core/bus';
 import type { AppStore } from '../core/store';
 import { MAX_PROMPT_WORDS, MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit, phraseText } from '../core/phrases';
 import { ocrFactTokens } from './ocrFacts';
-import { coerceSearchObservation } from '../core/searchObservation';
+import { coerceSearchObservation, searchBox } from '../core/searchObservation';
 
 // ---------------------------------------------------------------------------
 // Constants (01 §8)
@@ -432,10 +432,9 @@ export interface VisionFacts {
  */
 /** `target.box` is four numbers in 0..1 (x, y, w, h) or null; anything else is null. */
 function coerceTarget(raw: Record<string, unknown>): VisionResponse['target'] {
-  const b = raw.box;
-  const ok = Array.isArray(b) && b.length === 4 && b.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1);
-  const confidence = typeof raw.confidence === 'number' && Number.isFinite(raw.confidence) ? raw.confidence : 0;
-  return { box: ok ? [b[0], b[1], b[2], b[3]] as [number, number, number, number] : null, confidence };
+  const box = searchBox(raw.box);
+  const confidence = typeof raw.confidence === 'number' && Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, raw.confidence)) : 0;
+  return { box, confidence: box ? confidence : 0 };
 }
 
 export function sceneKey(detections: readonly Detection[], ocrTokens: readonly string[]): string {
@@ -607,7 +606,17 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
     facts.ocrTokens = ocrFactTokens(now() - ocrAt <= 3000 ? ocrReads : [], inStore, knownSigns);
     return facts.ocrTokens;
   };
-  let sceneLabelsAt = 0;
+  let detectionsAt = -Infinity;
+  let depthAt = -Infinity;
+  let signalAt = -Infinity;
+  const freshFacts = (): VisionFacts => ({
+    detections: now() - detectionsAt <= 1500 ? [...facts.detections] : [],
+    ocrTokens: [...refreshOcr()],
+    ...(facts.depth && now() - depthAt <= 1000 ? { depth: facts.depth } : {}),
+    ...(facts.signalState && now() - signalAt <= 3000 ? { signalState: facts.signalState } : {}),
+    ...(facts.sceneLabels && now() - sceneLabelsAt <= SCENE_LABELS_FRESH_MS ? { sceneLabels: [...facts.sceneLabels] } : {}),
+  });
+  let sceneLabelsAt = -Infinity;
   const SCENE_LABELS_FRESH_MS = 4000;
   const unsubs: Array<() => void> = [];
   if (perception.onSceneClass) {
@@ -618,6 +627,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
   }
   unsubs.push(perception.onDetections((d) => {
     facts.detections = d;
+    detectionsAt = now();
   }));
   unsubs.push(perception.onOcrText((reads) => {
     ocrReads = reads;
@@ -626,9 +636,11 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
   }));
   unsubs.push(perception.onDepth((d) => {
     facts.depth = d;
+    depthAt = now();
   }));
   unsubs.push(perception.onSignalState((e) => {
     facts.signalState = e.state;
+    signalAt = now();
   }));
 
   let seq = 0;            // last seq handed out (ask() and nextSeq())
@@ -693,16 +705,17 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
         image = undefined; // facts-only request rather than no request
       }
     }
+    const current = freshFacts();
     const heading = opts.getHeadingDeg?.();
     const req: VisionRequest = {
       seq: n,
       question,
       mode,
       facts: {
-        detections: facts.detections,
+        detections: current.detections,
         ocr: refreshOcr(o.knownSigns),
-        ...(facts.depth ? { depth: facts.depth } : {}),
-        ...(facts.signalState ? { signalState: facts.signalState } : {}),
+        ...(current.depth ? { depth: current.depth } : {}),
+        ...(current.signalState ? { signalState: current.signalState } : {}),
         ...(typeof heading === 'number' ? { headingDeg: heading } : {}),
         ...(facts.sceneLabels && now() - sceneLabelsAt <= SCENE_LABELS_FRESH_MS ? { sceneLabels: facts.sceneLabels } : {}),
         ...(question === 'aisle_disambiguate' && o.knownSigns ? { knownSigns: o.knownSigns } : {}),
@@ -717,7 +730,8 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
   return {
     async ask(question, o = {}) {
       const t0 = now();
-      const key = sceneKey(facts.detections, facts.ocrTokens);
+      const current = freshFacts();
+      const key = sceneKey(current.detections, current.ocrTokens);
       const verdict = gateVerdict({
         question,
         now: t0,
@@ -836,7 +850,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       }
     },
 
-    getFacts: () => ({ ...facts, detections: [...facts.detections], ocrTokens: [...refreshOcr()] }),
+    getFacts: freshFacts,
     getStats: () => ({ ...stats }),
     dispose() {
       for (const u of unsubs.splice(0)) u();

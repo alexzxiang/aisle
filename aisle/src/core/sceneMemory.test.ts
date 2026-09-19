@@ -166,3 +166,15 @@ it('keeps egg classifier evidence despite an orange detection, without relabelin
   expect(r.mem.whereIs('eggs')).toBe('unseen');
   r.mem.dispose();
 });
+
+it('keeps a later detector box separate from an image-wide classifier sighting', () => {
+  const r = rig(() => 1000);
+  r.classify(0, [{ id: 'egg', confidence: 0.8 }]);
+  r.see(0, [det('egg', 0.8)]);
+  expect(r.mem.entries().filter(e => e.cls === 'egg')).toHaveLength(2);
+  expect(r.mem.entries().find(e => e.cls === 'egg' && e.source === 'classifier')?.area).toBe(0);
+  const answer = r.mem.whereIs('eggs');
+  expect(typeof answer).toBe('object');
+  if (typeof answer === 'object') expect(answer.relativeDeg).toBeCloseTo(16.8);
+  r.mem.dispose();
+});

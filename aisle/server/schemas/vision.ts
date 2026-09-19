@@ -11,7 +11,7 @@
  */
 import { createHash } from 'node:crypto';
 import type { VisionResponse } from '../../src/core/contracts';
-import { coerceSearchObservation, SEARCH_VIEWS } from '../../src/core/searchObservation';
+import { coerceSearchObservation, searchBox, SEARCH_VIEWS } from '../../src/core/searchObservation';
 import { FOOD_SECTIONS } from '../../src/core/foodCatalog';
 
 const CAMERA_DIRECTIONS = ['up', 'down', 'left', 'right', 'closer', 'none'] as const;
@@ -99,10 +99,7 @@ export function emptyVisionResponse(seq: number): VisionResponse {
 }
 
 const isIn = <T extends string>(set: readonly T[], v: unknown): v is T => typeof v === 'string' && (set as readonly string[]).includes(v);
-const box4 = (v: unknown): [number, number, number, number] | null =>
-  Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1)
-    ? [v[0] as number, v[1] as number, v[2] as number, v[3] as number]
-    : null;
+const box4 = searchBox;
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 

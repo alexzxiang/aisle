@@ -216,6 +216,7 @@ describe('createSemanticVision policy', () => {
     h.clock.advance(3000);
     expect((await h.sv.ask('aisle_disambiguate')).gate).toBe('interval');
     h.clock.advance(1000);
+    h.perception.emitOcr(['DAIRY']); // A live OCR stream refreshes the sign after its TTL.
     expect((await h.sv.ask('aisle_disambiguate')).status).toBe('applied');
     await h.sv.ask('storefront');
     h.clock.advance(4900);
@@ -495,4 +496,21 @@ describe('streaming over the WebSocket transport (D\'s frames protocol)', () => 
     h.sv.noteStream(42, '42');
     expect(h.speech.streams).toEqual([]);
   });
+});
+
+it('expires detector evidence before sending another frame to classification', async () => {
+  const transport = scripted(req => okResponse(req.seq));
+  const h = harness(transport);
+  h.perception.emitDetections([{ cls: 'orange', box: [0.2, 0.2, 0.2, 0.2], score: 0.9, trackId: 1 }]);
+  await h.sv.ask('task_step', { force: true });
+  expect(transport.requests[0].facts.detections).toHaveLength(1);
+  h.clock.advance(1501);
+  expect(h.sv.getFacts().detections).toEqual([]);
+  await h.sv.ask('task_step', { force: true });
+  expect(transport.requests[1].facts.detections).toEqual([]);
+  h.sv.dispose();
+});
+
+it.each([[0.2, 0.2, 0, 0.3], [0.9, 0.2, 0.4, 0.3], [0.2, 0.9, 0.3, 0.4]])('rejects unusable target geometry %j', (...box) => {
+  expect(coerceVisionResponse({ target: { box, confidence: 0.9 } }, 1).target).toEqual({ box: null, confidence: 0 });
 });
