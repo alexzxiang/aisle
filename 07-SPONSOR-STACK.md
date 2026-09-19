@@ -40,6 +40,18 @@ safety-relevant depends on it and the eval shows exactly what it adds over the t
   (no reasoning field, no `<think>` prefix, first token is `{`). With thinking on, a small
   token cap is spent thinking and returns no JSON.
 - Schema-bound output: `nvext: { guided_json: <strict schema> }`. Whether the hosted endpoint
+
+> **Measured 2026-09-18 on the hosted endpoint (`integrate.api.nvidia.com`, model
+> `nvidia/nemotron-3.5-lightning-30b-a3b`):** `nvext.guided_json` is **rejected with HTTP 400**
+> ("unknown field `guided_json`"), and **streaming stalls ~34 s** before the first chunk while a
+> non-streaming call returns the whole answer in ~1 s. The proxy therefore sends NIM a
+> **non-streaming `response_format: {type: "json_object"}` request with the job schema stated in
+> the system prompt**, validates the parsed object against the schema (template on mismatch), and
+> uses equal first-token/total deadlines (4.5 s interactive jobs, 8 s route-time jobs). OpenRouter
+> failover keeps streamed `json_schema`. Live results: parseIntent, disambiguate and
+> crossingAnnounce answer from Nemotron in 0.4–1.9 s; routeCompile in ~4 s with occasional
+> deadline misses on the free tier (templates cover the miss).
+
   honours `nvext` for this model is not documented [verify on day 0]; probe it, and probe
   `response_format: { type: 'json_schema' }` as the alternative. Keep prompt-level "JSON only"
   plus a last-`{...}` extractor as the third line of defence.
