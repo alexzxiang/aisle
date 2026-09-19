@@ -10,3 +10,5 @@ server/.env
 **/.env
 .env*
 aisle/ios/Pods/
+.impeccable/
+.playwright-mcp/
