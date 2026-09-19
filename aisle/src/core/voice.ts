@@ -186,6 +186,7 @@ export const VOICE_VOCABULARY: readonly string[] = [
   'coffee', 'bananas', 'apples', 'tomatoes', 'onions', 'potatoes', 'chicken', 'orange juice',
   'peanut butter', 'cooking oil', 'canned soup', 'frozen pizza', 'ice cream', 'paper towels',
   'toilet paper', 'chips', 'cookies', 'water',
+  'checkout', 'register', 'cashier', 'self checkout',   // the demo's last beat: find the item, then head to checkout
   'CVS', 'Walgreens', 'Rite Aid', 'Giant Eagle', "Trader Joe's", 'Target', 'Whole Foods', 'pharmacy', 'grocery store',
   'Forbes Avenue', 'Fifth Avenue', 'Craig Street', 'Murray Avenue', 'Penn Avenue', 'Centre Avenue', 'Oakland', 'Squirrel Hill', 'Shadyside',
   'I am in the kitchen', "I'm on the sidewalk", 'in front of my fridge',
