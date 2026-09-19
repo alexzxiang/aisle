@@ -62,6 +62,7 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'Set task.done true only when the camera clearly shows the current step is complete (the named thing is reached, opened, or within arm\'s reach), with task.confidence.',
     'Otherwise speech is required: one concrete micro-instruction (at most twelve words) that moves the person toward the step from what you see now: a direction, a distance in steps, or what to reach for, e.g. "Door frame ahead, three steps.", "Turn left, the fridge is at your left shoulder.", "Fridge handle at waist height, right hand.", "Eggs: middle shelf, a carton at your right hand." If the target is not in view, say which way to turn to find it. Use cameraRequest when the camera must move to see the target and userAction when the person must move.',
     'Never state that it is fine to proceed into traffic or when to cross a street.',
+    'Always return a nonempty directional instruction in speech, including when task.done is true ("Keep your hand there."). Use only observed sides and landmarks; never guess a distance or target location. If unseen or uncertain, say "Stay still and turn the camera slowly." and request a camera turn, not walking.',
   ].join(' '),
   situate: [
     COMMON_DESCRIBING,
