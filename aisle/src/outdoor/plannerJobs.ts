@@ -22,7 +22,7 @@ import type {
   RouteCompileOutput,
 } from '../core/contracts';
 import { countWords, findForbiddenTerm, hasDigit } from '../core/phrases';
-import { feetWords, spokenStreet } from './numberWords';
+import { feetWords, integerToWords, spokenStreet } from './numberWords';
 import { WALKING_BETA_WARNING } from './types';
 
 export const PLANNER_JOBS: readonly PlannerJob[] = ['routeCompile', 'parseIntent', 'disambiguate', 'crossingAnnounce', 'answer'];
@@ -70,8 +70,19 @@ export function isValidPhrase(text: unknown, allowEmpty = true): text is string 
   return true;
 }
 
+/** Model replies often carry bare integers ("400 feet") despite the prompt; spell them out
+ * before validation so the no-digits rule rejects only what cannot be repaired. Decimals,
+ * times and codes (anything with '.', ':', '/', letters glued on) are left alone → rejected. */
+export function digitsToWords(text: string): string {
+  return text.replace(/(?<![\w.:/-])(\d{1,6})(?![\w.:/-])/g, (m) => {
+    const n = Number(m);
+    return Number.isSafeInteger(n) ? integerToWords(n) : m;
+  });
+}
+
 function pick(candidate: unknown, fallback: string, allowEmpty = true): string {
-  return isValidPhrase(candidate, allowEmpty) ? candidate.trim() : fallback;
+  const c = typeof candidate === 'string' ? digitsToWords(candidate) : candidate;
+  return isValidPhrase(c, allowEmpty) ? (c as string).trim() : fallback;
 }
 
 function capitalize(s: string): string {
@@ -487,6 +498,7 @@ export const ANSWER_PROMPT = [
   'Input: JSON with question (repeat, how_far, where_am_i, replan) and context (current leg phrases, metres to the next maneuver and crossing, street names, mode).',
   'repeat: say the current instruction again. how_far: distance to the turn in feet, as words. where_am_i: the street and the distance to the next street, as words. replan: say that the route is being recomputed.',
   'No digits: write every number as words. Never mention crossing timing, traffic or whether it is fine to proceed. Output JSON only.',
+  'Keep the reply under twelve words and do not restate the street unless asked. Examples — how_far: {"reply":"About four hundred feet to the turn."} where_am_i: {"reply":"On Fifth Avenue, two hundred feet from Forbes Avenue."} repeat: {"reply":"Turn right now."}',
 ].join('\n');
 
 function num(v: unknown): number | null {
@@ -532,7 +544,8 @@ function validateAnswer(raw: unknown, input: AnswerInput): { output: AnswerOutpu
   const template = templateAnswer(input);
   const r = (raw ?? {}) as Partial<AnswerOutput>;
   const reply = pick(r.reply, template.reply, false);
-  return { output: { reply }, usedFallback: reply !== (typeof r.reply === 'string' ? r.reply.trim() : '') };
+  const normalizedRaw = typeof r.reply === 'string' ? digitsToWords(r.reply).trim() : '';
+  return { output: { reply }, usedFallback: reply !== normalizedRaw };
 }
 
 // ---------------------------------------------------------------------------
