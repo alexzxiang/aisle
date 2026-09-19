@@ -40,6 +40,7 @@ import { createConversationLog, type ConversationLog } from './conversation';
 import { createSceneDescriber, type SceneDescriber } from './describer';
 import { createGuidedTask, type GuidedTask } from './guidedTask';
 import { createSituate, type Situate } from './situate';
+import { createSceneMemory, type SceneMemory } from './sceneMemory';
 import { wirePrompts, type PromptsBinding } from './prompts';
 import { LatencyRing, liveMetrics, observePlanner, timedTransport, type LiveMetrics } from './metrics';
 import { createFixtureRouteClient, type FixtureTrack } from './fixtureRoute';
@@ -133,6 +134,8 @@ export interface AppComposition {
   guidedTask: GuidedTask;
   /** The awareness loop: "You seem to be in a kitchen. Is that right?" Runs from `start()`. */
   situate: Situate;
+  /** Where things were seen, by bearing: "where's the fridge?" without a camera call. */
+  sceneMemory: SceneMemory;
   prefs: PrefsBinding;
   /** The transcript blurb's data (also registered as the `conversation` service). */
   conversation: ConversationLog;
@@ -302,6 +305,8 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
 
   // --- Awareness loop: where the user seems to be, checked with them --------------------
   const situate = createSituate({ store, speech, vision, perception, conversation, now, narrate: () => store.getState().describeSurroundings });
+  // --- Scene memory: bearings of what the detector saw in the last minute ----------------
+  const sceneMemory = createSceneMemory({ perception, speech, conversation, headingDeg: () => sensors.getFusedHeadingDeg(), now });
   let guidedTaskRef: GuidedTask | null = null;
 
   // --- A: push-to-talk ---------------------------------------------------------
@@ -326,8 +331,9 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     now,
     conversation,
     describe: () => describer.describeNow(),
-    // Open questions answer first: the awareness loop's, then the guided task's step check.
-    intercept: (transcript) => situate.intercept(transcript) || (guidedTaskRef?.intercept(transcript) ?? false),
+    // Open questions answer first: the awareness loop's, then the guided task's step check,
+    // then "where is the X" from memory — never a store trip for a fridge.
+    intercept: (transcript) => situate.intercept(transcript) || (guidedTaskRef?.intercept(transcript) ?? false) || sceneMemory.intercept(transcript),
     sceneContext: () => situate.getContext(),
   });
 
@@ -390,6 +396,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     planner,
     describe: () => describer.describeNow(),
     scene: () => situate.getScene()?.label ?? null,
+    seen: () => sceneMemory.describe(),
     conversation,
     now,
   });
@@ -440,6 +447,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     trip,
     guidedTask,
     situate,
+    sceneMemory,
     prefs,
     conversation,
     describer,
@@ -476,6 +484,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
       for (const u of unsubs.splice(0)) u();
       describer.stop();
       situate.dispose();
+      sceneMemory.dispose();
       prompts.dispose();
       guidedTask.dispose();
       trip.dispose();

@@ -84,6 +84,8 @@ export interface GuidedTaskDeps {
   describe?: () => Promise<string | null>;
   /** The awareness loop's current place label, for the planner and the step loop. */
   scene?: () => string | null;
+  /** Scene memory: "fridge to your left, couch behind you" — what was seen and where it is now. */
+  seen?: () => string;
   conversation?: Pick<ConversationLog, 'pushAisle'>;
   now?: () => number;
   tickMs?: number;
@@ -238,7 +240,9 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     const s = r.steps[r.step]!;
     const place = deps.scene?.();
     const where = place ? ` Place: ${place}.` : '';
-    return `Goal: ${r.goal}.${where} Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${s.lookFor}.`;
+    const seen = deps.seen?.();
+    const memory = seen ? ` Seen: ${seen}.` : '';
+    return `Goal: ${r.goal}.${where}${memory} Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${s.lookFor}.`;
   };
 
   /** 'done' closes on the streak; 'ask' puts it to the user; 'no' resets. */
@@ -312,8 +316,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       // facts are a courtesy
     }
     const scene = deps.scene?.() ?? null;
-    if (detections.length === 0 && ocr.length === 0 && !scene && !description) return undefined;
-    return { detections, ocr, ...(scene ? { scene } : {}), ...(description ? { description } : {}) };
+    const seen = deps.seen?.() ?? '';
+    const desc = [description, seen ? `Seen recently: ${seen}.` : null].filter(Boolean).join(' ') || null;
+    if (detections.length === 0 && ocr.length === 0 && !scene && !desc) return undefined;
+    return { detections, ocr, ...(scene ? { scene } : {}), ...(desc ? { description: desc } : {}) };
   };
 
   const begin = async (goal: string, context: TaskContext): Promise<void> => {
