@@ -102,6 +102,7 @@ export const MODE_POLICY: Readonly<Record<AppMode, ReadonlySet<SpeechClass>>> = 
   ITEM_PICKUP: new Set(INDOOR),
   CHECKOUT_NAV: new Set(INDOOR),
   DONE: new Set(ALL_CLASSES),
+  GUIDED_TASK: new Set(INDOOR),   // step instructions, hazards, describe; never crossing classes
 };
 
 export function classifyRequest(req: { cacheKey?: string; streamId?: string }): SpeechClass {

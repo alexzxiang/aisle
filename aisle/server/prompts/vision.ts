@@ -52,6 +52,13 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'Return exactly one hint in hand.hint: left, right, higher, lower, touching, or not_seen. Speech is that single word (for example "Higher.") or empty when not_seen.',
     'You are guiding a hand, not identifying a product; if the package is not visible say not_seen.',
   ].join(' '),
+  task_step: [
+    COMMON,
+    'Question: the user is doing a multi-step task with camera guidance. userText names the goal, the current step and what to look for.',
+    'Set task.done true only when the camera clearly shows the current step is complete (the named thing is reached, opened, or within arm\'s reach), with task.confidence.',
+    'Otherwise put one concrete micro-instruction in speech (at most twelve words): a direction, a distance in steps, or what to reach for, e.g. "Door frame ahead, three steps.", "Fridge handle at waist height, right hand." Use cameraRequest when the camera must move to see the target and userAction when the person must move.',
+    'Never state that it is fine to proceed into traffic or when to cross a street.',
+  ].join(' '),
   free: [
     COMMON,
     'Question: the user asked something in their own words (userText). Answer the question about what the camera sees in at most twelve words.',

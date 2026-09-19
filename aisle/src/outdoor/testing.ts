@@ -198,6 +198,7 @@ export function createFakeVision(): FakeVision {
         scan: { vehiclesSeen: 'none', confidence: 0.9 },
         signal: { state: 'UNKNOWN', confidence: 0 },
         hand: { hint: 'not_seen' },
+        task: { done: false, confidence: 0 },
         confidence: 0.9,
         seq: req.seq,
         ...partial,

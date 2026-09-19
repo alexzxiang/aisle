@@ -131,6 +131,7 @@ const MODE_WORD: Readonly<Record<AppMode, string>> = {
   ITEM_PICKUP: 'Reaching',
   CHECKOUT_NAV: 'To checkout',
   DONE: 'Done',
+  GUIDED_TASK: 'Guided task',
 };
 
 export function modeWord(mode: AppMode): string {
@@ -269,6 +270,8 @@ export function reduceUi(facts: UiFacts, e: AppEvent, ts: number, mode: AppMode 
 export interface HeroContext {
   item: string | null;
   side: Side | null;
+  destinationOnly?: boolean;   // "take me to <place>": DONE reads "You've arrived"
+  taskGoal?: string | null;    // GUIDED_TASK: the goal in the user's words
 }
 
 const EMPTY_CTX: HeroContext = { item: null, side: null };
@@ -311,7 +314,9 @@ export function standingHero(mode: AppMode, facts: UiFacts, ctx: HeroContext = E
     case 'CHECKOUT_NAV':
       return 'Checkout ahead';
     case 'DONE':
-      return "You've reached checkout";
+      return ctx.destinationOnly ? "You've arrived" : "You've reached checkout";
+    case 'GUIDED_TASK':
+      return ctx.taskGoal ? `Task: ${ctx.taskGoal}` : 'Guided task';
   }
 }
 

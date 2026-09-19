@@ -38,6 +38,7 @@ export const visionFixtures: Record<VisionQuestion, VisionFixtureFile> = {
   storefront: visionStorefront as VisionFixtureFile,
   aisle_disambiguate: visionAisle as VisionFixtureFile,
   scan_left: visionScanLeft as VisionFixtureFile,
+  task_step: visionFree as VisionFixtureFile,
   scan_right: visionScanRight as VisionFixtureFile,
   curb_crop: visionCurb as VisionFixtureFile,
   hand_guidance: visionHand as VisionFixtureFile,
@@ -48,6 +49,7 @@ export const planFixtures: Record<PlannerJob, PlanFixtureFile> = {
   routeCompile: planRoute as PlanFixtureFile,
   parseIntent: planIntent as PlanFixtureFile,
   disambiguate: planDisambiguate as PlanFixtureFile,
+  taskPlan: planAnswer as PlanFixtureFile,
   crossingAnnounce: planCrossing as PlanFixtureFile,
   answer: planAnswer as PlanFixtureFile,
 };

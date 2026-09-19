@@ -50,6 +50,7 @@ export function emptyOutput<J extends PlannerJob>(job: J): PlannerJobOutput<J> {
     disambiguate: { aisleId: null, confidence: 0, askBack: 'Say the item again.' },
     crossingAnnounce: { nodeId: null, signalized: null, pushButtonLikely: false, text: 'Crossing ahead.' },
     answer: { reply: '' },
+    taskPlan: { askFirst: 'Let me see your surroundings.', steps: [] },
   };
   return out[job] as PlannerJobOutput<J>;
 }

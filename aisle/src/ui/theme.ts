@@ -62,6 +62,7 @@ export const accents = {
   item: '#0891B2',
   checkout: '#0D9488',
   done: '#16A34A',
+  task: '#4F46E5',   // guided task: indigo, distinct from indoor violet and outdoor blue
 } as const;
 
 /** OKO's convention, stated in words as well as colour. */
@@ -160,6 +161,8 @@ export function accentFor(mode: AppMode, signal: SignalState = 'UNKNOWN'): strin
       return accents.checkout;
     case 'DONE':
       return accents.done;
+    case 'GUIDED_TASK':
+      return accents.task;
   }
 }
 

@@ -35,6 +35,9 @@ const ARROWS: Array<[AppMode, AppMode]> = [
   ['CHECKOUT_NAV', 'DONE'],
   ['AT_ITEM', 'ITEM_PICKUP'],
   ['ITEM_PICKUP', 'CHECKOUT_NAV'],
+  ['IDLE', 'GUIDED_TASK'],          // TASK_REQUESTED
+  ['GUIDED_TASK', 'DONE'],          // TASK_COMPLETED
+  ['TRANSITION', 'DONE'],           // destination-only trip ends at the door
 ];
 
 function make(initialMode: AppMode = 'IDLE', extra: Parameters<typeof createAppStore>[0] = {}) {
@@ -45,8 +48,8 @@ function make(initialMode: AppMode = 'IDLE', extra: Parameters<typeof createAppS
 }
 
 describe('legal transition table', () => {
-  it('lists all twelve modes', () => {
-    expect(APP_MODES).toHaveLength(12);
+  it('lists all thirteen modes', () => {
+    expect(APP_MODES).toHaveLength(13);
     expect(Object.keys(LEGAL_TRANSITIONS).sort()).toEqual([...APP_MODES].sort());
   });
 
@@ -472,6 +475,47 @@ describe('post-review edges (01 §1)', () => {
     const { store, bus, unbind } = bound('CROSSING');
     bus.emit({ type: 'CROSSING_ABORTED', crossingId: 'x1', reason: 'user' });
     expect(store.getState().mode).toBe('OUTDOOR_NAV');
+    unbind();
+  });
+});
+
+describe('destinations and guided tasks (round 4)', () => {
+  function bound(initial: AppMode) {
+    const { store, bus } = make(initial);
+    const unbind = bindStoreToBus(store, bus, {
+      speech: () => ({ say: () => {}, playStream: () => {}, clearQueue: () => {}, isSpeaking: () => false, setRate: () => {} }),
+    });
+    return { store, bus, unbind };
+  }
+  it('DESTINATION_REQUESTED records a destination-only trip; TRANSITION then ends in DONE', () => {
+    jest.useFakeTimers();
+    const { store, bus, unbind } = bound('IDLE');
+    store.setState({ firstRun: false });
+    bus.emit({ type: 'DESTINATION_REQUESTED', name: 'CVS', source: 'voice' });
+    expect(store.getState().targetItem).toBe('CVS');
+    expect(store.getState().destinationOnly).toBe(true);
+    bus.emit({ type: 'ROUTE_READY', legCount: 1, destName: 'CVS', crossingCount: 0 });
+    expect(store.getState().mode).toBe('OUTDOOR_NAV');
+    bus.emit({ type: 'STORE_ENTERED', reason: 'MANUAL', confidence: 1 });
+    expect(store.getState().mode).toBe('TRANSITION');
+    jest.advanceTimersByTime(4000);
+    expect(store.getState().mode).toBe('DONE');
+    unbind();
+    jest.useRealTimers();
+  });
+  it('TASK_REQUESTED → GUIDED_TASK with the goal; TASK_STEP updates progress; TASK_COMPLETED → DONE; abort clears', () => {
+    const { store, bus, unbind } = bound('IDLE');
+    bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    expect(store.getState().mode).toBe('GUIDED_TASK');
+    expect(store.getState().taskGoal).toBe('eggs in my fridge');
+    bus.emit({ type: 'TASK_STEP', index: 2, total: 4, instruction: 'Open the fridge.' });
+    expect(store.getState().taskStep).toBe(2);
+    expect(store.getState().taskStepCount).toBe(4);
+    bus.emit({ type: 'TASK_COMPLETED', goal: 'eggs in my fridge' });
+    expect(store.getState().mode).toBe('DONE');
+    store.getState().abort();
+    expect(store.getState().taskGoal).toBeNull();
+    expect(store.getState().mode).toBe('IDLE');
     unbind();
   });
 });

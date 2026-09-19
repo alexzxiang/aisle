@@ -23,22 +23,23 @@ import { TRANSITION_CAP_MS } from './config';
 
 export const APP_MODES: readonly AppMode[] = [
   'IDLE', 'ONBOARDING', 'OUTDOOR_NAV', 'APPROACH_CROSSING', 'AT_CURB', 'CROSSING',
-  'TRANSITION', 'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV', 'DONE',
+  'TRANSITION', 'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV', 'DONE', 'GUIDED_TASK',
 ];
 
 export const LEGAL_TRANSITIONS: Readonly<Record<AppMode, readonly AppMode[]>> = {
-  IDLE: ['ONBOARDING', 'OUTDOOR_NAV'],
+  IDLE: ['ONBOARDING', 'OUTDOOR_NAV', 'GUIDED_TASK'],
   ONBOARDING: ['OUTDOOR_NAV'],
   OUTDOOR_NAV: ['APPROACH_CROSSING', 'TRANSITION'],
   APPROACH_CROSSING: ['AT_CURB', 'OUTDOOR_NAV'],
   AT_CURB: ['CROSSING', 'OUTDOOR_NAV'],
   CROSSING: ['OUTDOOR_NAV'],
-  TRANSITION: ['INDOOR_NAV'],
+  TRANSITION: ['INDOOR_NAV', 'DONE'],   // DONE when the trip was destination-only ("take me to CVS")
   INDOOR_NAV: ['AT_ITEM'],
   AT_ITEM: ['ITEM_PICKUP', 'CHECKOUT_NAV'],
   ITEM_PICKUP: ['CHECKOUT_NAV'],
   CHECKOUT_NAV: ['DONE'],
   DONE: [],
+  GUIDED_TASK: ['DONE'],
 };
 
 export function isLegalTransition(from: AppMode, to: AppMode): boolean {
@@ -63,6 +64,10 @@ export interface AppState {
   describeSurroundings: boolean; // default true: the scene describer speaks while walking
   speechRate: number;           // 0.8–1.6
   targetItem: string | null;
+  destinationOnly: boolean;     // "take me to <place>": the trip ends on arrival (TRANSITION → DONE)
+  taskGoal: string | null;      // GUIDED_TASK: the goal in the user's words
+  taskStep: number;             // GUIDED_TASK: 0-based current step
+  taskStepCount: number;
   storeId: string | null;
   targetAisleId: string | null;
   targetSide: Side | null;
@@ -115,6 +120,10 @@ export const INITIAL_STATE: AppState = {
   describeSurroundings: true,
   speechRate: 1.0,
   targetItem: null,
+  destinationOnly: false,
+  taskGoal: null,
+  taskStep: 0,
+  taskStepCount: 0,
   storeId: null,
   targetAisleId: null,
   targetSide: null,
@@ -131,9 +140,13 @@ export const INITIAL_STATE: AppState = {
 
 const TASK_FIELDS_CLEARED: Pick<
   AppState,
-  'targetItem' | 'storeId' | 'targetAisleId' | 'targetSide' | 'currentAisleOrder' | 'activeCrossingId' | 'onboardingComplete' | 'routeReady'
+  'targetItem' | 'destinationOnly' | 'taskGoal' | 'taskStep' | 'taskStepCount' | 'storeId' | 'targetAisleId' | 'targetSide' | 'currentAisleOrder' | 'activeCrossingId' | 'onboardingComplete' | 'routeReady'
 > = {
   targetItem: null,
+  destinationOnly: false,
+  taskGoal: null,
+  taskStep: 0,
+  taskStepCount: 0,
   storeId: null,
   targetAisleId: null,
   targetSide: null,
@@ -194,7 +207,10 @@ export function createAppStore(opts: CreateAppStoreOptions = {}): AppStore {
     },
 
     transitionEnded() {
-      if (get().mode === 'TRANSITION') get().setMode('INDOOR_NAV');
+      const s = get();
+      if (s.mode !== 'TRANSITION') return;
+      // "Take me to CVS": nothing to do inside — the trip ends at the door.
+      s.setMode(s.destinationOnly ? 'DONE' : 'INDOOR_NAV');
     },
 
     nextFromItem() {
@@ -333,6 +349,30 @@ export function bindStoreToBus(store: AppStore, bus: AppEventBus, opts: BindOpti
     if ((s.mode === 'APPROACH_CROSSING' || s.mode === 'AT_CURB' || s.mode === 'CROSSING') && s.setMode('OUTDOOR_NAV')) {
       store.setState({ activeCrossingId: null });
     }
+  }));
+
+  unsubs.push(bus.on('DESTINATION_REQUESTED', (e) => {
+    // A resolves the place and starts the trip; the store only records the intent. The
+    // mode leaves IDLE on ROUTE_READY as usual (01 §1); TRANSITION then ends in DONE.
+    const s = store.getState();
+    if (s.mode !== 'IDLE') return;
+    store.setState({ targetItem: e.name, destinationOnly: true, taskGoal: null });
+    if (!s.firstRun && !store.getState().onboardingComplete) store.getState().finishOnboarding();
+  }));
+
+  unsubs.push(bus.on('TASK_REQUESTED', (e) => {
+    const s = store.getState();
+    if (s.mode !== 'IDLE') return;
+    if (s.setMode('GUIDED_TASK')) store.setState({ taskGoal: e.goal, taskStep: 0, taskStepCount: 0, destinationOnly: false });
+  }));
+
+  unsubs.push(bus.on('TASK_STEP', (e) => {
+    if (store.getState().mode === 'GUIDED_TASK') store.setState({ taskStep: e.index, taskStepCount: e.total });
+  }));
+
+  unsubs.push(bus.on('TASK_COMPLETED', () => {
+    const s = store.getState();
+    if (s.mode === 'GUIDED_TASK') s.setMode('DONE');
   }));
 
   unsubs.push(bus.on('STORE_ENTERED', () => {

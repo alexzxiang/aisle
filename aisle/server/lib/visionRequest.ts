@@ -13,7 +13,7 @@ export const APP_MODES: readonly AppMode[] = [
   'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV', 'DONE',
 ];
 export const VISION_QUESTIONS: readonly VisionQuestion[] = [
-  'storefront', 'aisle_disambiguate', 'scan_left', 'scan_right', 'curb_crop', 'hand_guidance', 'free',
+  'storefront', 'aisle_disambiguate', 'scan_left', 'scan_right', 'curb_crop', 'hand_guidance', 'free', 'task_step',
 ];
 
 const detection = z.object({

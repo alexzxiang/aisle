@@ -163,7 +163,7 @@ describe('POST /api/plan', () => {
     const body = await res.json() as { job: string; output: { intent: string; item: string | null }; fallback: boolean; latencyMs: number };
     expect(body.job).toBe('parseIntent');
     expect(body.fallback).toBe(false);
-    expect(body.output).toEqual({ intent: 'find_item', item: 'eggs', reply: 'Eggs. Finding a route.' });
+    expect(body.output).toEqual({ intent: 'find_item', item: 'eggs', destination: null, goal: null, reply: 'Eggs. Finding a route.' });
     expect(typeof body.latencyMs).toBe('number');
   });
 

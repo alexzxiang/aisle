@@ -32,6 +32,7 @@ export const PROFILE_FOR_MODE: Readonly<Record<AppMode, ModeProfile>> = Object.f
   ITEM_PICKUP: 'ITEM_PICKUP',
   CHECKOUT_NAV: 'INDOOR_NAV',
   DONE: 'IDLE',
+  GUIDED_TASK: 'INDOOR_NAV',   // guided steps anywhere: detector + depth + OCR, no signal model
 });
 
 export function profileForMode(mode: AppMode): ModeProfile {

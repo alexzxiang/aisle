@@ -50,7 +50,8 @@ describe('profile (pure)', () => {
     expect(profileForMode('ITEM_PICKUP')).toBe('ITEM_PICKUP');
     expect(profileForMode('ONBOARDING')).toBe('IDLE');
     expect(profileForMode('DONE')).toBe('IDLE');
-    expect(Object.keys(PROFILE_FOR_MODE)).toHaveLength(12);
+    expect(profileForMode('GUIDED_TASK')).toBe('INDOOR_NAV');
+    expect(Object.keys(PROFILE_FOR_MODE)).toHaveLength(13);
   });
   it('vehicle cache keys and text', () => {
     expect(vehicleCacheKey('LEFT')).toBe('vehicle_left');

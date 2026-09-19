@@ -83,6 +83,7 @@ export const DEFAULT_MODE_PACKS: Readonly<Record<AppMode, ModePackRule>> = Objec
   ITEM_PICKUP: KEEP_PACK,
   CHECKOUT_NAV: KEEP_PACK,
   DONE: null,
+  GUIDED_TASK: 'indoor-aisle-walk',   // any indoor-ish frames: the guided loop only needs detections + a snapshot
 });
 
 /** 01 §7: AppMode → ModeProfile (AT_CURB shares the approach profile; TRANSITION uses OUTDOOR_NAV). */
@@ -99,6 +100,7 @@ export const MODE_PROFILE: Readonly<Record<AppMode, ModeProfile>> = Object.freez
   ITEM_PICKUP: 'ITEM_PICKUP',
   CHECKOUT_NAV: 'INDOOR_NAV',
   DONE: 'IDLE',
+  GUIDED_TASK: 'INDOOR_NAV',   // detector + depth + OCR; no signal model
 });
 
 /**

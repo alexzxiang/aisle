@@ -11,7 +11,7 @@ function walk(node: unknown, visit: (o: Record<string, unknown>) => void): void 
 describe('VISION_RESPONSE_SCHEMA', () => {
   it('puts speech first and every contract field in order', () => {
     const props = Object.keys(VISION_RESPONSE_SCHEMA.properties as Record<string, unknown>);
-    expect(props).toEqual(['speech', 'cameraRequest', 'userAction', 'aisle', 'storefront', 'scan', 'signal', 'hand', 'confidence', 'seq']);
+    expect(props).toEqual(['speech', 'cameraRequest', 'userAction', 'aisle', 'storefront', 'scan', 'signal', 'hand', 'task', 'confidence', 'seq']);
     expect(VISION_RESPONSE_SCHEMA_JSON.startsWith('{"type":"object","properties":{"speech":')).toBe(true);
   });
 
@@ -22,7 +22,7 @@ describe('VISION_RESPONSE_SCHEMA', () => {
       expect(o.additionalProperties).toBe(false);
       expect(o.required).toEqual(Object.keys(o.properties as Record<string, unknown>));
     });
-    expect(objects).toBe(6);
+    expect(objects).toBe(7);   // root + aisle, storefront, scan, signal, hand, task
   });
 
   it('uses no numeric ranges or string lengths (unsupported by structured outputs)', () => {

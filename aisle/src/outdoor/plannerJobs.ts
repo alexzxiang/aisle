@@ -20,12 +20,14 @@ import type {
   PlannerJob,
   RouteCompileInput,
   RouteCompileOutput,
+  TaskPlanInput,
+  TaskPlanOutput,
 } from '../core/contracts';
 import { countWords, findForbiddenTerm, hasDigit } from '../core/phrases';
 import { feetWords, integerToWords, spokenStreet } from './numberWords';
 import { WALKING_BETA_WARNING } from './types';
 
-export const PLANNER_JOBS: readonly PlannerJob[] = ['routeCompile', 'parseIntent', 'disambiguate', 'crossingAnnounce', 'answer'];
+export const PLANNER_JOBS: readonly PlannerJob[] = ['routeCompile', 'parseIntent', 'disambiguate', 'crossingAnnounce', 'answer', 'taskPlan'];
 
 export const MAX_PHRASE_WORDS = 12;
 
@@ -39,6 +41,7 @@ export const JOB_DEADLINES_MS: Readonly<Record<PlannerJob, { firstToken: number;
   parseIntent: { firstToken: 4500, total: 4500 },
   disambiguate: { firstToken: 4500, total: 4500 },
   answer: { firstToken: 4500, total: 4500 },
+  taskPlan: { firstToken: 8000, total: 8000 },   // once per task, off the real-time path
 };
 
 export type JobInput<J extends PlannerJob> =
@@ -46,6 +49,7 @@ export type JobInput<J extends PlannerJob> =
   J extends 'parseIntent' ? ParseIntentInput :
   J extends 'disambiguate' ? DisambiguateInput :
   J extends 'crossingAnnounce' ? CrossingAnnounceInput :
+  J extends 'taskPlan' ? TaskPlanInput :
   AnswerInput;
 
 export type JobOutput<J extends PlannerJob> =
@@ -53,6 +57,7 @@ export type JobOutput<J extends PlannerJob> =
   J extends 'parseIntent' ? ParseIntentOutput :
   J extends 'disambiguate' ? DisambiguateOutput :
   J extends 'crossingAnnounce' ? CrossingAnnounceOutput :
+  J extends 'taskPlan' ? TaskPlanOutput :
   AnswerOutput;
 
 // ---------------------------------------------------------------------------
@@ -238,15 +243,17 @@ function validateRouteCompile(raw: unknown, input: RouteCompileInput): { output:
 // parseIntent
 // ---------------------------------------------------------------------------
 
-export const INTENTS = ['find_item', 'repeat', 'how_far', 'where_am_i', 'abort', 'help', 'unknown'] as const;
+export const INTENTS = ['find_item', 'navigate_to', 'guided_task', 'repeat', 'how_far', 'where_am_i', 'abort', 'help', 'unknown'] as const;
 
 export const PARSE_INTENT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['intent', 'item', 'reply'],
+  required: ['intent', 'item', 'destination', 'goal', 'reply'],
   properties: {
     intent: { type: 'string', enum: [...INTENTS] },
     item: { type: ['string', 'null'] },
+    destination: { type: ['string', 'null'], maxLength: 60 },
+    goal: { type: ['string', 'null'], maxLength: 120 },
     reply: { type: 'string', maxLength: 90 },
   },
 } as const;
@@ -254,8 +261,10 @@ export const PARSE_INTENT_SCHEMA = {
 export const PARSE_INTENT_PROMPT = [
   'You classify one short push-to-talk transcript from a blind shopper. The transcript may contain speech-recognition errors.',
   'Input: JSON with transcript, mode and knownItems.',
-  'intent is one of: find_item (they name something to buy), repeat (say the last instruction again), how_far (distance to the next turn or crossing), where_am_i, abort (stop, cancel, quit), help, unknown.',
-  'item: the matching entry from knownItems when intent is find_item, else null. Prefer a knownItems match even if the transcript is misspelled.',
+  'intent is one of: find_item (they name something to buy in the store), navigate_to (they want to be taken to a place: a shop, pharmacy, library, address, "take me to CVS"), guided_task (a goal at home or in a room that needs step-by-step camera guidance: "eggs in my fridge", "find my keys", "get to the living room"), repeat (say the last instruction again), how_far (distance to the next turn or crossing), where_am_i, abort (stop, cancel, quit), help, unknown.',
+  'item: the matching entry from knownItems when intent is find_item, else null. Prefer a knownItems match even if the transcript is misspelled. If the transcript names something to buy that is NOT in knownItems and no place is named, intent is still find_item with item null.',
+  'destination: for navigate_to, the place name as spoken, without "take me to" ("CVS", "the library"); else null. goal: for guided_task, the goal in the user\'s words ("eggs in my fridge"); else null.',
+  'Decide by context words: a shop, pharmacy, store name, street or address means navigate_to; fridge, kitchen, living room, bedroom, door, couch, desk, keys, phone or "in my" means guided_task.',
   'reply: at most twelve words, no digits, confirming what you understood, e.g. "Eggs. Finding a route." or "Say the item again."',
   'Never mention crossing, traffic or whether it is fine to proceed.',
   'Output JSON only.',
@@ -266,6 +275,22 @@ const HOW_FAR_RE = /\b(how far|how long|how many|far away|distance)\b/i;
 const WHERE_RE = /\b(where am i|where are we|were am i|what street|where is this)\b/i;
 const ABORT_RE = /\b(stop|cancel|quit|abort|never mind|nevermind|end route)\b/i;
 const HELP_RE = /\b(help|what can you do|instructions|how does this work)\b/i;
+const GO_TO_RE = /\b(?:take me to|bring me to|walk me to|guide me to|navigate to|directions to|go to|get to|find (?:the |a |my )?)\s*(.+)$/i;
+const HOME_WORDS_RE = /\b(fridge|refrigerator|freezer|kitchen|living room|bedroom|bathroom|hallway|closet|couch|sofa|desk|table|door ?frame|my keys|my phone|my wallet|my bag|remote|charger|stairs|in my)\b/i;
+const PLACE_WORDS_RE = /\b(cvs|walgreens|rite aid|pharmacy|store|shop|market|grocery|giant eagle|target|walmart|costco|trader joe|whole foods|library|bank|station|cafe|coffee|starbucks|restaurant|hospital|clinic|school|university|campus|park|bus stop|address|street|avenue|ave|road)\b/i;
+
+/** Rough goal classification shared by the template and A's on-device fallback parser. */
+export function classifyGoalPhrase(transcript: string): { kind: 'navigate_to'; destination: string } | { kind: 'guided_task'; goal: string } | null {
+  const t = transcript.trim().replace(/[.?!]+$/, '');
+  const m = GO_TO_RE.exec(t);
+  const captured = m?.[1] ?? '';
+  const rest = (m ? captured : t).trim().replace(/^(the|a|my)\s+/i, '');
+  if (rest.length === 0) return null;
+  if (HOME_WORDS_RE.test(t)) return { kind: 'guided_task', goal: rest };
+  if (m && (PLACE_WORDS_RE.test(rest) || /^[A-Z][\w&' .-]{1,40}$/.test(captured.trim()))) return { kind: 'navigate_to', destination: rest };
+  if (!m && PLACE_WORDS_RE.test(t) && /\b(where is|nearest|closest)\b/i.test(t)) return { kind: 'navigate_to', destination: rest };
+  return null;
+}
 
 function normalizeWords(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -320,8 +345,13 @@ export function templateParseIntent(input: ParseIntentInput): ParseIntentOutput 
   if (HOW_FAR_RE.test(t)) return { intent: 'how_far', item: null, reply: 'Checking the distance.' };
   if (WHERE_RE.test(t)) return { intent: 'where_am_i', item: null, reply: 'Checking where you are.' };
   if (HELP_RE.test(t)) return { intent: 'help', item: null, reply: 'Say an item, repeat, how far, or where am I.' };
+  // Home words ("in my fridge", "living room") can never mean a store item, so they win
+  // over a knownItems match ("eggs"); everything else lets the store vocabulary win first.
+  const goal = classifyGoalPhrase(t);
+  if (goal?.kind === 'guided_task') return { intent: 'guided_task', item: null, destination: null, goal: goal.goal, reply: `${capitalize(goal.goal)}. Let me see your surroundings.` };
   const item = matchKnownItem(t, input.knownItems ?? []);
   if (item) return { intent: 'find_item', item, reply: `${capitalize(item)}. Finding a route.` };
+  if (goal?.kind === 'navigate_to') return { intent: 'navigate_to', item: null, destination: goal.destination, goal: null, reply: `${capitalize(goal.destination)}. Planning a route.` };
   return { intent: 'unknown', item: null, reply: 'Say the item again.' };
 }
 
@@ -340,9 +370,25 @@ function validateParseIntent(raw: unknown, input: ParseIntentInput): { output: P
       usedFallback = true;
     }
   }
+  const cleanName = (v: unknown, max: number): string | null => {
+    if (typeof v !== 'string') return null;
+    const c = v.trim().replace(/[\r\n]+/g, ' ').slice(0, max);
+    return c.length > 0 && findForbiddenTerm(c) === null ? c : null;
+  };
+  let destination: string | null = null;
+  let goal: string | null = null;
+  if (intent === 'navigate_to') {
+    const fromModel = cleanName(r.destination, 60);
+    destination = fromModel ?? (template.intent === 'navigate_to' ? template.destination ?? null : null);
+    if (fromModel === null) usedFallback = true;
+  } else if (intent === 'guided_task') {
+    const fromModel = cleanName(r.goal, 120);
+    goal = fromModel ?? (template.intent === 'guided_task' ? template.goal ?? null : null);
+    if (fromModel === null) usedFallback = true;
+  }
   const reply = pick(r.reply, template.reply, false);
   if (reply !== (typeof r.reply === 'string' ? r.reply.trim() : '')) usedFallback = true;
-  return { output: { intent, item, reply }, usedFallback };
+  return { output: { intent, item, destination, goal, reply }, usedFallback };
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +595,88 @@ function validateAnswer(raw: unknown, input: AnswerInput): { output: AnswerOutpu
 }
 
 // ---------------------------------------------------------------------------
+// taskPlan — goal → 3–8 steps for the guided-task loop (Nemotron as the decision layer)
+// ---------------------------------------------------------------------------
+
+export const TASK_PLAN_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['askFirst', 'steps'],
+  properties: {
+    askFirst: { type: 'string', maxLength: 90 },
+    steps: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 8,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['instruction', 'lookFor'],
+        properties: { instruction: { type: 'string', maxLength: 90 }, lookFor: { type: 'string', maxLength: 80 } },
+      },
+    },
+  },
+} as const;
+
+export const TASK_PLAN_PROMPT = [
+  'You plan step-by-step camera-guided help for a blind person reaching a goal. Input: JSON with goal, context (home, store, street, unknown) and optional facts the camera already sees.',
+  'Return askFirst: one short request to look around first, e.g. "Let me see your surroundings." Then steps: three to eight ordered steps, each an instruction of at most twelve words the person performs (walk, turn, reach, open) and lookFor: what the camera should confirm to call that step done.',
+  'Adjust to the context: at home use rooms, door frames, appliances and furniture ("Walk to the kitchen door frame.", "Open the fridge."); in a store use aisles, signs and shelves; on the street use doors, entrances and crossings only as places to stand, never when to cross.',
+  'No digits: numbers as words. Never state or imply that it is fine to proceed, that a way is free of traffic, or when to cross a street. Output JSON only.',
+].join('\n');
+
+const TASK_STEP_DEFAULTS: Record<string, Array<{ instruction: string; lookFor: string }>> = {
+  home: [
+    { instruction: 'Turn slowly so I can see the room.', lookFor: 'the room layout and the nearest door' },
+    { instruction: 'Walk toward the door frame ahead.', lookFor: 'a door frame close in front' },
+    { instruction: 'Walk through the door and stop.', lookFor: 'the next room' },
+    { instruction: 'Walk to the target and reach out.', lookFor: 'the target within arm\'s reach' },
+  ],
+  store: [
+    { instruction: 'Turn slowly so I can see the aisle signs.', lookFor: 'an aisle sign' },
+    { instruction: 'Walk to the matching aisle.', lookFor: 'the target aisle sign' },
+    { instruction: 'Face the shelf and reach out.', lookFor: 'the item within arm\'s reach' },
+  ],
+  street: [
+    { instruction: 'Turn slowly so I can see the street.', lookFor: 'the sidewalk and nearby doors' },
+    { instruction: 'Walk toward the entrance ahead.', lookFor: 'a door or entrance close in front' },
+    { instruction: 'Stop at the door and reach for it.', lookFor: 'the door within arm\'s reach' },
+  ],
+};
+
+export function templateTaskPlan(input: TaskPlanInput): TaskPlanOutput {
+  const ctx = input.context in TASK_STEP_DEFAULTS ? input.context : 'home';
+  const steps = TASK_STEP_DEFAULTS[ctx]!.map((s) => ({ ...s }));
+  const last = steps[steps.length - 1]!;
+  const goal = String(input.goal ?? '').trim();
+  if (goal.length > 0 && countWords(`Walk to ${goal} and reach out.`) <= MAX_PHRASE_WORDS && !hasDigit(goal) && findForbiddenTerm(goal) === null) {
+    last.instruction = `Walk to ${goal.replace(/^(the|a|my)\s+/i, '')} and reach out.`;
+    last.lookFor = goal;
+  }
+  return { askFirst: 'Let me see your surroundings.', steps };
+}
+
+function validateTaskPlan(raw: unknown, input: TaskPlanInput): { output: TaskPlanOutput; usedFallback: boolean } {
+  const template = templateTaskPlan(input);
+  const r = (raw ?? {}) as Partial<TaskPlanOutput>;
+  let usedFallback = false;
+  const askFirst = pick(r.askFirst, template.askFirst, false);
+  if (askFirst !== (typeof r.askFirst === 'string' ? r.askFirst.trim() : '')) usedFallback = true;
+  const steps: TaskPlanOutput['steps'] = [];
+  if (Array.isArray(r.steps)) {
+    for (const st of r.steps.slice(0, 8)) {
+      const o = (st ?? {}) as Partial<{ instruction: string; lookFor: string }>;
+      const instruction = typeof o.instruction === 'string' ? digitsToWords(o.instruction).trim() : '';
+      const lookFor = typeof o.lookFor === 'string' ? o.lookFor.trim().slice(0, 80) : '';
+      if (isValidPhrase(instruction, false) && lookFor.length > 0) steps.push({ instruction, lookFor });
+      else usedFallback = true;
+    }
+  }
+  if (steps.length === 0) return { output: template, usedFallback: true };
+  return { output: { askFirst, steps }, usedFallback };
+}
+
+// ---------------------------------------------------------------------------
 // Job table
 // ---------------------------------------------------------------------------
 
@@ -566,6 +694,7 @@ export const JOB_SPECS: { [J in PlannerJob]: JobSpec<J> } = {
   disambiguate: { job: 'disambiguate', schema: DISAMBIGUATE_SCHEMA, prompt: DISAMBIGUATE_PROMPT, template: templateDisambiguate, validate: validateDisambiguate },
   crossingAnnounce: { job: 'crossingAnnounce', schema: CROSSING_ANNOUNCE_SCHEMA, prompt: CROSSING_ANNOUNCE_PROMPT, template: templateCrossingAnnounce, validate: validateCrossingAnnounce },
   answer: { job: 'answer', schema: ANSWER_SCHEMA, prompt: ANSWER_PROMPT, template: templateAnswer, validate: validateAnswer },
+  taskPlan: { job: 'taskPlan', schema: TASK_PLAN_SCHEMA, prompt: TASK_PLAN_PROMPT, template: templateTaskPlan, validate: validateTaskPlan },
 };
 
 export function isPlannerJob(v: unknown): v is PlannerJob {

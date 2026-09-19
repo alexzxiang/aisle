@@ -63,6 +63,7 @@ function positive(seq: number): VisionResponse {
     scan: { vehiclesSeen: 'unclear', confidence: 0 },
     signal: { state: 'UNKNOWN', confidence: 0 },
     hand: { hint: 'not_seen' },
+    task: { done: false, confidence: 0 },
     confidence: 0.85,
     seq,
   };

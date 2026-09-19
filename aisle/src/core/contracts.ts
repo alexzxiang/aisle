@@ -26,7 +26,8 @@ export type AppMode =
   | 'AT_ITEM'            // arrived at the target aisle
   | 'ITEM_PICKUP'        // stretch: hand guidance to the package
   | 'CHECKOUT_NAV'       // navigating to checkout
-  | 'DONE';
+  | 'DONE'
+  | 'GUIDED_TASK';     // goal-directed step guidance anywhere (home, street, store): IDLE → GUIDED_TASK → DONE
 
 /*
 Legal transitions only:
@@ -165,6 +166,7 @@ export interface SensorService {
 // 5. Event bus (Agent A implements, everyone emits/subscribes)
 // ---------------------------------------------------------------------------
 
+export type TaskContext = 'home' | 'store' | 'street' | 'unknown';
 export type Direction = 'LEFT' | 'CENTER' | 'RIGHT';
 export type Side = 'LEFT' | 'RIGHT';
 export type SignalState = 'WALK' | 'DONT_WALK' | 'COUNTDOWN' | 'UNKNOWN';
@@ -191,6 +193,10 @@ export type AppEvent =
   | { type: 'CROSSING_STARTED'; crossingId: string }
   | { type: 'FAR_CURB_REACHED'; crossingId: string }
   | { type: 'CROSSING_ABORTED'; crossingId: string; reason: 'user' | 'walked_past' | 'replan' }  // B; AT_CURB / CROSSING → OUTDOOR_NAV (01 §1 post-review)
+  | { type: 'DESTINATION_REQUESTED'; name: string; source: 'voice' | 'keyboard' | 'mock' }  // "take me to CVS": A resolves a place, trip runs destination-only
+  | { type: 'TASK_REQUESTED'; goal: string; context: TaskContext; source: 'voice' | 'keyboard' | 'mock' }  // "eggs in my fridge": guided steps
+  | { type: 'TASK_STEP'; index: number; total: number; instruction: string }
+  | { type: 'TASK_COMPLETED'; goal: string }
   // course keeping (all modes)
   | { type: 'COURSE_DEVIATION'; meters: number; side: Side }
   | { type: 'OBSTACLE_AHEAD'; distanceClass: DistanceClass; direction: Direction }
@@ -301,7 +307,7 @@ export interface PerceptionService {
 
 export type VisionQuestion =
   | 'storefront' | 'aisle_disambiguate' | 'scan_left' | 'scan_right'
-  | 'curb_crop' | 'hand_guidance' | 'free';
+  | 'curb_crop' | 'hand_guidance' | 'free' | 'task_step';
 
 export interface VisionRequest {
   seq: number;
@@ -330,6 +336,7 @@ export interface VisionResponse {
   scan: { vehiclesSeen: VehiclesSeen; confidence: number };
   signal: { state: SignalState; confidence: number };      // curb_crop only; UNKNOWN unless confident
   hand: { hint: HandHint };                                 // hand_guidance only
+  task: { done: boolean; confidence: number };              // task_step only: is the current step complete?
   confidence: number;                                        // 0..1 overall; < 0.5 → callers ignore
   seq: number;
 }
@@ -338,7 +345,7 @@ export interface VisionResponse {
 // 9. Planner (Agent B owns schemas; proxy route by Agent D) — Tier 2 Nemotron
 // ---------------------------------------------------------------------------
 
-export type PlannerJob = 'routeCompile' | 'parseIntent' | 'disambiguate' | 'crossingAnnounce' | 'answer';
+export type PlannerJob = 'routeCompile' | 'parseIntent' | 'disambiguate' | 'crossingAnnounce' | 'answer' | 'taskPlan';
 
 export interface PlannerResult<T> { job: PlannerJob; output: T; fallback: boolean; latencyMs: number }
 
@@ -355,8 +362,10 @@ export interface RouteCompileOutput {
 // parseIntent — after push-to-talk STT
 export interface ParseIntentInput { transcript: string; mode: AppMode; knownItems: string[] }
 export interface ParseIntentOutput {
-  intent: 'find_item' | 'repeat' | 'how_far' | 'where_am_i' | 'abort' | 'help' | 'unknown';
+  intent: 'find_item' | 'navigate_to' | 'guided_task' | 'repeat' | 'how_far' | 'where_am_i' | 'abort' | 'help' | 'unknown';
   item: string | null;
+  destination?: string | null;  // navigate_to: a place name ("CVS", "the library")
+  goal?: string | null;         // guided_task: the goal in the user's words ("eggs in my fridge")
   reply: string;   // ≤ 12 words
 }
 
@@ -374,6 +383,13 @@ export interface CrossingAnnounceOutput { nodeId: string | null; signalized: boo
 // answer — "repeat / how far / where am I", re-plan after a missed turn
 export interface AnswerInput { question: 'repeat' | 'how_far' | 'where_am_i' | 'replan'; context: Record<string, unknown> }
 export interface AnswerOutput { reply: string }   // ≤ 12 words
+
+// taskPlan — a goal in the user's words → 3–8 spoken steps for the guided-task loop
+export interface TaskPlanInput { goal: string; context: TaskContext; facts?: { detections: string[]; ocr: string[] } }
+export interface TaskPlanOutput {
+  askFirst: string;                                        // ≤ 12 words, e.g. "Let me see your surroundings."
+  steps: Array<{ instruction: string; lookFor: string }>;  // instruction ≤ 12 words; lookFor = what the camera should confirm
+}
 
 // ---------------------------------------------------------------------------
 // 10. CrossingController (Agent B) and TransitionDetector (Agent D)

@@ -39,6 +39,7 @@ export const VISION_RESPONSE_SCHEMA: Readonly<Record<string, unknown>> = Object.
     scan: obj({ vehiclesSeen: { type: 'string', enum: [...VEHICLES_SEEN] }, confidence: { type: 'number' } }),
     signal: obj({ state: { type: 'string', enum: [...SIGNAL_STATES] }, confidence: { type: 'number' } }),
     hand: obj({ hint: { type: 'string', enum: [...HAND_HINTS] } }),
+    task: obj({ done: { type: 'boolean', description: 'task_step only: the current step is complete' }, confidence: { type: 'number' } }),
     confidence: { type: 'number' },
     seq: { type: 'integer' },
   }),
@@ -59,6 +60,7 @@ export function emptyVisionResponse(seq: number): VisionResponse {
     scan: { vehiclesSeen: 'unclear', confidence: 0 },
     signal: { state: 'UNKNOWN', confidence: 0 },
     hand: { hint: 'not_seen' },
+    task: { done: false, confidence: 0 },
     confidence: 0,
     seq,
   };
@@ -90,6 +92,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
     scan: { vehiclesSeen: isIn(VEHICLES_SEEN, sc.vehiclesSeen) ? sc.vehiclesSeen : 'unclear', confidence: num(sc.confidence) },
     signal: { state: isIn(SIGNAL_STATES, sg.state) ? sg.state : 'UNKNOWN', confidence: num(sg.confidence) },
     hand: { hint: isIn(HAND_HINTS, h.hint) ? h.hint : 'not_seen' },
+    task: { done: (r.task as { done?: unknown } | undefined)?.done === true, confidence: num((r.task as { confidence?: unknown } | undefined)?.confidence) },
     confidence: num(r.confidence),
     seq,
   };

@@ -73,6 +73,7 @@ export const MIN_INTERVAL_MS: Readonly<Record<VisionQuestion, number>> = Object.
   scan_right: 0,
   curb_crop: 0,
   free: 0,
+  task_step: 2500,   // the guided loop re-asks about once per scene change, never faster than this
 });
 
 /** Thumbnail width per question: 640 when text must be read, 1024 for the curb crop, 512 otherwise. */
@@ -84,6 +85,7 @@ export const SNAPSHOT_WIDTH: Readonly<Record<VisionQuestion, 512 | 640 | 1024 | 
   hand_guidance: 640,
   curb_crop: 1024,
   free: null,
+  task_step: 640,   // read labels, door signs, fridge contents
 });
 
 const CROSSING_QUESTIONS: ReadonlySet<VisionQuestion> = new Set<VisionQuestion>(['scan_left', 'scan_right', 'curb_crop']);
@@ -116,6 +118,7 @@ export function emptyVisionResponse(seq: number): VisionResponse {
     scan: { vehiclesSeen: 'unclear', confidence: 0 },
     signal: { state: 'UNKNOWN', confidence: 0 },
     hand: { hint: 'not_seen' },
+    task: { done: false, confidence: 0 },
     confidence: 0,
     seq,
   };
@@ -148,6 +151,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
     scan: { vehiclesSeen: str(scan.vehiclesSeen, 'unclear') as VisionResponse['scan']['vehiclesSeen'], confidence: num(scan.confidence, 0) },
     signal: { state: str(signal.state, 'UNKNOWN') as SignalState, confidence: num(signal.confidence, 0) },
     hand: { hint: str(hand.hint, 'not_seen') as VisionResponse['hand']['hint'] },
+    task: { done: sub(raw.task).done === true, confidence: num(sub(raw.task).confidence, 0) },
     confidence: num(raw.confidence, 0),
     seq: base.seq,
   };

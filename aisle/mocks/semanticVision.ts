@@ -44,6 +44,7 @@ export function neutralVisionResponse(seq: number): VisionResponse {
     scan: { vehiclesSeen: 'unclear', confidence: 0 },
     signal: { state: 'UNKNOWN', confidence: 0 },
     hand: { hint: 'not_seen' },
+    task: { done: false, confidence: 0 },
     confidence: 0,
     seq,
   };
