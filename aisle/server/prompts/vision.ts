@@ -15,6 +15,12 @@ const COMMON_CORE = [
   'Do not add pleasantries.',
   'If the image is dark, blurred or ambiguous, lower your confidence rather than guessing.',
   'Food identification: color alone is not identity. A brown egg can resemble an orange: inspect smooth oval shell versus textured round citrus skin. Eggs may be in a molded multi-well carton, cardboard or plastic, open or closed. Use visible shape, packaging and readable labels together; do not invent a label. If ambiguous, state uncertainty and request a closer stable view. Do not substitute a likely food for the requested item.',
+  // The two on-device sources are not interchangeable, and saying so is what stops
+  // an egg carton arriving as "orange". onDeviceSees comes from an eighty-class COCO
+  // detector with no class for most groceries, so it reports its nearest class
+  // instead; its box is still worth trusting. onDeviceScene is Apple's ~1300-label
+  // image classifier, which does know egg, carton, cheese, yogurt and bread.
+  'The two on-device lists are different instruments. onDeviceSees comes from a fixed eighty-class detector: its boxes and sides are reliable, but it has no class for most groceries — eggs, milk, cheese, yogurt, bread — and reports whichever of its eighty classes is nearest, so an egg carton can arrive as "orange" or "carrot". Use it for where a thing is, not for what a specific item is. onDeviceScene is a much larger image classifier that does name such items. Where they disagree about identity, the image decides, then onDeviceScene, and never the eighty-class labels.',
 ].join(' ');
 /** Task questions answer one thing; the scene itself is the describer's and the awareness loop's business. */
 const COMMON = `${COMMON_CORE} Do not describe the scene.`;
@@ -73,7 +79,7 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'Question: where does the camera seem to be? Fill scene.setting with the coarse kind of place (street, crossing, entrance, store, home, kitchen, hallway, room, vehicle, unknown) and scene.label with a place phrase of at most five words that a blind person would recognise, e.g. "on a sidewalk by a road", "in a kitchen", "in a store aisle", "at a store entrance", "in a hallway". scene.confidence is your belief in the label.',
     'speech is required and never empty: one plain sentence of at most twelve words that tells a blind person what the camera is pointed at right now, in the second person, e.g. "You are looking at a wall.", "You are facing down a quiet street.", "A person walking a dog is ahead of you.", "Kitchen counter ahead, fridge on your left." Name the nearest thing that matters and where it is (ahead, left, right, close). Numbers as words. Never say that it is fine to proceed or to cross.',
     'If the frame shows too little to tell (a blank wall, the floor, darkness), say so in speech ("You are looking at the floor."), set scene.setting unknown, an empty label, and cameraRequest to what would help (up, left, right).',
-    'onDeviceScene (when present) lists the phone\'s own scene classifier labels with confidences and onDeviceSees names the detected objects with sides: treat them as strong hints for the setting and name them in speech when the image agrees.',
+    'onDeviceScene (when present) lists the phone\'s own classifier labels with confidences and onDeviceSees names the detected objects with sides: treat them as strong hints for the setting and name them in speech when the image agrees, subject to the rule above about which of the two to believe on identity.',
     'userText may carry what the user said about where they are; if it disagrees with the image, trust the user for the setting and describe what differs in the label.',
   ].join(' '),
   free: [
@@ -84,16 +90,39 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
 });
 
 /** "couch ahead (large), tv left, cup right (small)" from normalized upright boxes: x → side, area → size. */
+/** far | a few steps | close, so the two distance cues can be compared. */
+type Proximity = 0 | 1 | 2;
+const PROXIMITY_WORD = [' (far)', ' (a few steps)', ' (close)'] as const;
+
+/**
+ * Depth Anything is a *relative* depth map: it ranks what is nearer within one
+ * frame and carries no absolute scale. Pressed against a flat fridge door the
+ * whole frame sits at one distance, the per-frame normalisation has nothing to
+ * spread across, and `near` collapses to zero — so the grid reports "far"
+ * exactly when the user is close enough to touch the thing. Captured frames
+ * showed a fridge filling 88 % of the view with `near: 0`.
+ *
+ * How much of the frame a known thing subtends is the absolute cue, which is
+ * why `guide.stepsFromBox` derives distance from box height and lets `near`
+ * only clamp it closer. This does the same: depth may bring something nearer,
+ * never push it farther.
+ */
+export function proximityOf(area: number, near: number | undefined): Proximity {
+  const fromArea: Proximity = area > 0.25 ? 2 : area < 0.02 ? 0 : 1;
+  if (typeof near !== 'number') return fromArea;
+  const fromDepth: Proximity = near >= 0.66 ? 2 : near >= 0.4 ? 1 : 0;
+  return Math.max(fromDepth, fromArea) as Proximity;
+}
+
 export function describeDetections(dets: VisionRequest['facts']['detections']): string {
   const side = (cx: number): string => (cx < 0.36 ? 'left' : cx > 0.64 ? 'right' : 'ahead');
   const size = (area: number): string => (area > 0.25 ? ' (large, close)' : area < 0.02 ? ' (small, far)' : '');
-  // The depth grid's nearness beats box size when the phone sent it (round 6b).
-  const depth = (near: number): string => (near >= 0.66 ? ' (close)' : near >= 0.4 ? ' (a few steps)' : ' (far)');
   return dets
     .slice(0, 12)
     .map((d) => {
       const [x, , w, h] = d.box;
-      const dist = typeof d.near === 'number' ? depth(d.near) : size(w * h);
+      const area = w * h;
+      const dist = typeof d.near === 'number' ? PROXIMITY_WORD[proximityOf(area, d.near)] : size(area);
       return `${d.cls.replace(/_/g, ' ')} ${side(x + w / 2)}${dist}`;
     })
     .join(', ');

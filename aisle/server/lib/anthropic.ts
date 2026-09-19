@@ -37,8 +37,29 @@ export const MAX_IMAGE_LONG_EDGE = 1024;
 
 export type VisionModel = typeof MODELS.haiku | typeof MODELS.sonnet;
 
+/**
+ * Questions that decide whether a mission step is complete, rather than
+ * describing what is in view. Haiku answers the describing questions well and
+ * is the cheaper default; these two turn out to need the stronger model.
+ *
+ * `curb_crop` was always here: reading a signal head across a junction.
+ *
+ * `task_step` joined it on measured evidence. On four captured frames of an
+ * open fridge — shelves, containers and an egg carton plainly in view — Haiku
+ * answered `task.done: false` with "reach for the handle" every time, and
+ * Sonnet answered `true` with "the door is already open" every time. 4/4
+ * against 0/4, for about 300 ms more (2.7-3.2 s versus 3.0-3.5 s). Removing
+ * the on-device facts and removing the injected "Seen:" line both left Haiku
+ * wrong, so this is the model, not the prompt.
+ *
+ * The cost is real: `task_step` fires every few seconds while a task runs.
+ * That is the trade — a guided task that cannot tell an open door from a shut
+ * one never reaches its second step.
+ */
+const STRONG_MODEL_QUESTIONS: ReadonlySet<string> = new Set(['curb_crop', 'task_step']);
+
 export function modelFor(question: VisionRequest['question']): VisionModel {
-  return question === 'curb_crop' ? MODELS.sonnet : MODELS.haiku;
+  return STRONG_MODEL_QUESTIONS.has(question) ? MODELS.sonnet : MODELS.haiku;
 }
 
 /** Build the Messages params. Exported for the tests and the warm-up. */
