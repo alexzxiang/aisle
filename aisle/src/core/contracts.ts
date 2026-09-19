@@ -281,6 +281,8 @@ export interface DepthSummary {
   centerBottomRel: number;   // relative depth 0..1 (1 = nearest) in the centre-bottom cell
   closingRate: number;       // d(rel)/dt, positive = approaching
   timestamp: number;
+  leftBottomRel?: number;    // round 6b: the bottom-left / bottom-right cells, for "open to your left"
+  rightBottomRel?: number;
 }
 
 /** Long edge of a `snapshotJPEG`: 512 scans, 640 signs/labels, 768 the room (awareness, guided steps), 1024 the curb crop. */

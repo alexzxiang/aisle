@@ -24,7 +24,10 @@ const detection = z.object({
   trackId: z.number(),
 });
 
-const depth = z.object({ centerBottomRel: z.number(), closingRate: z.number(), timestamp: z.number() });
+const depth = z.object({
+  centerBottomRel: z.number(), closingRate: z.number(), timestamp: z.number(),
+  leftBottomRel: z.number().optional(), rightBottomRel: z.number().optional(),
+});
 
 export const visionRequestSchema = z.object({
   seq: z.number().int().nonnegative(),

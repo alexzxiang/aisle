@@ -231,7 +231,8 @@ public struct ObstacleEstimator {
 
     var depthPayload: DepthSummaryPayload?
     if depthLimiter.allow(at: t) {
-      depthPayload = DepthSummaryPayload(centerBottomRel: rel, closingRate: closing, timestamp: t * 1000)
+      depthPayload = DepthSummaryPayload(centerBottomRel: rel, closingRate: closing, timestamp: t * 1000,
+                                         leftBottomRel: grid.leftBottom, rightBottomRel: grid.rightBottom)
     }
 
     var obstacle: ObstacleAheadPayload?

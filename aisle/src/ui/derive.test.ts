@@ -318,6 +318,9 @@ describe('awareness strip (IDLE / guided task)', () => {
     expect(detectionSummary([{ cls: 'person' }, { cls: 'person' }, { cls: 'cart' }])).toBe('two persons, a cart');
     expect(detectionSummary([{ cls: 'car' }, { cls: 'car' }, { cls: 'car' }, { cls: 'car' }])).toBe('several cars');
     expect(detectionSummary([{ cls: 'ped_walk' }])).toBe('a walk signal');
+    // The depth grid's nearness tags the closest thing (round 6b).
+    expect(detectionSummary([{ cls: 'table', near: 0.8 }, { cls: 'backpack', near: 0.3 }])).toBe('a table (close), a backpack');
+    expect(detectionSummary([{ cls: 'cell_phone', near: 0.9 }])).toBe('a cell phone (close)');
   });
 
   it('awarenessSlots: camera, what it sees, what to say', () => {

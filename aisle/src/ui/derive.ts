@@ -397,19 +397,25 @@ const SEEN_NAMES: Readonly<Partial<Record<Detection['cls'], string>>> = Object.f
   plant: 'plant',
 });
 
-/** "a person, two carts" from the detector's current tracks; "nothing yet" when empty. */
-export function detectionSummary(detections: readonly Pick<Detection, 'cls'>[]): string {
+/** "a person, two carts" from the detector's current tracks; "nothing yet" when empty. The nearest thing says how near. */
+export function detectionSummary(detections: readonly Pick<Detection, 'cls' | 'near'>[]): string {
   if (detections.length === 0) return 'nothing yet';
   const counts = new Map<string, number>();
-  for (const d of detections) counts.set(d.cls, (counts.get(d.cls) ?? 0) + 1);
+  const nearest = new Map<string, number>();
+  for (const d of detections) {
+    counts.set(d.cls, (counts.get(d.cls) ?? 0) + 1);
+    if (typeof d.near === 'number') nearest.set(d.cls, Math.max(nearest.get(d.cls) ?? 0, d.near));
+  }
   const parts = Array.from(counts.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([cls, n]) => {
-      const name = SEEN_NAMES[cls as Detection['cls']] ?? cls;
-      if (n === 1) return /^[aeiou]/i.test(name) ? `an ${name}` : `a ${name}`;
+      const name = (SEEN_NAMES[cls as Detection['cls']] ?? cls).replace(/_/g, ' ');
+      const near = nearest.get(cls);
+      const tag = typeof near === 'number' && near >= 0.66 ? ' (close)' : '';
+      if (n === 1) return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}${tag}`;
       const plural = name.endsWith('s') ? name : `${name}s`;
-      return `${n < COUNT_WORD.length ? COUNT_WORD[n] : 'several'} ${plural}`;
+      return `${n < COUNT_WORD.length ? COUNT_WORD[n] : 'several'} ${plural}${tag}`;
     });
   return parts.join(', ');
 }

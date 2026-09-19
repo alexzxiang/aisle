@@ -427,15 +427,24 @@ public struct DepthSummaryPayload: PerceptionPayload, Equatable {
   public var centerBottomRel: Double
   public var closingRate: Double
   public var timestamp: Double
+  /// Round 6b: the left and right bottom cells too, so JS can say "path ahead blocked, open to your left".
+  public var leftBottomRel: Double?
+  public var rightBottomRel: Double?
 
-  public init(centerBottomRel: Double, closingRate: Double, timestamp: Double) {
+  public init(centerBottomRel: Double, closingRate: Double, timestamp: Double,
+              leftBottomRel: Double? = nil, rightBottomRel: Double? = nil) {
     self.centerBottomRel = centerBottomRel
     self.closingRate = closingRate
     self.timestamp = timestamp
+    self.leftBottomRel = leftBottomRel
+    self.rightBottomRel = rightBottomRel
   }
 
   public var dictionary: [String: Any] {
-    ["centerBottomRel": centerBottomRel, "closingRate": closingRate, "timestamp": timestamp]
+    var d: [String: Any] = ["centerBottomRel": centerBottomRel, "closingRate": closingRate, "timestamp": timestamp]
+    if let leftBottomRel { d["leftBottomRel"] = leftBottomRel }
+    if let rightBottomRel { d["rightBottomRel"] = rightBottomRel }
+    return d
   }
 }
 

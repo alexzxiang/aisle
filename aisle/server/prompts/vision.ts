@@ -94,6 +94,16 @@ export function describeDetections(dets: VisionRequest['facts']['detections']): 
     .join(', ');
 }
 
+/** "ahead blocked, open to your left, right blocked" from the depth grid's bottom row (round 6b). */
+export function describePath(d: NonNullable<VisionRequest['facts']['depth']>): string {
+  const word = (rel: number): string => (rel >= 0.66 ? 'blocked' : rel >= 0.4 ? 'something a few steps away' : 'open');
+  const parts = [`ahead ${word(d.centerBottomRel)}`];
+  if (typeof d.leftBottomRel === 'number') parts.push(`left ${word(d.leftBottomRel)}`);
+  if (typeof d.rightBottomRel === 'number') parts.push(`right ${word(d.rightBottomRel)}`);
+  if (d.closingRate > 0.15) parts.push('closing in');
+  return parts.join(', ');
+}
+
 /** Render the on-device facts as a short text block above the image (05 Part 2). */
 export function renderFacts(req: VisionRequest): string {
   const f = req.facts;
@@ -111,7 +121,10 @@ export function renderFacts(req: VisionRequest): string {
     lines.push('detections: none');
   }
   lines.push(`ocr: ${f.ocr.length ? f.ocr.slice(0, 12).join(' | ') : 'none'}`);
-  if (f.depth) lines.push(`depth: centerBottomRel=${f.depth.centerBottomRel.toFixed(2)} closingRate=${f.depth.closingRate.toFixed(2)}`);
+  if (f.depth) {
+    lines.push(`depth: centerBottomRel=${f.depth.centerBottomRel.toFixed(2)} closingRate=${f.depth.closingRate.toFixed(2)}`);
+    lines.push(`path: ${describePath(f.depth)}`);
+  }
   if (f.signalState) lines.push(`onDeviceSignalState: ${f.signalState}`);
   if (f.sceneLabels?.length) lines.push(`onDeviceScene: ${f.sceneLabels.slice(0, 8).join(', ')}`);
   if (typeof f.headingDeg === 'number') lines.push(`headingDeg: ${Math.round(f.headingDeg)}`);
