@@ -803,3 +803,12 @@ action sentence instead of dropped; the reasoning chain (table → counter → b
 "Checked the table, counter, bowl and fridge. Where else?" → explore) is pinned end to end.
 Obstacles are described — "Chair ahead, close. Open on your right." — from the detections and
 the depth grid in both reflex paths. App 1320 tests, proxy 217. JS only — Metro reload.
+
+### Round 14 (Stream A) — 2026-09-20
+"Stays in one place saying obstacle ahead": the reflex was firing on closing-rate noise while
+the person stood panning a table; it is now gated on movement (ARKit pose speed), on being
+deliberately at a surface, and on the obstacle being the very target of the walk, with a longer
+repeat cooldown. Explore on demand ("explore", "next aisle", "another room", "it's not here")
+leaves the spot at once — a fresh landmark without asking, else a coverage leg — and the
+explorer keeps the tick while it moves so the navigator no longer hops guesses under it. App
+1319 tests, proxy 217. JS only — Metro reload. Not yet walked.

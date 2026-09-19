@@ -198,6 +198,46 @@ describe('bindPerceptionToApp', () => {
     expect(r.events).toContainEqual({ type: 'VEHICLE_APPROACHING', direction: 'RIGHT', trackId: 7 });
   });
 
+  it('obstacle reflex indoors: the described line when the app has one, suppressed when it would be noise, the event always (rounds 13–14)', () => {
+    const native = fakeNative();
+    const perception = createNativePerceptionService(native);
+    const bus = createEventBus();
+    const store = createAppStore({ bus, warn: () => {} });
+    const played: string[] = [];
+    const said: SpeechRequest[] = [];
+    let noise = false;
+    let words: string | null = 'Chair ahead, close. Open on your right.';
+    bindPerceptionToApp({
+      perception, bus, store,
+      haptics: { play: (p: string) => { played.push(p); }, startCourse: () => {}, stopCourse: () => {} } as never,
+      speech: { say: (r: SpeechRequest) => { said.push(r); }, playStream: () => {}, clearQueue: () => {}, isSpeaking: () => false, setRate: () => {} },
+      describeObstacle: () => words,
+      suppressObstacle: () => noise,
+    });
+    const events: AppEvent[] = [];
+    bus.onAny((r) => events.push(r.event));
+    store.setState({ mode: 'TRANSITION' });
+    store.setState({ mode: 'INDOOR_NAV' });
+    native.fire('onDepth', { centerBottomRel: 0.9, closingRate: 0.3, timestamp: 1 });
+    native.fire('onObstacleAhead', { distanceClass: 'NEAR', direction: 'CENTER' });
+    expect(played).toEqual(['STOP']);
+    expect(said[0]).toMatchObject({ text: 'Chair ahead, close. Open on your right.', priority: 'CRITICAL', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs: 4000 });
+    expect(said[0]!.cacheKey).toBeUndefined();
+    // The same words again: a longer cooldown rides on the request.
+    native.fire('onObstacleAhead', { distanceClass: 'NEAR', direction: 'CENTER' });
+    expect(said[1]!.cooldownMs).toBe(8000);
+    // Standing still / at a surface / walking up to the thing: nothing felt or said, the event still goes out.
+    noise = true;
+    native.fire('onObstacleAhead', { distanceClass: 'NEAR', direction: 'CENTER' });
+    expect(played).toEqual(['STOP', 'STOP']);
+    expect(said).toHaveLength(2);
+    expect(events.filter((e) => e.type === 'OBSTACLE_AHEAD')).toHaveLength(3);
+    // No description available: the cached phrase.
+    noise = false; words = null;
+    native.fire('onObstacleAhead', { distanceClass: 'NEAR', direction: 'CENTER' });
+    expect(said[2]).toMatchObject({ text: 'Obstacle ahead.', cacheKey: 'obstacle_ahead' });
+  });
+
   it('obstacle reflex: NEAR + closing → STOP only outdoors, STOP + obstacle_ahead indoors; bus event always', () => {
     const r = rig();
     r.store.setState({ mode: 'OUTDOOR_NAV' });

@@ -1,8 +1,9 @@
 import type { Detection } from './contracts';
 import { createGuide, type GuideInstruction } from './guide';
 import { MAX_UTTERANCE_WORDS, checkPhrase, countWords } from './phrases';
+import { createSearchExplorer } from './searchExplorer';
 import {
-  answerOpen, answerRoom, clockWord, createMissionRunner, decide, guessRoom, initialMissionState, itemLine, missionName, parseMissionGoal,
+  answerOpen, answerRoom, clockWord, createMissionRunner, decide, exploreRequest, guessRoom, initialMissionState, itemLine, missionName, parseMissionGoal,
   MISSION_CHANGE_FLOOR_MS, MISSION_REPEAT_MS, MISSION_SLOW_REPEAT_MS,
 } from './itemMission';
 
@@ -220,6 +221,16 @@ describe('decide: where the person stands → what to say', () => {
     for (const line of said) expect(countWords(line)).toBeLessThanOrEqual(MAX_UTTERANCE_WORDS);
   });
 
+  it('"explore" / "next aisle" / "it is not here" are requests to leave this spot (round 14)', () => {
+    expect(exploreRequest('explore')).toEqual({ asked: true, prefer: null });
+    expect(exploreRequest('Look somewhere else.')).toEqual({ asked: true, prefer: null });
+    expect(exploreRequest("it's not here")).toEqual({ asked: true, prefer: null });
+    expect(exploreRequest('try the next aisle')).toEqual({ asked: true, prefer: 'aisle' });
+    expect(exploreRequest('check another room')).toEqual({ asked: true, prefer: 'room' });
+    expect(exploreRequest('yes')).toEqual({ asked: false, prefer: null });
+    expect(exploreRequest('where are the bananas')).toEqual({ asked: false, prefer: null });
+  });
+
   it('a container has to be opened: "may be inside, open it, then say open" → open → scan inside; cannot open → next guess', () => {
     const water = parseMissionGoal('a bottle of water')!;
     const unseen = g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false });
@@ -290,6 +301,30 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     t += MISSION_CHANGE_FLOOR_MS;
     expect(m.tick().text).toMatch(/^Keys slightly right/);
     expect(m.userText()).toContain('Look for: keys');
+  });
+
+  it('"explore" mid-search leaves the spot at once: the explorer walks, the navigator holds its guesses (round 14)', () => {
+    let t = T0;
+    const pose = { x: 0, z: 0, y: 0, yawDeg: 0, trackingState: 'NORMAL' as const, timestamp: t };
+    const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
+    const search = createSearchExplorer({ item: 'bananas', context: 'home', guide, now: () => t, pose: () => ({ ...pose, timestamp: t }), path: () => ({ center: 0.1, left: 0.1, right: 0.1 }) });
+    const m = createMissionRunner(parseMissionGoal('bananas')!, { guide, now: () => t, search });
+    expect(m.tick().text).toBe('No bananas in view. They are usually on the counter.');
+    t += 1000;
+    const r = m.intercept('explore');
+    expect(r.consumed).toBe(true);
+    expect(r.text).toBe('Okay. Walk forward about ten steps. New ground that way.');
+    expect(search.busy()).toBe(true);
+    // While the leg runs, the navigator does not hop to "maybe on the table".
+    t += 9000;
+    const during = m.tick();
+    expect(during.text === null || /Keep walking|Drifting|Keep turning/.test(during.text)).toBe(true);
+    expect(during.decision.key.startsWith('search:') || during.text === null).toBe(true);
+    // Six metres on: the leg ends, a look around, then reasoning resumes.
+    pose.z = -6.5;
+    t += 1000;
+    expect(m.tick().text).toBe('Stop here. Let me look around.');
+    expect(search.busy()).toBe(false);
   });
 
   it('answers the room question through intercept and repeats on demand', () => {

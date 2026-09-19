@@ -101,7 +101,7 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1320 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1319 tests
 cd aisle/server && npx tsc --noEmit && npx vitest run   # 215 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
@@ -348,6 +348,24 @@ redirect), `adaptiveSearch.test.ts`.
   speakers (`PerceptionService` CRITICAL, `indoor/obstacles.ts` INFO) through
   `describeObstacle` from composeApp; the cached "Obstacle ahead." remains the fallback when
   nothing is known.
+
+## Round 14 (Stream A): unstuck — explore on demand, and the obstacle reflex stops nagging
+- **"Obstacle ahead" on repeat while standing at a table** was the reflex reading closing-rate
+  noise from panning. `bindPerceptionToApp` takes `suppressObstacle(e)`; composeApp answers
+  true when the phone is stationary (< 0.15 m/s over two seconds of ARKit pose), when the
+  mission is deliberately at a surface (scan_place / open_place / reach / confirm, the fridge's
+  open / find / confirm stages), or when the thing the reflex sees *is* the mission's target
+  (walking up to the fridge). The haptic and the line are skipped; the bus event still fires.
+  The same described line repeats no sooner than eight seconds (four for a new one).
+- **Explore on demand.** "explore", "look somewhere else", "it's not here", "next aisle",
+  "another room", "move on" → `mission.explore()` → the current place is marked tried and the
+  explorer leaves at once (`exploreNow`): a fresh landmark of the wanted kind without asking
+  ("Okay. Heading for the aisle end."), else a coverage leg ("Okay. Walk forward about ten
+  steps. New ground that way."), else the plain advance. Works for the fridge search too.
+- **The explorer has the tick while it moves.** Its lines (legs, drift nudges, arrivals) win
+  over the navigator's; the navigator holds its guesses (`exploring` in the snapshot) instead of
+  hopping hypotheses silently under a moving explorer; when the explorer is quiet the
+  navigator's new-guess line still goes out. A leg not ticked for eight seconds is dropped.
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

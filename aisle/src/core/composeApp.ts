@@ -40,9 +40,9 @@ import { createConversationLog, type ConversationLog } from './conversation';
 import { createSceneDescriber, type SceneDescriber } from './describer';
 import { createGuidedTask, type GuidedTask } from './guidedTask';
 import { createSituate, type Situate } from './situate';
-import { createSceneMemory, type SceneMemory } from './sceneMemory';
+import { classForWords, createSceneMemory, type SceneMemory } from './sceneMemory';
 import { createGuide } from './guide';
-import { describeObstacle } from './obstacleWords';
+import { describeObstacle, obstacleDetection } from './obstacleWords';
 import { createTracer } from './trace';
 import { createHandGuide } from './handGuide';
 import { wirePrompts, type PromptsBinding } from './prompts';
@@ -241,10 +241,12 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   // Round 13: obstacle lines say what is in the way, where, how far and which side is open. The
   // detections and the depth grid are captured further down; the closure reads them when asked.
   let obstacleWords: ((e: { distanceClass: DistanceClass; direction: Direction }) => string | null) | null = null;
+  let obstacleNoise: ((e: { distanceClass: DistanceClass; direction: Direction }) => boolean) | null = null;
   const perceptionBinding = bindPerceptionToApp({ perception, bus, store, haptics, speech,
     isForeground: platform.isForeground, healthIntervalMs: config.mock ? undefined : 5000,
     onHealth: (health) => trace('perception_health', health),
     describeObstacle: (e) => obstacleWords?.(e) ?? null,
+    suppressObstacle: (e) => obstacleNoise?.(e) ?? false,
   });
   realSensors?.attachPerception(perception);
 
@@ -364,6 +366,22 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     hfovDeg: lensHfov(),
     direction: e.direction,
   });
+  // Round 14: an obstacle line is noise when standing still (panning a table), when deliberately
+  // at a surface, or when walking up to the very thing the reflex sees (the fridge we are after).
+  const AT_SURFACE = new Set<string>(['scan_place', 'open_place', 'reach', 'confirm', 'open', 'find_item', 'confirm_pickup']);
+  const APPROACHING = new Set<string>(['approach_item', 'approach_place', 'approach', 'find_place', 'find_door']);
+  obstacleNoise = (e) => {
+    if (isStationary()) return true;
+    const st = guidedTaskRef?.getDebugState();
+    if (!st?.active) return false;
+    if (st.stage && AT_SURFACE.has(st.stage)) return true;
+    if (st.stage && APPROACHING.has(st.stage) && st.target) {
+      const seen = obstacleDetection(now() - latestDetectionAt <= 1500 ? latestDetections : [], e.direction);
+      const want = classForWords(st.target);
+      if (seen && want && seen.cls === want) return true;
+    }
+    return false;
+  };
   const guide = createGuide({
     detections: () => now() - latestDetectionAt <= 1500 ? latestDetections : [],
     detectionTimestamp: () => latestDetectionAt,
@@ -470,7 +488,21 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   let searchSteps = 0;
   unsubs.push(sensors.subscribeSteps((steps) => { searchSteps = steps; }));
   let latestPose: import('./contracts').Pose | null = null;
-  unsubs.push(perception.onPose((p) => { latestPose = p; }));
+  const poseTrail: Array<{ x: number; z: number; at: number }> = [];
+  unsubs.push(perception.onPose((p) => {
+    latestPose = p;
+    poseTrail.push({ x: p.x, z: p.z, at: now() });
+    while (poseTrail.length > 0 && now() - poseTrail[0]!.at > 2000) poseTrail.shift();
+  }));
+  /** Walking speed under 0.15 m/s over the last two seconds: standing (or turning) still. */
+  const isStationary = (): boolean => {
+    if (poseTrail.length < 4) return false;
+    const a = poseTrail[0]!;
+    const b = poseTrail[poseTrail.length - 1]!;
+    const dt = (b.at - a.at) / 1000;
+    if (dt < 1) return false;
+    return Math.hypot(b.x - a.x, b.z - a.z) / dt < 0.15;
+  };
   const guidedTask = createGuidedTask({
     adaptiveSearch: !mocks,
     heading: () => sceneMemory.facing(),

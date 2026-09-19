@@ -39,7 +39,7 @@ import type { Guide, GuideInstruction, TargetBox } from './guide';
 import { classForWords } from './sceneMemory';
 import { fridgeMission, likelyFridgeGoal, FRIDGE_STAGES, type FridgeStage } from './fridgeMission';
 import { MISSION_PHRASES } from './preparedGuidance';
-import { MISSION_STEPS, createMissionRunner, parseMissionGoal, type MissionPhase, type MissionRunner } from './itemMission';
+import { MISSION_STEPS, createMissionRunner, exploreRequest, parseMissionGoal, type MissionPhase, type MissionRunner } from './itemMission';
 import { isAffirmative, isNegative } from './yesNo';
 import { createSearchExplorer, type SearchExplorer } from './searchExplorer';
 import { foodSection } from './foodCatalog';
@@ -182,6 +182,8 @@ export interface GuidedTaskDeps {
 export interface GuidedTaskDebugState {
   searchAreas?: ReturnType<SearchExplorer['memory']>;
   stage: FridgeStage | MissionPhase | null;
+  /** Round 14: the thing the walk is aimed at right now (a place, an appliance, the item), for the obstacle gate. */
+  target?: string | null;
   active: boolean;
   goal: string | null;
   context: TaskContext | null;
@@ -799,6 +801,17 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       const r = run;
       if (!r || mode() !== 'GUIDED_TASK') return false;
       const t = transcript.trim();
+      // "Explore" / "next aisle" while looking for the fridge itself: leave this spot now.
+      if (r.fridge && r.search && r.step === 0 && exploreRequest(t).asked) {
+        const d = r.search.exploreNow(exploreRequest(t).prefer);
+        r.searchTarget = d.target;
+        if (d.haptic) deps.haptics.play(d.haptic);
+        if (d.text) {
+          speech.say({ text: d.text, priority: 'NAV', dedupeKey: 'task-search', cooldownMs: 0 });
+          deps.conversation?.pushAisle(d.text, 'prompt');
+        }
+        return true;
+      }
       if (r.step === 0 || (r.fridge && r.step === 2)) {
         const answer = r.search?.intercept(t);
         if (answer?.consumed) {
@@ -872,6 +885,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       return {
         ...(run?.search ? { searchAreas: run.search.memory() } : {}),
         stage: run?.fridge ? FRIDGE_STAGES[run.step] ?? null : run?.mission ? run.mission.phase() : null,
+        target: run?.fridge ? (run.step === 2 ? itemOfGoal(run.goal) : /\bfreezer\b/i.test(run.goal) ? 'freezer' : 'fridge') : run?.mission ? run.mission.boxTarget() : null,
         active: run !== null,
         goal: run?.goal ?? null,
         context: run?.context ?? null,

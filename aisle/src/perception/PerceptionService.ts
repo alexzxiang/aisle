@@ -179,6 +179,12 @@ export interface BindPerceptionOptions {
   onHealth?: (health: Record<string, unknown>) => void;
   /** Round 13: the words for an obstacle — what, where, how far, the open side — or null for the plain phrase. */
   describeObstacle?: (e: { distanceClass: DistanceClass; direction: Direction }) => string | null;
+  /**
+   * Round 14: true when an indoor obstacle line would be noise — the person is standing still,
+   * is deliberately at a surface (scanning a table, reaching into the fridge), or is walking up
+   * to the very thing the reflex sees. The haptic and the line are skipped; the event still goes out.
+   */
+  suppressObstacle?: (e: { distanceClass: DistanceClass; direction: Direction }) => boolean;
 }
 
 /** The `models: detector=… depth=…` line the engine prints at start. */
@@ -306,17 +312,22 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
   }));
 
   // --- Reflex 2: obstacle. NEAR + closing → STOP; phrase only where policy allows it.
+  let lastObstacleLine: string | null = null;
   unsubs.push(perception.onDepth((d: DepthSummary) => {
     lastDepth = d;
   }));
   unsubs.push(perception.onObstacleAhead((e: { distanceClass: DistanceClass; direction: Direction }) => {
-    const reflex = obstacleReflexFor(profile, e, lastDepth, store.getState().mode);
+    let reflex = obstacleReflexFor(profile, e, lastDepth, store.getState().mode);
+    if (reflex === 'STOP_AND_SPEAK' && opts.suppressObstacle?.(e)) reflex = 'NONE';
     if (reflex !== 'NONE') haptics.play('STOP');
     if (reflex === 'STOP_AND_SPEAK') {
       const described = opts.describeObstacle?.(e) ?? null;
+      // The same words again within eight seconds are noise; a different thing in the way is news.
+      const cooldownMs = described && described === lastObstacleLine ? 8000 : 4000;
+      lastObstacleLine = described;
       speech.say(described
-        ? { text: described, priority: 'CRITICAL', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs: 2000 }
-        : { text: 'Obstacle ahead.', priority: 'CRITICAL', cacheKey: 'obstacle_ahead', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs: 2000 });
+        ? { text: described, priority: 'CRITICAL', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs }
+        : { text: 'Obstacle ahead.', priority: 'CRITICAL', cacheKey: 'obstacle_ahead', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs });
     }
     bus.emit({ type: 'OBSTACLE_AHEAD', distanceClass: e.distanceClass, direction: e.direction });
   }));

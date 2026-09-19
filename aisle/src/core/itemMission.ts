@@ -120,6 +120,8 @@ export interface MissionSnapshot {
   place: GuideInstruction | null;
   /** Round 11: what the phone can act on for each candidate place (the stated one and the usual ones). */
   candidates?: ReadonlyArray<{ place: string; evidence: PlaceEvidence }>;
+  /** Round 14: the explorer is walking somewhere or waiting for consent — hold the guesses. */
+  exploring?: boolean;
   /** guide.instructionFor('doorway') with the model's doorway box. */
   door: GuideInstruction | null;
   /** The awareness loop's room label ("in a kitchen"), when it has one. */
@@ -366,7 +368,7 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
       // then the next guess; the stated place, below, gets the full search.
       const since = state.scanSince ?? s.now;
       next.scanSince = since;
-      if (s.now - since > MISSION_UNSEEN_GUESS_MS) {
+      if (!s.exploring && s.now - since > MISSION_UNSEEN_GUESS_MS) {
         const picked = nextHypothesis();
         if (picked) return picked;
         next.working = null;
@@ -378,7 +380,7 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     // finds nothing is the person asked whether it is in another room.
     const since = state.scanSince ?? s.now;
     next.scanSince = since;
-    if (!state.askedRoom && s.now - since >= MISSION_ASK_ROOM_AFTER_MS) {
+    if (!s.exploring && !state.askedRoom && s.now - since >= MISSION_ASK_ROOM_AFTER_MS) {
       next.askedRoom = true;
       const room = guessRoom(working, goal.item);
       const here = s.sceneLabel?.toLowerCase() ?? '';
@@ -403,6 +405,16 @@ export function answerRoom(state: MissionState, transcript: string, now: number)
   if (elsewhere) return { consumed: true, next: { ...state, phase: 'find_door', throughDoorAt: now }, text: 'Turn slowly until I see a doorway.' };
   if (here) return { consumed: true, next: { ...state, phase: 'find_place', askedRoom: true }, text: 'Turn slowly all the way around so I can find it.' };
   return { consumed: false, next: state, text: null };
+}
+
+/** "explore", "keep exploring", "look somewhere else", "next aisle", "another room", "move on" → leave this spot. */
+export function exploreRequest(transcript: string): { asked: boolean; prefer: 'aisle' | 'room' | null } {
+  const t = normalizeAnswer(transcript);
+  if (/\b(?:next|another|other|different) aisle\b/.test(t) || /\baisles?\b/.test(t) && /\b(?:try|check|look|search|move|explore)\b/.test(t)) return { asked: true, prefer: 'aisle' };
+  if (/\b(?:next|another|other|different) room\b/.test(t) || /\brooms?\b/.test(t) && /\b(?:try|check|look|search|move|explore)\b/.test(t)) return { asked: true, prefer: 'room' };
+  if (/^(?:explore|keep exploring|explore more|look around more|look somewhere else|search somewhere else|try somewhere else|move on|keep moving|let'?s move|somewhere else|elsewhere|look elsewhere|search elsewhere)$/.test(t)) return { asked: true, prefer: null };
+  if (/^(?:it'?s|its|it is) not here$/.test(t) || /^not here$/.test(t)) return { asked: true, prefer: null };
+  return { asked: false, prefer: null };
 }
 
 /** "open" / "it's open" / "done" at a container: the inside can be scanned now. */
@@ -453,6 +465,8 @@ export interface MissionRunner {
   intercept(transcript: string): { consumed: boolean; text: string | null };
   /** Say the current line again on the next tick ("repeat", a reminder). */
   repeat(): void;
+  /** Round 14: the person asked to explore — leave this spot now. Returns the line to say. */
+  explore(prefer?: 'aisle' | 'room' | null): string | null;
   /** The freshest box for the item (model's or the detector's), for the hand loop. */
   itemBox(): TargetBox | null;
   /** The hand loop finished touching the item. */
@@ -502,6 +516,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       place: state.working ? look(state.working) : null,
       door: look('the doorway'),
       sceneLabel: deps.sceneLabel?.() ?? null,
+      exploring: deps.search?.busy() ?? false,
       ...(candidates ? { candidates } : {}),
     };
   };
@@ -524,17 +539,25 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       // Reasoning first (the stated place, then where such things usually are, with what the
       // phone can act on); the explorer takes the tick only when geometry has nothing to say.
       const reasoned = decide(goal, state, snap);
-      const wantsExplore = reasoned.decision.explore === true || (state.phase === 'scan_place' && !snap.item?.targetVisible && reasoned.decision.key.endsWith(':looking'));
-      if (deps.search && !memoryFresh && wantsExplore && state.phase !== 'reach' && state.phase !== 'confirm') {
-        const scanningSurface = state.phase === 'scan_place';
+      const explorerBusy = deps.search?.busy() ?? false;
+      const wantsExplore = reasoned.decision.explore === true || explorerBusy || (state.phase === 'scan_place' && !snap.item?.targetVisible && reasoned.decision.key.endsWith(':looking'));
+      if (deps.search && !memoryFresh && wantsExplore && state.phase !== 'reach' && state.phase !== 'confirm' && !snap.item?.targetVisible) {
+        const scanningSurface = state.phase === 'scan_place' && !explorerBusy;
         const exploration = deps.search.tick(scanningSurface ? goal.item : state.working ?? goal.item, null, { surface: scanningSurface });
         if (exploration) {
           searchTarget = exploration.target;
           asking = null;
           state = { ...reasoned.next, phase: scanningSurface ? 'scan_place' : 'find_place' };
           const haptic = exploration.haptic ?? null;
-          const decision: MissionDecision = { phase: state.phase, text: exploration.text, key: `search:${exploration.phase}`, boxTarget: exploration.target, haptic, modelMaySpeak: false, asking: null };
-          return { text: exploration.text, haptic, modelMaySpeak: false, decision };
+          if (exploration.text) {
+            const decision: MissionDecision = { phase: state.phase, text: exploration.text, key: `search:${exploration.phase}`, boxTarget: exploration.target, haptic, modelMaySpeak: false, asking: null };
+            lastKey = decision.key; lastSpokenAt = t;
+            return { text: fitWords(exploration.text), haptic, modelMaySpeak: false, decision };
+          }
+          // The explorer is quiet this tick: the navigator's own reasoning line (a new guess) may go out.
+          if (!reasoned.decision.key.includes(':hypothesis:') && !reasoned.decision.key.endsWith(':exhausted')) {
+            return { text: null, haptic: null, modelMaySpeak: false, decision: { ...reasoned.decision, text: null } };
+          }
         }
       }
       searchTarget = null;
@@ -569,6 +592,11 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     },
     intercept(transcript) {
       const t = transcript.trim();
+      // "explore" / "look somewhere else" / "next aisle" / "another room": leave this spot now.
+      const ex = exploreRequest(t);
+      if (ex.asked && state.phase !== 'reach' && state.phase !== 'confirm') {
+        return { consumed: true, text: this.explore(ex.prefer) };
+      }
       // "try the cabinet" / "it's on the table": the person's word beats every guess.
       const redirect = statedPlaceIn(t);
       if (redirect && state.phase !== 'reach' && state.phase !== 'confirm') {
@@ -606,6 +634,17 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       deps.search?.repeat();
       lastKey = null;
       lastSpokenAt = -Infinity;
+    },
+    explore(prefer = null) {
+      // The working place is done with; the next guess waits until the explorer has moved us.
+      if (state.working) state = { ...state, tried: state.tried.includes(state.working) ? state.tried : [...state.tried, state.working], working: null, scanSince: null, openAsked: false, opened: false, askedRoom: false, phase: 'find_place' };
+      asking = null;
+      lastKey = null;
+      lastSpokenAt = now();
+      if (!deps.search) return 'Okay. Turn slowly all the way around so I can look.';
+      const d = deps.search.exploreNow(prefer);
+      searchTarget = d.target;
+      return d.text ?? 'Okay. Exploring.';
     },
     itemBox() {
       const key = goal.item.toLowerCase();
