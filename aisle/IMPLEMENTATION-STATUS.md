@@ -10,7 +10,7 @@ and passes its tests (60 Jest suites / 906 tests; 14 vitest files / 140 tests; t
 dependency lints pass; the Swift engine typechecks against the iPhoneOS SDK). A walking-skeleton
 test now drives the whole 01 §1 mode sequence, IDLE to DONE, through `composeApp` on D's replayers
 — under Jest fake timers, on synthetic fixtures, not on a phone. None of it has ever run on a
-phone, against a real API, at the venue, or with a trained model. The Swift `PerceptionModule` has never been compiled by Xcode. There are
+phone, against a real API, at the venue, or with a trained model. The Swift `PerceptionModule` first compiled under Xcode on 2026-09-18 (unsigned arm64 device build, 0 errors; `libPerception.a` built and registered in `ExpoModulesProvider.swift`) but has still never run on a phone. There are
 zero model weights, zero cached ElevenLabs phrases, zero API keys, zero real recordings, and the
 store and crossing fixtures carry invented coordinates. The proxy is not hosted anywhere. What
 the team has is a complete, well-tested **mock-mode** application and a complete but **unproven**
@@ -65,7 +65,7 @@ Grouped by what unblocks them.
 
 | # | Gap | Owner | Why it is open | What finishes it |
 |---|---|---|---|---|
-| G1 | Xcode compile of the generated project; first compile of `PerceptionModule.swift` and the Engine under the iOS toolchain | A (builds), C (fixes) | This Mac's Xcode 26.6 has SDK headers but no iOS platform or simulator runtimes; `xcodebuild` exits 70 ("iOS 26.5 is not installed" / "Found no destinations") | `xcodebuild -downloadPlatform iOS` (multi-GB) or another Mac; then `npx expo prebuild --platform ios && npx expo run:ios --device` |
+| G1 | Xcode compile of the generated project; first compile of `PerceptionModule.swift` and the Engine under the iOS toolchain | A (builds), C (fixes) | This Mac's Xcode 26.6 has SDK headers but no iOS platform or simulator runtimes; `xcodebuild` exits 70 ("iOS 26.5 is not installed" / "Found no destinations") | `xcodebuild -downloadPlatform iOS` (multi-GB) or another Mac; then `npx expo prebuild --platform ios && npx expo run:ios --device` **Resolved 2026-09-18:** iOS 26.5 platform installed on this Mac; `xcodebuild -sdk iphoneos … CODE_SIGNING_ALLOWED=NO build` → BUILD SUCCEEDED. Remaining: install on the iPhone 16 over USB (`npx expo run:ios --device`). |
 | G2 | On-device perception verification: ARKit video format, detector ≥ 15 fps, depth ≥ 10 fps, OCR 3 fps, frame → haptic < 150 ms, thermal `.serious` downshift, NEAR/MID/FAR wall-walk calibration, 0.5 m taped-line drift, horizon-row sign convention, Vision ROI mapping, Depth Anything output format, snapshot bytes | C | No phone, no build, no weights | G1 + G14, then a DebugPanel session reading `getStats()` and `nativeLog()`; flip `Geometry.swift` horizon sign if mirrored; scale `ObstacleEstimator` / `OcrReader` constants |
 | G3 | `.mlpackage` inside a CocoaPods resource bundle: does Xcode compile it to `.mlmodelc`? | C | Needs a pod install with weights present | One `pod install` + build with any `.mlpackage` in `models/`; `ModelRegistry` already looks up both extensions |
 | G4 | On-device audio/haptics: cached phrase < 50 ms, chunked Tier-1 MP3 playback in AVPlayer, live TTS first audio < 400 ms, haptics firing while ARKit runs and with `allowsRecording: false`, Bluetooth latency | A | Backends exercised only through injected fakes | Phase-0 T4/T5 on the demo phone; if chunked MP3 without Content-Length stalls, D buffers server-side |
@@ -156,7 +156,7 @@ SKELETON_TRACE=1 npx jest src/walkingSkeleton.test.ts   # prints the mode/say/ev
 
 ```bash
 npx expo prebuild --platform ios --clean   # succeeds here; Perception pod links
-npx expo run:ios --device                   # BLOCKED on this Mac (G1); works on a Mac with the iOS platform installed
+npx expo run:ios --device                   # unblocked 2026-09-18 (iOS platform installed; unsigned arm64 build succeeds); needs the iPhone on USB
 npm run start:mock                          # EXPO_PUBLIC_MOCK=1 expo start --dev-client
 ```
 
@@ -211,7 +211,7 @@ Every checkbox in the document is unticked. What the repository can and cannot v
 **Open, blocking for the full plan (11 §9)**
 
 - R0 / N8: organiser answer on pre-written code, model weights and a hosted empty server — not recorded. Every artifact in this repo is app code under the strict reading.
-- T1: Xcode able to build to a physical iPhone on at least two Macs — the one Mac tried cannot (no iOS platform installed).
+- T1: Xcode able to build to a physical iPhone on at least two Macs — the one Mac tried could not until 2026-09-18 (no iOS platform); it now builds for arm64 (unsigned).
 - T2: throwaway spike with the module scaffold, an ARKit session and one CoreML model running on the demo phone, with fps and build times — not done.
 - T3: EAS internal build installed on the Windows user's phone — not done.
 - T4 device half, T5 device half — not done.
@@ -258,7 +258,7 @@ entirely NO-GO.
 | `PerceptionModule.swift` compile | **never** | — |
 | `npx expo-modules-autolinking resolve -p ios` | lists `perception` | — |
 | `npx expo prebuild --platform ios --clean` | succeeded (3rd run, 100 pods incl. Perception) | — |
-| `xcodebuild … -sdk iphoneos` | **exit 70** ("iOS 26.5 is not installed"; no destinations) | — |
+| `xcodebuild … -sdk iphoneos` | **exit 70** ("iOS 26.5 is not installed"; no destinations) → **BUILD SUCCEEDED** on 2026-09-18 after installing the platform | — |
 | `npx expo run:ios --device` | never completed | — |
 | EAS build | never requested | — |
 | `python3 -m py_compile training/*.py` + `--help` | pass (D) | not re-run |
@@ -318,7 +318,7 @@ Everything below is the gate output as printed, trimmed to the result lines.
 | Swift engine typecheck | `xcrun -sdk iphoneos swiftc -typecheck -target arm64-apple-ios17.0 -parse-as-library modules/perception/ios/Engine/*.swift` | 11 files, exit 0, no diagnostics |
 | Swift macOS harness | `bash modules/perception/tests/run.sh` | `94 passed, 0 failed` |
 | SDK pins | `npx expo install --check` | **fails**: `expo-build-properties@57.0.20 - expected version: ~57.0.21`, `expo-location@57.0.18 - expected version: ~57.0.19` (G38; not one of the named gates, left for A) |
-| `PerceptionModule.swift` / `xcodebuild` / device build | — | still never compiled (G1); unchanged by this round |
+| `PerceptionModule.swift` / `xcodebuild` / device build | — | compiled 2026-09-18 (unsigned arm64 build, 0 errors); not yet run on a phone |
 
 **Walking skeleton** (`npx jest src/walkingSkeleton.test.ts --verbose`): 12 / 12 pass. Ten
 assertions on the main run (mode sequence IDLE → OUTDOOR_NAV → APPROACH_CROSSING → AT_CURB →
