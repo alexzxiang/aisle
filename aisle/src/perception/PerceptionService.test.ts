@@ -3,6 +3,7 @@ import { createEventBus } from '../core/bus';
 import { createAppStore } from '../core/store';
 import type { PerceptionNativeModule } from '../../modules/perception';
 import { bindPerceptionToApp, createNativePerceptionService, createPerceptionService, vehicleText } from './PerceptionService';
+import { missingRequiredModels, reportMissingModels } from './PerceptionService';
 import { PROFILE_FOR_MODE, obstacleReflexFor, profileForMode, vehicleCacheKey } from './profile';
 
 type AnyListener = (e: unknown) => void;
@@ -244,5 +245,45 @@ describe('bindPerceptionToApp', () => {
     store.setState({ mode: 'OUTDOOR_NAV' });
     await new Promise((r) => setTimeout(r, 0));   // the start → log → report chain is a few microtasks long
     expect(errors).toEqual([{ type: 'ERROR', scope: 'perception.start', message: 'ARKit unavailable' }]);
+  });
+});
+
+describe('missing on-device models are announced, not suffered in silence', () => {
+  const present = ['videoFormat=1920x1440@30 wide', 'models: detector=present signal=MISSING depth=present segmentation=MISSING'];
+  const blind = ['videoFormat=1920x1440@30 wide', 'models: detector=MISSING signal=MISSING depth=MISSING segmentation=MISSING'];
+
+  it('says nothing when the models that matter are there', () => {
+    // signal and segmentation are expected to be absent: untrained, and optional.
+    expect(missingRequiredModels(present)).toEqual([]);
+  });
+
+  it('names the stages that leave the app blind', () => {
+    expect(missingRequiredModels(blind)).toEqual(['detector', 'depth']);
+    expect(missingRequiredModels(['models: detector=MISSING depth=present'])).toEqual(['detector']);
+  });
+
+  it('stays quiet on a build whose engine never reported models', () => {
+    // An older binary, or mock mode: absence of the line is not absence of the model.
+    expect(missingRequiredModels(['videoFormat=1920x1440@30 wide'])).toBeNull();
+    expect(missingRequiredModels([])).toBeNull();
+  });
+
+  it('reports once, with the command that fixes it', () => {
+    const calls: Array<{ scope: string; message: string }> = [];
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      reportMissingModels(blind, (scope, err) => calls.push({ scope, message: (err as Error).message }));
+      expect(calls).toHaveLength(1);
+      expect(calls[0].scope).toBe('perception.models');
+      expect(calls[0].message).toContain('cannot recognise objects');
+      expect(calls[0].message).toContain('npm run models:coco');
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      calls.length = 0;
+      reportMissingModels(present, (scope, err) => calls.push({ scope, message: (err as Error).message }));
+      expect(calls).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

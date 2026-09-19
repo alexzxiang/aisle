@@ -400,6 +400,34 @@ public final class ModelRegistry {
     lastLoadLog
   }
 
+  /// Which declared models are actually in the bundle, reported before anything
+  /// tries to use them.
+  ///
+  /// Weights are git-ignored and exported per machine, so a checkout builds and
+  /// installs perfectly with no detector inside. Loading is lazy and a missing
+  /// file only ever shows up as silence — `onDetections` never fires, the
+  /// "Sees:" strip stays empty and every cloud question is asked with zero
+  /// on-device facts — which reads as "the camera is bad at recognising things"
+  /// rather than "there is no model". This states it once, at start.
+  ///
+  /// `signal` and `segmentation` are expected to be absent today (the
+  /// pedestrian-signal model is untrained, segmentation is optional), so
+  /// `missingRequired` names only the two that make the app blind.
+  public func presence() -> (lines: [String], missingRequired: [String]) {
+    var parts: [String] = []
+    var missing: [String] = []
+    for stage in PipelineStage.allCases {
+      guard let name = modelName(for: stage) else { continue }
+      let found = (try? modelURL(named: name)) != nil
+      parts.append("\(stage.rawValue)=\(found ? "present" : "MISSING")")
+      if !found && ModelRegistry.requiredStages.contains(stage) { missing.append(name) }
+    }
+    return (["models: " + parts.joined(separator: " ")], missing)
+  }
+
+  /// Without these the app cannot see objects or judge distance at all.
+  static let requiredStages: Set<PipelineStage> = [.detector, .depth]
+
   // MARK: Loading
 
   private func loadModel(named name: String) throws -> LoadedModel {
