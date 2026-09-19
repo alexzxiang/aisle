@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { findForbiddenTerm } from '../../src/core/phrases';
@@ -12,7 +13,7 @@ import { testConfig } from '../test/fakes';
 import { clearOverpassCache, loadOverpassFixture, loadWprdc } from './crossings';
 import { buildRoute, cacheKeyFor, clearRouteCache, createRouteRouter, fixtureMatches, routeCompileInputFor, type RouteDeps } from './route';
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GOOGLE_FIXTURE = path.resolve(HERE, '..', 'data', 'fixtures', 'computeRoutes-forbes-bouquet.json');
 
 const ORIGIN = { lat: 40.4428803, lng: -79.9546937 };
