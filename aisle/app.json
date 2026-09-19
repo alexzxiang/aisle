@@ -1,13 +1,27 @@
 {
   "expo": {
-    "name": "aisle",
+    "name": "Aisle",
     "slug": "aisle",
-    "version": "1.0.0",
+    "version": "0.1.0",
+    "scheme": "aisle",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "edu.steelhacks.aisle",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Aisle reads signs and signals through the camera.",
+        "NSLocationWhenInUseUsageDescription": "Aisle needs your location to guide you.",
+        "NSMotionUsageDescription": "Aisle counts steps to estimate progress.",
+        "NSMicrophoneUsageDescription": "Aisle listens only while you hold the talk button.",
+        "NSSpeechRecognitionUsageDescription": "Aisle turns your request into text on this phone.",
+        "NSLocalNetworkUsageDescription": "Development server discovery.",
+        "UIRequiredDeviceCapabilities": [
+          "arkit"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,8 +36,34 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-audio",
-      "expo-speech-recognition",
+      "expo-dev-client",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Aisle needs your location to guide you.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Aisle counts steps to estimate progress."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Aisle listens only while you hold the talk button."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "speechRecognitionPermission": "Aisle turns your request into text on this phone.",
+          "microphonePermission": "Aisle listens only while you hold the talk button."
+        }
+      ],
       "expo-build-properties"
     ]
   }
