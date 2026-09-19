@@ -122,8 +122,8 @@ describe('createSceneMemory', () => {
     const r = rig(() => t);
     // Round 9: eggs and milk became detector classes, so the classifier-only things here are yogurt and cereal.
     r.classify(0, [{ id: 'kitchen', confidence: 0.6 }, { id: 'yogurt', confidence: 0.45 }, { id: 'ketchup', confidence: 0.35 }, { id: 'refrigerator', confidence: 0.5 }, { id: 'noise', confidence: 0.1 }]);
-    // 'kitchen' is a place, not a thing; 'refrigerator' is a detector class, left to the box path.
-    expect(r.mem.entries().filter((e) => e.source === 'classifier').map((e) => e.cls).sort()).toEqual(['ketchup', 'yogurt']);
+    // Keep classifier sightings even for detector classes; kitchen is only a setting.
+    expect(r.mem.entries().filter((e) => e.source === 'classifier').map((e) => e.cls).sort()).toEqual(['ketchup', 'refrigerator', 'yogurt']);
     r.face(90);
     expect(r.mem.whereIs('yogurt')).toMatchObject({ cls: 'yogurt', relativeDeg: -90, phrase: 'The yogurt is to your left.' });
     expect(r.mem.whereIs('the ketchup')).toMatchObject({ cls: 'ketchup', phrase: 'The ketchup is to your left.' });
@@ -151,4 +151,18 @@ describe('createSceneMemory', () => {
     expect(r.said[r.said.length - 1]).toBe('The fridge is ahead.');
     r.mem.dispose();
   });
+});
+
+it('keeps egg classifier evidence despite an orange detection, without relabeling boxes', () => {
+  let t = 1000;
+  const r = rig(() => t);
+  r.see(0, [det('orange', 0.8)]);
+  r.classify(0, [{ id: 'egg', confidence: 0.8 }]);
+  r.face(90);
+  expect(r.mem.whereIs('eggs')).toMatchObject({ cls: 'egg', relativeDeg: -90 });
+  expect(r.mem.entries().find(e => e.cls === 'egg')).toMatchObject({ source: 'classifier', area: 0 });
+  expect(r.mem.entries().find(e => e.cls === 'orange')?.source).toBe('detector');
+  t += 91_000;
+  expect(r.mem.whereIs('eggs')).toBe('unseen');
+  r.mem.dispose();
 });

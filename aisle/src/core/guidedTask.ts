@@ -37,7 +37,7 @@ import { templateTaskPlan } from '../outdoor/plannerJobs';
 import { createHandGuide, itemOfGoal, type HandGuide } from './handGuide';
 import type { Guide, GuideInstruction, TargetBox } from './guide';
 import { classForWords } from './sceneMemory';
-import { fridgeMission, FRIDGE_STAGES, type FridgeStage } from './fridgeMission';
+import { fridgeMission, likelyFridgeGoal, FRIDGE_STAGES, type FridgeStage } from './fridgeMission';
 import { MISSION_PHRASES } from './preparedGuidance';
 import { MISSION_STEPS, createMissionRunner, parseMissionGoal, type MissionPhase, type MissionRunner } from './itemMission';
 import { isAffirmative, isNegative } from './yesNo';
@@ -425,7 +425,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       if (reminder) r.mission.repeat();
       missionTick(r);
     } else {
-      const geometrySpoke = deps.guide && r.fridge && r.step === 0 ? speakGeometry(r) : false;
+      const geometrySpoke = deps.guide && r.fridge && r.step === 0 && !s.instruction.startsWith('It may be') ? speakGeometry(r) : false;
       if (!geometrySpoke) speech.say({ text: s.instruction, priority: 'NAV', dedupeKey: `task-step-${r.step}`, cooldownMs: reminder ? 0 : 1500 });
     }
     if (!reminder) {
@@ -713,10 +713,20 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const begin = async (goal: string, context: TaskContext): Promise<void> => {
     stop();
     const gen = ++generation;
-    const fixedFridge = deps.guide ? fridgeMission(goal) : null;
+    const itemGuide = deps.guide?.instructionFor(itemOfGoal(goal));
+    const inferredGoal = likelyFridgeGoal(goal, context,
+      !!itemGuide && (itemGuide.targetVisible || itemGuide.kind !== 'scan_unknown'));
+    const fixedFridge = deps.guide ? fridgeMission(inferredGoal ?? goal) : null;
+    if (fixedFridge && inferredGoal) {
+      fixedFridge.steps[0] = {
+        ...fixedFridge.steps[0]!,
+        instruction: 'It may be in the fridge. Find the fridge first.',
+      };
+    }
     const search = deps.adaptiveSearch && deps.guide && (context === 'home' || context === 'store') ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, now }) : null;
     const missionGoal = deps.guide && !fixedFridge && (context === 'home' || (context === 'store' && search)) ? parseMissionGoal(goal) : null;
     const mission = missionGoal ? createMissionRunner(missionGoal, { guide: deps.guide!, sceneLabel: deps.scene, search: search ?? undefined, now }) : null;
+
     const fixed = fixedFridge ?? (mission ? { askFirst: MISSION_STEPS[0].instruction, steps: [...MISSION_STEPS] } : null);
     if (!fixed) sayPhrase('let_me_see', 0);
     let description: string | null = null;

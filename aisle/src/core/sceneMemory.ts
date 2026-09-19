@@ -279,7 +279,8 @@ export function createSceneMemory(deps: SceneMemoryDeps): SceneMemory {
         if (l.confidence < CLASSIFIER_MIN_CONFIDENCE) continue;
         const id = l.id.toLowerCase();
         if (CLASSIFIER_NOT_A_THING.test(id)) continue;
-        if (classForWords(id.replace(/_/g, ' '))) continue; // the detector's box is the better record
+        // Preserve classifier evidence even when the detector vocabulary includes it.
+        // Vocabulary coverage does not mean that this frame produced a detection.
         const same = items.find((x) => x.source === 'classifier' && x.cls === id && Math.abs(wrap180(x.bearingDeg - f)) <= MEMORY_MERGE_DEG);
         if (same) {
           same.bearingDeg = f;
@@ -301,12 +302,13 @@ export function createSceneMemory(deps: SceneMemoryDeps): SceneMemory {
     const plural = /s$/i.test(asked) && !/ss$/i.test(asked);
     if (cls) {
       const e = items.filter((x) => x.source === 'detector' && x.cls === cls).sort((a, b) => b.lastSeenAt - a.lastSeenAt)[0];
-      if (!e || f === null) return 'unseen';
-      const relativeDeg = wrap180(e.bearingDeg - f);
-      return { cls, relativeDeg, ageMs: now() - e.lastSeenAt, phrase: whereSentence(cls, relativeDeg, e.area, e.near) };
+      if (e && f !== null) {
+        const relativeDeg = wrap180(e.bearingDeg - f);
+        return { cls, relativeDeg, ageMs: now() - e.lastSeenAt, phrase: whereSentence(cls, relativeDeg, e.area, e.near) };
+      }
     }
     // Not a detector class: something the classifier may have named ("eggs" → "egg").
-    const seen = items.filter((x) => x.source === 'classifier' && labelMatches(x.cls, asked)).sort((a, b) => b.lastSeenAt - a.lastSeenAt)[0];
+    const seen = items.filter((x) => x.source === 'classifier' && (labelMatches(x.cls, asked) || (cls !== null && classForWords(x.cls.replace(/_/g, ' ')) === cls))).sort((a, b) => b.lastSeenAt - a.lastSeenAt)[0];
     if (!seen) return asked.length >= 3 ? 'unseen' : 'unknown_thing';
     if (f === null) return 'unseen';
     const relativeDeg = wrap180(seen.bearingDeg - f);

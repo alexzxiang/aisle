@@ -116,6 +116,21 @@ describe('createGuidedTask', () => {
   });
   afterEach(() => jest.useRealTimers());
 
+  it('starts an unseen egg search at a hypothesized fridge without claiming eggs are visible', async () => {
+    const h = harness();
+    h.deps.guide = createGuide({
+      detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 },
+      hfovDeg: () => 60, now: () => Date.now(),
+    });
+    const task = createGuidedTask(h.deps);
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs', context: 'home', source: 'voice' });
+    await flush();
+    expect(h.planner).not.toHaveBeenCalled();
+    expect(h.said.some(r => r.text === 'It may be in the fridge. Find the fridge first.')).toBe(true);
+    expect(task.getDebugState()).toMatchObject({ goal: 'eggs', step: 0, total: 5 });
+    task.dispose();
+  });
+
   it('TASK_REQUESTED: "Let me see your surroundings." → describe → planner taskPlan with camera facts → step one spoken and on the band', async () => {
     const h = harness();
     const task = createGuidedTask(h.deps);

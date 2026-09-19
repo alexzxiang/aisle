@@ -26,3 +26,13 @@ export function fridgeMission(goal: string): TaskPlanOutput | null {
     ],
   };
 }
+
+/** A storage prior is a search hypothesis, never a detection or a box. */
+export function likelyFridgeGoal(goal: string, context: string, itemObserved: boolean): string | null {
+  if (context !== 'home' || itemObserved) return null;
+  // An explicit location (including a rack or counter) always wins over a prior.
+  if (/\b(?:in|on|at|inside|from|by|near|beside|under)\b/i.test(goal)) return null;
+  const item = itemOfGoal(goal).toLowerCase().replace(/^(?:the|some|my|a|an)\s+/, '').trim();
+  if (!/^(?:eggs?|milk|cheese|yogu?rt|butter)$/.test(item)) return null;
+  return `${item} in the fridge`;
+}
