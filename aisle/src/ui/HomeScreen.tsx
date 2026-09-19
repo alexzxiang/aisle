@@ -87,11 +87,17 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
     Keyboard.dismiss();
     setDraft('');
     haptics?.play('CONFIRM');
+    if (voice?.submitText) {
+      void Promise.resolve(voice.submitText(item)).catch((err: unknown) => {
+        bus.emit({ type: 'ERROR', scope: 'voice', message: err instanceof Error ? err.message : String(err) });
+      });
+      return;
+    }
     bus.emit({ type: 'ITEM_REQUESTED', item, source: 'keyboard' });
     // The keyboard path has no planner reply, so acknowledge here; the voice path speaks its own.
     const ack = itemAcknowledgement(item);
     if (ack && speech) speech.say({ text: ack, priority: 'NAV', dedupeKey: 'ui_item_ack', cooldownMs: 1000 });
-  }, [draft, bus, haptics, speech]);
+  }, [draft, bus, haptics, speech, voice]);
 
   const practice = useCallback(() => {
     setMode('ONBOARDING');

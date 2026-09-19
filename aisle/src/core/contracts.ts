@@ -259,6 +259,7 @@ export const SELF_DETECTION_CLASSES = ['hand'] as const;
 export const FOOD_DETECTION_CLASSES = ['banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'pizza', 'donut', 'cake', 'wine_glass', 'fork', 'knife', 'spoon', 'remote', 'keyboard', 'cell_phone', 'toaster', 'vase', 'scissors', 'teddy_bear', 'toothbrush', 'hair_drier', 'mouse', 'tie'] as const;
 /** Round 9: what a home is made of, and the small things people ask for — from the Open Images detector (`oiv7-yolo-nano`, alternate frames indoors). */
 export const HOME_DETECTION_CLASSES = [
+  'cheese', 'cream', 'dairy', 'seafood', 'pasta', 'juice', 'ice_cream', 'cucumber', 'pepper', 'grape', 'lemon', 'pear', 'peach', 'food_container',
   'door', 'door_handle', 'countertop', 'cabinet', 'drawer', 'light_switch', 'stairs', 'shelf', 'window', 'mirror', 'pillow', 'towel',
   'trash_can', 'lamp', 'plate', 'mug', 'kettle', 'can', 'box', 'egg', 'milk', 'bread', 'glasses', 'shoe', 'washing_machine', 'dishwasher',
   'bathtub', 'shower', 'faucet', 'desk', 'stool', 'nightstand', 'wardrobe', 'headphones', 'watch', 'wheelchair', 'street_light',
@@ -394,6 +395,8 @@ export interface VisionRequest {
 
 // Response schema (field order is the contract — `speech` first so TTS can start when it closes)
 export interface VisionResponse {
+  /** Optional for older proxies; structured evidence for active item search. */
+  search?: import('./searchObservation').SearchObservation;
   speech: string;                           // ≤ 12 words or "" ; never the forbidden words
   cameraRequest: CameraDirection;
   userAction: UserAction;

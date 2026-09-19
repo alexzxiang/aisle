@@ -456,7 +456,12 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   });
 
   // --- Round 4: guided tasks (no route; Tier 2 plans the steps, Tier 1 confirms each) ---
+  let searchSteps = 0;
+  unsubs.push(sensors.subscribeSteps((steps) => { searchSteps = steps; }));
   const guidedTask = createGuidedTask({
+    adaptiveSearch: !mocks,
+    heading: () => sceneMemory.facing(),
+    steps: () => searchSteps,
     bus,
     store,
     speech,
@@ -473,6 +478,13 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     trace,
   });
   guidedTaskRef = guidedTask;
+  // Live trips enter the same adaptive store search as a request spoken inside a
+  // store. Fixture mode retains the surveyed-map demonstration and checkout flow.
+  if (!mocks) unsubs.push(store.subscribe((s, prev) => {
+    if (s.mode === 'INDOOR_NAV' && prev.mode === 'TRANSITION' && s.targetItem && !s.destinationOnly) {
+      bus.emit({ type: 'TASK_REQUESTED', goal: s.targetItem, context: 'store', source: 'voice' });
+    }
+  }));
 
   // --- cross-service glue that belongs to no track -----------------------------------
   // B writes the beacon target into its slice; A's beacon plays it.

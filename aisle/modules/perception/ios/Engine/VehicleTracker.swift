@@ -339,6 +339,11 @@ public enum CocoLabels {
 /// feed the same class (the tracker merges them by class and overlap).
 public enum OpenImagesLabels {
   public static let kept: [String: DetectionClass] = [
+    // Food classes actually present in Open Images. Containers do not identify contents.
+    "cheese": .cheese, "cream": .cream, "dairy product": .dairy, "seafood": .seafood,
+    "pasta": .pasta, "juice": .juice, "ice cream": .iceCream, "cucumber": .cucumber,
+    "bell pepper": .pepper, "grape": .grape, "lemon": .lemon, "pear": .pear, "peach": .peach,
+    "container": .foodContainer,
     // What a home is made of.
     "door": .door, "door handle": .doorHandle, "countertop": .countertop, "cabinetry": .cabinet, "bathroom cabinet": .cabinet,
     "filing cabinet": .cabinet, "drawer": .drawer, "chest of drawers": .drawer, "light switch": .lightSwitch, "stairs": .stairs,

@@ -59,7 +59,7 @@ export const CAMERA_MAX_HEIGHT_SHARE = 0.34;
  * targets. On a short window the camera gives this back rather than pushing
  * the talk button off the bottom.
  */
-export const CAMERA_RESERVE_PT = 500;
+export const CAMERA_RESERVE_PT = 550;
 
 export interface NavScreenProps {
   onOpenDebug?: () => void;
@@ -176,6 +176,12 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
         style={styles.transcript}
       />
       <View style={styles.controls}>
+        <View style={styles.row}>
+          {mode === 'GUIDED_TASK' && voice?.submitText ? <Button label="Search again" size="compact" onPress={() => {
+            void Promise.resolve(voice.submitText?.('search again')).catch((err: unknown) => bus.emit({ type: 'ERROR', scope: 'voice', message: err instanceof Error ? err.message : String(err) }));
+          }} hint="Resumes a paused search from this area" reduceMotion={reduceMotion} style={styles.half} /> : null}
+          <Button label="Stop speaking" size="compact" onPress={() => speech?.clearQueue()} hint="Stops the current spoken message" reduceMotion={reduceMotion} style={styles.half} />
+        </View>
         <TalkButton voice={voice} reduceMotion={reduceMotion} />
         <View style={styles.row}>
           <Button

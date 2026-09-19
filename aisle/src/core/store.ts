@@ -34,7 +34,7 @@ export const LEGAL_TRANSITIONS: Readonly<Record<AppMode, readonly AppMode[]>> = 
   AT_CURB: ['CROSSING', 'OUTDOOR_NAV'],
   CROSSING: ['OUTDOOR_NAV'],
   TRANSITION: ['INDOOR_NAV', 'DONE'],   // DONE when the trip was destination-only ("take me to CVS")
-  INDOOR_NAV: ['AT_ITEM'],
+  INDOOR_NAV: ['AT_ITEM', 'GUIDED_TASK'],
   AT_ITEM: ['ITEM_PICKUP', 'CHECKOUT_NAV'],
   ITEM_PICKUP: ['CHECKOUT_NAV'],
   CHECKOUT_NAV: ['DONE'],
@@ -365,7 +365,7 @@ export function bindStoreToBus(store: AppStore, bus: AppEventBus, opts: BindOpti
 
   unsubs.push(bus.on('TASK_REQUESTED', (e) => {
     const s = store.getState();
-    if (s.mode !== 'IDLE') return;
+    if (s.mode !== 'IDLE' && !(s.mode === 'INDOOR_NAV' && e.context === 'store')) return;
     if (s.setMode('GUIDED_TASK')) store.setState({ taskGoal: e.goal, taskStep: 0, taskStepCount: 0, destinationOnly: false });
   }));
 

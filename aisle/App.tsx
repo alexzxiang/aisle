@@ -86,6 +86,11 @@ function composeOnce(): Composed {
       },
       { onError: (stage, err) => appBus.emit({ type: 'ERROR', scope: 'voice', message: `${stage}: ${err instanceof Error ? err.message : String(err)}` }) },
     );
+    voicePort.submitText = async (text) => {
+      const outcome = await app.voice.submitText(text);
+      void app.trip.onVoiceOutcome(outcome);
+      void app.guidedTask.onVoiceOutcome(outcome);
+    };
     composed = { app, voicePort, error: null };
   } catch (e) {
     composed = { app: null, voicePort: null, error: e instanceof Error ? e.message : String(e) };

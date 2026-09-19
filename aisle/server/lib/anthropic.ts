@@ -31,6 +31,7 @@ export const VISION_TIMEOUT_MS = 4000;
  * warm calls 1.4–2.5 s. curb_crop keeps the hot-path cap (its freshness window is 3 s). */
 export const VISION_TIMEOUT_SLACK_MS = 6000;
 export function visionTimeoutFor(question: string): number {
+  if (question === 'task_step') return 8000;
   return question === 'curb_crop' ? VISION_TIMEOUT_MS : VISION_TIMEOUT_SLACK_MS;
 }
 export const MAX_IMAGE_LONG_EDGE = 1024;
@@ -76,7 +77,7 @@ export function buildVisionParams(req: VisionRequest, model: VisionModel = model
 
   const params: Anthropic.MessageStreamParams = {
     model,
-    max_tokens: VISION_MAX_TOKENS,
+    max_tokens: req.question === 'task_step' ? 1000 : VISION_MAX_TOKENS,
     system: [
       model === MODELS.sonnet
         ? { type: 'text', text: system, cache_control: { type: 'ephemeral' } }

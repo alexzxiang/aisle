@@ -34,6 +34,8 @@ export interface AudioPorts {
 
 /** src/core/voice.ts push-to-talk (02 Task 7). */
 export interface VoicePort {
+  /** Typed commands use the same intent and confirmation path as spoken commands. */
+  submitText?(text: string): Promise<void> | void;
   /** Called on press-in. Resolves when recognition has started. */
   start(): Promise<void> | void;
   /** Called on press-out (and on unmount, so the mic never stays open). */

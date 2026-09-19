@@ -36,6 +36,7 @@ const ARROWS: Array<[AppMode, AppMode]> = [
   ['AT_ITEM', 'ITEM_PICKUP'],
   ['ITEM_PICKUP', 'CHECKOUT_NAV'],
   ['IDLE', 'GUIDED_TASK'],          // TASK_REQUESTED
+  ['INDOOR_NAV', 'GUIDED_TASK'],    // live store search after street navigation
   ['GUIDED_TASK', 'DONE'],          // TASK_COMPLETED
   ['TRANSITION', 'DONE'],           // destination-only trip ends at the door
 ];

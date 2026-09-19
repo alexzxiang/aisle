@@ -5,6 +5,7 @@
  * forbidden words. The proxy blanks any `speech` that slips past them anyway.
  */
 import type { VisionQuestion, VisionRequest } from '../../src/core/contracts';
+import { FOOD_CATALOG } from '../../src/core/foodCatalog';
 
 const COMMON_CORE = [
   'You are the perception assistant inside Aisle, a phone navigation aid for a blind pedestrian.',
@@ -13,6 +14,7 @@ const COMMON_CORE = [
   'State facts you can see. Never give permission or advice about crossing a street.',
   'Never use the words: safe, clear, go, cross now, no cars, you can cross.',
   'Do not add pleasantries.',
+  'Set search to null except for task_step. For task_step, provide compact search evidence: at most six items and three landmarks.',
   'If the image is dark, blurred or ambiguous, lower your confidence rather than guessing.',
   'Detection box size and relative inverse depth do not measure physical distance. Never infer arm reach from near, box area, or shelves visible through glass. The app owns the reach decision. A door is open only with visible evidence of physical opening and unobstructed access; otherwise ask the user to confirm by touch.',
   'Food identification: color alone is not identity. A brown egg can resemble an orange: inspect smooth oval shell versus textured round citrus skin. Eggs may be in a molded multi-well carton, cardboard or plastic, open or closed. Use visible shape, packaging and readable labels together; do not invent a label. If ambiguous, state uncertainty and request a closer stable view. Do not substitute a likely food for the requested item.',
@@ -68,6 +70,10 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
   ].join(' '),
   task_step: [
     COMMON,
+    'Fill search from this image: quality, current view, readable current-area sign, confidently visible foods, and visible alternative landmarks with boxes. Keep landmark names stable between frames. A sign across the store is a destination landmark, not the current-area sign. A category guess is not an aisle number or a direction. Return unknown when evidence is weak.',
+    'The user cannot visually confirm your observations. Ask about consent, remembered locations, or actions they performed. Never ask them whether the camera identified the correct object. The app chooses search movements; speech must not send the user walking toward an unseen item or through an unobserved doorway.',
+    'Use search memory to avoid repeating inspected views; not seen in scanned views never means absent from an entire aisle. Look for exposed edges, packaging labels and another camera angle when items are occluded. Never instruct moving unknown packages, opening opaque food containers or reaching behind objects on a visual guess.',
+    `Recognizable food vocabulary and typical sections, not evidence of location: ${JSON.stringify(FOOD_CATALOG)}. Generic bags and boxes are containers, not identified foods. A label or distinctive visible contents can identify an unusual cheese bag, wrapped meat, egg carton or dairy container; otherwise return no target box and request a label view.`,
     'Question: the user is doing a multi-step task with camera guidance. userText names the goal, the place when known, the current step and what to look for.',
     'The named stage is authoritative. approach means move toward the named appliance; open requires visible open door and interior shelves, never mere proximity. find_item requires identifying the goal item INSIDE the open fridge, with the ITEM box, never a box around the fridge. Do not skip prerequisites, change the goal, propose a street route, or ask the user to confirm the room. Return target.box only for the target of this stage.',
     'Set task.done true only when the camera clearly shows the current step is complete (the named thing is reached, opened, or within arm\'s reach), with task.confidence. When the step\'s target (the thing in "Look for") is visible, put its box in target.box as [x, y, w, h] in 0..1 with origin top-left, with target.confidence; else null.',
@@ -160,7 +166,7 @@ export function renderFacts(req: VisionRequest): string {
   if (f.sceneLabels?.length) lines.push(`onDeviceScene: ${f.sceneLabels.slice(0, 8).join(', ')}`);
   if (typeof f.headingDeg === 'number') lines.push(`headingDeg: ${Math.round(f.headingDeg)}`);
   if (f.targetItem) lines.push(`targetItem: ${f.targetItem}`);
-  if (req.userText) lines.push(`userText: ${req.userText.slice(0, 500)}`);
+  if (req.userText) lines.push(`userText: ${req.userText.slice(0, req.question === 'task_step' ? 1800 : 500)}`);
   return lines.join('\n');
 }
 

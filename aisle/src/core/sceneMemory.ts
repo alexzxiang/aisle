@@ -74,6 +74,10 @@ export function bearingFor(yawDeg: number, box: Detection['box'], hfovDeg: numbe
 export function classForWords(words: string): DetectionClass | null {
   const w = words.toLowerCase();
   const table: ReadonlyArray<[RegExp, DetectionClass]> = [
+    [/\b(cheese|cheddar|mozzarella)\b/, 'cheese'], [/\bice cream\b/, 'ice_cream'], [/\bcream\b/, 'cream'],
+    [/\bdairy(?: products?)?\b/, 'dairy'], [/\bseafood\b/, 'seafood'], [/\bpasta\b/, 'pasta'], [/\bjuice\b/, 'juice'],
+    [/\bcucumbers?\b/, 'cucumber'], [/\b(?:bell )?peppers?\b/, 'pepper'], [/\bgrapes?\b/, 'grape'],
+    [/\blemons?\b/, 'lemon'], [/\bpears?\b/, 'pear'], [/\bpeach(?:es)?\b/, 'peach'], [/\bfood containers?\b/, 'food_container'],
     [/\b(fridge|refrigerator|freezer)\b/, 'fridge'], [/\b(couch|sofa|settee)\b/, 'couch'], [/\b(tv|television|telly|screen)\b/, 'tv'],
     [/\b(table|dining table|desk)\b/, 'table'], [/\b(chair|seat|stool)\b/, 'chair'], [/\b(bed)\b/, 'bed'],
     [/\b(sink|faucet|tap)\b/, 'sink'], [/\b(oven|stove|cooker|range)\b/, 'oven'], [/\b(microwave)\b/, 'microwave'],

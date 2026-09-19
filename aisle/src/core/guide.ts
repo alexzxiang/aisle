@@ -179,7 +179,7 @@ export interface GuideDeps {
 
 export interface Guide {
   /** The instruction for a goal phrase ("eggs in my fridge" → the fridge; "the couch"), or null when nothing applies. */
-  instructionFor(targetWords: string, modelBox?: TargetBox | null): GuideInstruction | null;
+  instructionFor(targetWords: string, modelBox?: TargetBox | null, options?: { modelOnly?: boolean; maxAgeMs?: number }): GuideInstruction | null;
   /** Is `next` news against what was last spoken? Same kind and same step count within one is not. */
   changed(prev: GuideInstruction | null, next: GuideInstruction): boolean;
 }
@@ -193,7 +193,7 @@ export function createGuide(deps: GuideDeps): Guide {
   };
 
   return {
-    instructionFor(targetWords, modelBox) {
+    instructionFor(targetWords, modelBox, options) {
       const cls = classForWords(targetWords);
       const name = cls === 'fridge' && /\bfreezer\b/i.test(targetWords) ? 'freezer' : cls ? spokenName(cls) : targetWords.toLowerCase().replace(/^(the|a|an|my|some)\s+/, '');
       const hfov = deps.hfovDeg();
@@ -202,7 +202,7 @@ export function createGuide(deps: GuideDeps): Guide {
       let box: [number, number, number, number] | null = null;
       let near: number | undefined;
       let evidenceAt = now();
-      if (cls) {
+      if (cls && !options?.modelOnly) {
         const seen = deps.detections().filter((d) => d.cls === cls && d.score >= 0.6).sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
         if (seen) {
           box = seen.box;
@@ -210,7 +210,7 @@ export function createGuide(deps: GuideDeps): Guide {
           evidenceAt = deps.detectionTimestamp?.() ?? now();
         }
       }
-      if (!box && modelBox && now() >= modelBox.at && now() - modelBox.at <= TARGET_FRESH_MS) {
+      if (!box && modelBox && now() >= modelBox.at && now() - modelBox.at <= Math.min(6000, options?.maxAgeMs ?? TARGET_FRESH_MS)) {
         box = modelBox.box;
         near = modelBox.near;
         evidenceAt = modelBox.at;
@@ -247,6 +247,7 @@ export function createGuide(deps: GuideDeps): Guide {
       }
 
       // 2. Out of view: remembered bearing.
+      if (options?.modelOnly) return null;
       const where = deps.memory.whereIs(targetWords);
       if (typeof where === 'object') {
         const rel = wrap180(where.relativeDeg);

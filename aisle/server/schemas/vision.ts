@@ -11,6 +11,8 @@
  */
 import { createHash } from 'node:crypto';
 import type { VisionResponse } from '../../src/core/contracts';
+import { coerceSearchObservation, SEARCH_VIEWS } from '../../src/core/searchObservation';
+import { FOOD_SECTIONS } from '../../src/core/foodCatalog';
 
 const CAMERA_DIRECTIONS = ['up', 'down', 'left', 'right', 'closer', 'none'] as const;
 const USER_ACTIONS = ['none', 'turn_left', 'turn_right', 'walk_forward', 'stop', 'reach'] as const;
@@ -52,6 +54,22 @@ export const VISION_RESPONSE_SCHEMA: Readonly<Record<string, unknown>> = Object.
       box: { type: ['array', 'null'], items: { type: 'number' }, description: 'task_step / hand_guidance: the target item\'s box in the image as exactly four numbers [x, y, w, h], each 0..1 with origin top-left; null when not visible' },
       confidence: { type: 'number' },
     }),
+    search: { ...obj({
+      item: obj({ box: { type: ['array', 'null'], items: { type: 'number' }, description: 'The requested FOOD/ITEM from Goal, even while Look for names a navigation landmark. Null unless identified; never a shelf or appliance.' }, confidence: { type: 'number' } }),
+      barrier: { type: 'string', enum: ['closed_fridge', 'closed_freezer', 'none', 'unknown'], description: 'A physical door blocking access to the requested item. Visible contents through glass are still behind a closed door.' },
+      sign: { type: ['string', 'null'], description: 'Verbatim readable sign identifying the CURRENT area, not a distant destination. Null when unreadable.' },
+      items: { type: 'array', items: { type: 'string' }, description: 'Up to twelve confidently identified foods or packages actually visible, never inferred hidden contents.' },
+      view: { type: 'string', enum: [...SEARCH_VIEWS] },
+      quality: { type: 'string', enum: ['usable', 'blurred', 'dark', 'occluded'] },
+      landmarks: { type: 'array', items: obj({
+        name: { type: 'string', description: 'Short stable name of a visible navigable landmark; do not invent a hidden destination.' },
+        kind: { type: 'string', enum: ['surface', 'appliance', 'doorway', 'aisle_end', 'section'] },
+        section: { type: 'string', enum: [...FOOD_SECTIONS] },
+        box: { type: 'array', items: { type: 'number' } },
+        confidence: { type: 'number' },
+      }) },
+      confidence: { type: 'number' },
+    }), type: ['object', 'null'] },
     confidence: { type: 'number' },
     seq: { type: 'integer' },
   }),
@@ -115,6 +133,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
     task: { done: (r.task as { done?: unknown } | undefined)?.done === true, confidence: num((r.task as { confidence?: unknown } | undefined)?.confidence) },
     scene: { setting: isIn(SCENE_SETTINGS, sn.setting) ? sn.setting : 'unknown', label: typeof sn.label === 'string' ? sn.label.trim().slice(0, 60) : '', confidence: num(sn.confidence) },
     target: { box: box4(tg.box), confidence: num(tg.confidence) },
+    ...(r.search ? { search: coerceSearchObservation(r.search) } : {}),
     confidence: num(r.confidence),
     seq,
   };

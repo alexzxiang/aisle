@@ -36,6 +36,9 @@ HERE = Path(__file__).resolve().parent
 # own spelling. Keep this list and the Swift map in step: a label trained here but not mapped
 # there is dropped on the phone; a label mapped there but absent here falls back to COCO.
 KEPT_LABELS: list[str] = [
+    # Existing Open Images food labels; never relabel a live Chicken/Fish as meat.
+    "Cheese", "Cream", "Dairy Product", "Seafood", "Pasta", "Juice", "Ice cream",
+    "Cucumber", "Bell pepper", "Grape", "Lemon", "Pear", "Peach", "Container",
     # what a home is made of
     "Door", "Door handle", "Countertop", "Cabinetry", "Bathroom cabinet", "Filing cabinet", "Drawer", "Chest of drawers",
     "Light switch", "Stairs", "Shelf", "Bookcase", "Window", "Mirror", "Pillow", "Towel", "Paper towel", "Waste container",

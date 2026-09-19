@@ -626,6 +626,10 @@ func snapshotChecks() {
 @main
 enum EngineChecks {
   static func main() {
+    check("food: cheese crosses the native bridge as cheese", OpenImagesLabels.detectionClass(for: "Cheese") == .cheese)
+    check("food: an opaque container remains a container", OpenImagesLabels.detectionClass(for: "Container") == .foodContainer)
+    check("food: animal chicken is not relabelled meat", OpenImagesLabels.detectionClass(for: "Chicken") == nil)
+    check("food: groceries are scenery, never indoor hazards", DetectionClass.sceneClasses.contains(.cheese) && !DetectionClass.hazardClasses.contains(.cheese))
     signalChecks()
     trackerChecks()
     depthChecks()

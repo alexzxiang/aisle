@@ -129,7 +129,8 @@ describe('which questions get the stronger model', () => {
 
   it('keeps task_step on the slack-tolerant timeout, not the curb budget', () => {
     // The crossing read is time-critical; a guided step is not.
-    expect(visionTimeoutFor('task_step')).toBe(visionTimeoutFor('situate'));
+    expect(visionTimeoutFor('task_step')).toBe(8000);
+    expect(buildVisionParams({ seq: 1, question: 'task_step', mode: 'GUIDED_TASK', facts: { detections: [], ocr: [] } }).max_tokens).toBe(1000);
     expect(visionTimeoutFor('curb_crop')).toBeLessThan(visionTimeoutFor('task_step'));
   });
 });

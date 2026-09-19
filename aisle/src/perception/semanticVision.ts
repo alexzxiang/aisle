@@ -53,6 +53,7 @@ import type { AppEventBus } from '../core/bus';
 import type { AppStore } from '../core/store';
 import { MAX_PROMPT_WORDS, MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit, phraseText } from '../core/phrases';
 import { ocrFactTokens } from './ocrFacts';
+import { coerceSearchObservation } from '../core/searchObservation';
 
 // ---------------------------------------------------------------------------
 // Constants (01 §8)
@@ -169,6 +170,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
       confidence: num(sub(raw.scene).confidence, 0),
     },
     target: coerceTarget(sub(raw.target)),
+    ...(raw.search ? { search: coerceSearchObservation(raw.search) } : {}),
     confidence: num(raw.confidence, 0),
     seq: base.seq,
   };
@@ -197,7 +199,7 @@ export function createHttpVisionTransport(opts: HttpTransportOptions): VisionTra
   return {
     async ask(req) {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = setTimeout(() => controller?.abort(), timeoutMs);
+      const timer = setTimeout(() => controller?.abort(), opts.timeoutMs ?? (req.question === 'task_step' ? 8000 : timeoutMs));
       try {
         const res = await fetchFn(url, {
           method: 'POST',
@@ -399,7 +401,7 @@ export function createWsVisionTransport(opts: WsTransportOptions): WsVisionTrans
         return opts.fallback ? opts.fallback.ask(req, o) : Promise.resolve(emptyVisionResponse(req.seq));
       }
       return new Promise<VisionResponse>((resolve) => {
-        const timer = setTimeout(() => settle(req.seq, emptyVisionResponse(req.seq)), timeoutMs);
+        const timer = setTimeout(() => settle(req.seq, emptyVisionResponse(req.seq)), opts.timeoutMs ?? (req.question === 'task_step' ? 8000 : timeoutMs));
         pending.set(req.seq, { resolve, timer });
         if (!sendMessage({ type: 'vision', req, priority: o?.priority === 'INFO' ? 'INFO' : 'NAV' })) {
           settle(req.seq, emptyVisionResponse(req.seq));
@@ -708,7 +710,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       },
     };
     if (image) req.image = image;
-    if ((question === 'free' || question === 'task_step' || question === 'situate' || question === 'hand_guidance') && o.userText) req.userText = o.userText.slice(0, 500);
+    if ((question === 'free' || question === 'task_step' || question === 'situate' || question === 'hand_guidance') && o.userText) req.userText = o.userText.slice(0, question === 'task_step' ? 1800 : 500);
     return req;
   };
 

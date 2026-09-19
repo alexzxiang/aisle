@@ -51,7 +51,7 @@ export const visionRequestSchema = z.object({
     targetItem: z.string().optional(),
     sceneLabels: z.array(z.string().max(48)).max(8).optional(),
   }),
-  userText: z.string().max(500).optional(),
+  userText: z.string().max(1800).optional(),
 });
 
 export type ValidVisionRequest = z.infer<typeof visionRequestSchema>;

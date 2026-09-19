@@ -30,6 +30,8 @@ import { stepsWords } from './guide';
 import { classForWords, spokenName } from './sceneMemory';
 import { itemOfGoal } from './handGuide';
 import { isAffirmative, isNegative, normalizeAnswer } from './yesNo';
+import type { SearchExplorer } from './searchExplorer';
+import { foodSection } from './foodCatalog';
 
 export type MissionPhase = 'approach_item' | 'approach_place' | 'scan_place' | 'find_place' | 'find_door' | 'reach' | 'confirm';
 
@@ -315,6 +317,7 @@ export function answerRoom(state: MissionState, transcript: string, now: number)
 }
 
 export interface MissionRunnerDeps {
+  search?: SearchExplorer;
   guide: Pick<Guide, 'instructionFor'>;
   sceneLabel?: () => string | null;
   now?: () => number;
@@ -361,13 +364,14 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
   let asking: 'room' | null = null;
   let lastKey: string | null = null;
   let lastSpokenAt = -Infinity;
+  let searchTarget: string | null = null;
   const boxes = new Map<string, TargetBox>();
 
   const sticky = new Map<string, TargetBox>();
 
   const modelBox = (words: string): TargetBox | null => {
     const b = boxes.get(words.toLowerCase());
-    return b && now() - b.at <= MISSION_MODEL_BOX_MS ? b : null;
+    return b && now() - b.at <= (deps.search ? 6000 : MISSION_MODEL_BOX_MS) ? b : null;
   };
   /** The freshest box for a thing: the model's, else the last one the detector had inside the sticky window. */
   const look = (words: string): GuideInstruction | null => {
@@ -375,7 +379,9 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     const t = now();
     const s = sticky.get(key);
     const fallback = modelBox(key) ?? (s && t - s.at <= MISSION_STICKY_MS ? s : null);
-    const g = deps.guide.instructionFor(words, fallback);
+    // Food identity must be verified in the image before using a coarse detector's box.
+    const verifyFood = !!deps.search && key === goal.item.toLowerCase() && foodSection(goal.item) !== 'unknown';
+    const g = deps.guide.instructionFor(words, fallback, deps.search ? { modelOnly: verifyFood, maxAgeMs: 6000 } : undefined);
     if (g?.targetVisible && g.box) sticky.set(key, g.box);
     return g;
   };
@@ -394,7 +400,21 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     stepIndex: () => missionStepIndex(state.phase),
     tick() {
       const t = now();
-      const { decision, next } = decide(goal, state, snapshot());
+      const snap = snapshot();
+      if (deps.search && state.phase !== 'reach' && state.phase !== 'confirm') {
+        const direct = snap.item?.targetVisible ? snap.item : snap.place;
+        const scanningSurface = !snap.item?.targetVisible && (snap.place?.kind === 'arrived' || state.phase === 'scan_place');
+        const exploration = deps.search.tick(scanningSurface ? goal.item : goal.place ?? goal.item, direct, { surface: scanningSurface });
+        if (exploration) {
+          searchTarget = exploration.target;
+          asking = null;
+          state.phase = scanningSurface ? 'scan_place' : 'find_place';
+          const decision: MissionDecision = { phase: state.phase, text: exploration.text, key: `search:${exploration.phase}`, boxTarget: exploration.target, haptic: null, modelMaySpeak: false, asking: null };
+          return { text: exploration.text, haptic: null, modelMaySpeak: false, decision };
+        }
+      }
+      searchTarget = null;
+      const { decision, next } = decide(goal, state, snap);
       state = next;
       if (decision.asking) asking = decision.asking;
       if (decision.text === null) return { text: null, haptic: null, modelMaySpeak: decision.modelMaySpeak, decision };
@@ -409,6 +429,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       return { text: decision.text, haptic: decision.haptic, modelMaySpeak: decision.modelMaySpeak, decision };
     },
     boxTarget() {
+      if (searchTarget) return deps.search?.target() ?? searchTarget;
       const { decision } = decide(goal, state, snapshot());
       return decision.boxTarget;
     },
@@ -421,6 +442,8 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       boxes.set(words.toLowerCase(), { box, at });
     },
     intercept(transcript) {
+      const searchAnswer = deps.search?.intercept(transcript);
+      if (searchAnswer?.consumed) return searchAnswer;
       if (asking !== 'room') return { consumed: false, text: null };
       const r = answerRoom(state, transcript, now());
       if (!r.consumed) return { consumed: false, text: null };
@@ -431,6 +454,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       return { consumed: true, text: r.text };
     },
     repeat() {
+      deps.search?.repeat();
       lastKey = null;
       lastSpokenAt = -Infinity;
     },
