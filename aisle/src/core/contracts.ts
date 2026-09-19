@@ -50,7 +50,9 @@ Any agent may read mode; only Agent A's store may write it, via `setMode()`.
 export type HapticPattern =
   | 'TURN'      // rising triple pulse — "rotate now" (spoken turn is followed by this)
   | 'STOP'      // one long sharp buzz — vehicle approach or hard obstacle ONLY
-  | 'CONFIRM';  // soft single tap — acknowledged / arrived / re-aligned after a turn
+  | 'CONFIRM'   // soft single tap — acknowledged / arrived / re-aligned after a turn
+  | 'LISTEN'    // round 9: medium tap then a light one — the microphone is live, speak now
+  | 'SENT';     // round 9: success notification — released, heard, being understood
 
 export type CompassAccuracy = 0 | 1 | 2 | 3;   // expo-location tiers; 3 = < 20° uncertainty
 
@@ -255,7 +257,15 @@ export const SAFETY_DETECTION_CLASSES = ['car', 'bus', 'truck', 'motorcycle', 'b
 export const SELF_DETECTION_CLASSES = ['hand'] as const;
 /** Round 6b: food and kitchen things. */
 export const FOOD_DETECTION_CLASSES = ['banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'pizza', 'donut', 'cake', 'wine_glass', 'fork', 'knife', 'spoon', 'remote', 'keyboard', 'cell_phone', 'toaster', 'vase', 'scissors', 'teddy_bear', 'toothbrush', 'hair_drier', 'mouse', 'tie'] as const;
-export const SCENE_DETECTION_CLASSES = [...FOOD_DETECTION_CLASSES, 'chair', 'couch', 'bed', 'table', 'tv', 'laptop', 'fridge', 'oven', 'microwave', 'sink', 'toilet', 'bottle', 'cup', 'bowl', 'plant', 'book', 'clock', 'dog', 'cat', 'backpack', 'handbag', 'suitcase', 'umbrella', 'traffic_light', 'stop_sign', 'hydrant', 'bench'] as const;
+/** Round 9: what a home is made of, and the small things people ask for — from the Open Images detector (`oiv7-yolo-nano`, alternate frames indoors). */
+export const HOME_DETECTION_CLASSES = [
+  'door', 'door_handle', 'countertop', 'cabinet', 'drawer', 'light_switch', 'stairs', 'shelf', 'window', 'mirror', 'pillow', 'towel',
+  'trash_can', 'lamp', 'plate', 'mug', 'kettle', 'can', 'box', 'egg', 'milk', 'bread', 'glasses', 'shoe', 'washing_machine', 'dishwasher',
+  'bathtub', 'shower', 'faucet', 'desk', 'stool', 'nightstand', 'wardrobe', 'headphones', 'watch', 'wheelchair', 'street_light',
+  'traffic_sign', 'parking_meter', 'curtain', 'monitor', 'printer', 'fireplace', 'ladder', 'pan', 'stove', 'cutting_board', 'soap',
+  'candle', 'tree', 'bag', 'tomato', 'potato', 'fruit', 'vegetable', 'snack', 'tablet', 'pen', 'coin',
+] as const;
+export const SCENE_DETECTION_CLASSES = [...FOOD_DETECTION_CLASSES, 'chair', 'couch', 'bed', 'table', 'tv', 'laptop', 'fridge', 'oven', 'microwave', 'sink', 'toilet', 'bottle', 'cup', 'bowl', 'plant', 'book', 'clock', 'dog', 'cat', 'backpack', 'handbag', 'suitcase', 'umbrella', 'traffic_light', 'stop_sign', 'hydrant', 'bench', ...HOME_DETECTION_CLASSES] as const;
 export const DETECTION_CLASSES = [...SAFETY_DETECTION_CLASSES, ...SELF_DETECTION_CLASSES, ...SCENE_DETECTION_CLASSES] as const;
 export type DetectionClass = (typeof DETECTION_CLASSES)[number];
 
@@ -275,6 +285,8 @@ export interface HandPoseEvent {
   box: [x: number, y: number, w: number, h: number];
   confidence: number;
   timestamp: number;
+  /** Round 9: depth-grid nearness at the fingertip (0 far … 1 near), when the grid was fresh. */
+  near?: number;
 }
 
 export interface SceneClassEvent {

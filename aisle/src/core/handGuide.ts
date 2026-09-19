@@ -25,7 +25,7 @@ import type { ConversationLog } from './conversation';
 import { PHRASES, type PhraseKey } from './phrases';
 import { MISSION_PHRASES } from './preparedGuidance';
 import { classForWords } from './sceneMemory';
-import { handWord, type HandWord, type TargetBox } from './guide';
+import { coachHand, type HandCoachPrev, type HandWord, type TargetBox } from './guide';
 import type { SemanticVision } from '../perception/semanticVision';
 
 export const HAND_INTERVAL_MS = 2000;       // Claude cadence (target box / fallback hints)
@@ -123,7 +123,9 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
       let lastTargetSeenAt = startedAt;
       let hand: HandPoseEvent | null = null;
       let handAt = -Infinity;
-      type Seen = { box: Detection['box']; at: number };
+      /** Round 9: what the coach said last, so it can say "a little more" and "too far". */
+      let prevCoach: HandCoachPrev | null = null;
+      type Seen = { box: Detection['box']; at: number; near?: number };
       const boxes: { detector: Seen | null; model: Seen | null } = { detector: null, model: context?.target ?? null };
       let result: HandGuideResult | null = null;
 
@@ -134,17 +136,21 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
       if (deps.perception?.onDetections && cls) {
         unsubs.push(deps.perception.onDetections((list) => {
           const best = list.filter((d) => d.cls === cls).sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
-          if (best) boxes.detector = { box: best.box, at: now() };
+          if (best) boxes.detector = { box: best.box, at: now(), ...(typeof best.near === 'number' ? { near: best.near } : {}) };
         }));
       }
 
-      const speakWord = (w: Exclude<HandWord, null>, t: number): void => {
+      const speakWord = (w: Exclude<HandWord, null>, t: number, coached?: string | null): void => {
         if (w === 'grab') {
           deps.haptics.play('CONFIRM');
           sayLive(MISSION_PHRASES.mission_hand_aligned, 'hand-aligned', 0);
           return;
         }
-        sayKey(WORD_PHRASE[w], 0);
+        // A plain word is a cached clip; a coaching line ("a little more to the left", "too far")
+        // is live — the local voice says it at once during a task.
+        const plain = coached === null || coached === undefined || /^(?:Left|Right|Higher|Lower|Reach forward)\.$/.test(coached);
+        if (plain) sayKey(WORD_PHRASE[w], 0);
+        else sayLive(coached, 'hand-coach', 0);
         deps.bus?.emit({ type: 'ITEM_HAND_GUIDANCE', hint: w, step: steps });
         lastWord = w;
         lastWordAt = t;
@@ -199,16 +205,21 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
           const freshHand = hand !== null && t - handAt <= HAND_FRESH_MS ? hand : null;
           const d = boxes.detector;
           const m = boxes.model;
-          const target = d && t - d.at <= TARGET_FRESH_MS ? d.box : m && t - m.at <= MODEL_TARGET_FRESH_MS ? m.box : null;
+          const seen: Seen | null = d && t - d.at <= TARGET_FRESH_MS ? d : m && t - m.at <= MODEL_TARGET_FRESH_MS ? m : null;
+          const target = seen?.box ?? null;
           if (target) lastTargetSeenAt = t;
-          if (freshHand && target && t - lastWordAt >= wordInterval) {
-            const w = handWord(freshHand, target, insideFor);
+          if (freshHand && seen && t - lastWordAt >= wordInterval) {
+            const c = coachHand(freshHand, { box: seen.box, ...(typeof seen.near === 'number' ? { near: seen.near } : {}) }, insideFor, prevCoach);
+            const w = c.word;
             insideFor = w === 'forward' || w === 'grab' ? insideFor + 1 : 0;
             if (w === 'grab') {
               speakWord('grab', t);
               result = { done: 'touching', steps, handWords };
-            } else if (w !== null && (w !== lastWord || t - lastWordAt >= HAND_REPEAT_MS)) {
-              speakWord(w, t);
+            } else if (w !== null && ((c.kind !== 'word' && c.kind !== 'reach') || w !== lastWord || t - lastWordAt >= HAND_REPEAT_MS)) {
+              // Coaching ("a little more", "too far", "other way", "reach further") is always news; a
+              // plain repeat of the same word waits for the repeat clock.
+              speakWord(w, t, c.text);
+              prevCoach = { word: w, dx: c.dx, dy: c.dy };
             }
           } else if (freshHand && !target && t - lastWordAt >= HAND_REPEAT_MS * 2) {
             lastWordAt = t;

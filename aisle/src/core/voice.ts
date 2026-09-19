@@ -169,6 +169,14 @@ export function isHouseholdThing(words: string): boolean {
   return cls !== null && !STREET_CLASSES.has(cls);
 }
 
+/** "Switch to bananas on the table?" — null when the words cannot be spoken safely. */
+export function switchQuestion(goal: string): string | null {
+  const g = goal.trim().replace(/[.!?]+$/, '');
+  if (g.length === 0 || hasDigit(g) || findForbiddenTerm(g) !== null) return null;
+  const q = `Switch to ${g}?`;
+  return countWords(q) <= MAX_UTTERANCE_WORDS ? q : null;
+}
+
 /** "Pasta. Did I get that right?" — null when the goal cannot be spoken safely (digits, forbidden word, too long). */
 export function goalConfirmQuestion(goal: string): string | null {
   const g = goal.trim().replace(/[.!?]+$/, '');
@@ -295,6 +303,11 @@ export interface VoiceInputOptions {
   preferOnDeviceStt?: boolean;
   /** The short-hold tail's clock (tests). Default setTimeout. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Round 9: what the person feels and hears at the two moments that matter — the
+   * recogniser going live (speak now) and the release being taken (heard). Never spoken words.
+   */
+  cues?: { listening(): void; sent(): void };
 }
 
 export type VoiceSource = 'voice' | 'keyboard';
@@ -363,7 +376,19 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   let pendingConfirm:
     | { kind: 'task'; goal: string; context: TaskContext }
     | { kind: 'route'; destination: string }
+    // Round 9: a different request while a mission or a trip is running is gated — "Switch to
+    // bananas on the table?" — so a stray phrase can never end a walk, but a real change of
+    // mind pivots on one "yes". "Stop" / "cancel" stay immediate.
+    | { kind: 'switch_task'; goal: string; context: TaskContext }
+    | { kind: 'switch_route'; destination: string }
     | null = null;
+
+  /** What the app is busy with, in words, for "Keeping …" and the switch question. */
+  const currentBusyName = (): string | null => {
+    const st = opts.store.getState();
+    if (st.mode === 'IDLE' || st.mode === 'ONBOARDING' || st.mode === 'DONE') return null;
+    return st.taskGoal ?? st.targetItem ?? 'your current trip';
+  };
 
   const pushUser = (transcript: string, source: VoiceSource): void => {
     if (transcript.length > 0) opts.conversation?.pushUser(transcript, source);
@@ -456,6 +481,15 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // the table?") is a plea for the current line, not a restart from scratch.
       const st = opts.store.getState();
       if (st.mode === 'GUIDED_TASK' && sameGoal(goal, st.taskGoal) && opts.intercept?.('repeat')) return;
+      // A different request while something runs: gated (round 9). Typed input is deliberate.
+      const busy = currentBusyName();
+      if (busy !== null && source === 'voice') {
+        const q = switchQuestion(goal);
+        if (q) {
+          askConfirm(q, { kind: 'switch_task', goal, context });
+          return;
+        }
+      }
       // An explicit new mission replaces a route or an older mission through the legal
       // abort edge. Previously TASK_REQUESTED was silently ignored outside IDLE.
       if (opts.store.getState().mode !== 'IDLE') opts.store.getState().abort();
@@ -468,6 +502,14 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       opts.bus.emit({ type: 'TASK_REQUESTED', goal, context, source });
     };
     const startRoute = (destination: string): void => {
+      const busy = currentBusyName();
+      if (busy !== null && source === 'voice') {
+        const q = switchQuestion(destination);
+        if (q) {
+          askConfirm(q, { kind: 'switch_route', destination });
+          return;
+        }
+      }
       const q = source === 'voice' ? goalConfirmQuestion(destination) : null;
       if (q) {
         askConfirm(q, { kind: 'route', destination });
@@ -541,15 +583,19 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     // their confirmation was "cancelled").
     if (pendingConfirm) {
       const c = pendingConfirm;
-      const restated = c.kind === 'task'
+      const isTask = c.kind === 'task' || c.kind === 'switch_task';
+      const goalWords = isTask ? c.goal : c.destination;
+      const restated = isTask
         ? sameGoal(homeGoal ?? parseIntentFallback(transcript, opts.knownItems()).goal ?? parseIntentFallback(transcript, opts.knownItems()).item, c.goal)
         : sameGoal(parseIntentFallback(transcript, opts.knownItems()).destination, c.destination);
-      if (isAffirmative(transcript) || restated || (leansYes(transcript) && c.kind === 'task' && mentions(transcript, c.goal))) {
+      if (isAffirmative(transcript) || restated || (leansYes(transcript) && mentions(transcript, goalWords))) {
         pendingConfirm = null;
         unclearStreak = 0;
-        if (c.kind === 'task') opts.bus.emit({ type: 'TASK_REQUESTED', goal: c.goal, context: c.context, source });
+        // A switch: leave the running mission or trip through the legal abort edge first.
+        if ((c.kind === 'switch_task' || c.kind === 'switch_route') && opts.store.getState().mode !== 'IDLE') opts.store.getState().abort();
+        if (isTask) opts.bus.emit({ type: 'TASK_REQUESTED', goal: c.goal, context: c.context, source });
         else opts.bus.emit({ type: 'DESTINATION_REQUESTED', name: c.destination, source });
-        const output: ParseIntentOutput = c.kind === 'task'
+        const output: ParseIntentOutput = isTask
           ? { intent: 'guided_task', item: null, destination: null, goal: c.goal, reply: '' }
           : { intent: 'navigate_to', item: null, destination: c.destination, goal: null, reply: '' };
         last = { output, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
@@ -557,6 +603,14 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       }
       if (isNegative(transcript) && !homeGoal && !['guided_task', 'navigate_to', 'find_item'].includes(parseIntentFallback(transcript, opts.knownItems()).intent)) {
         pendingConfirm = null;
+        if (c.kind === 'switch_task' || c.kind === 'switch_route') {
+          // Not switching: the running mission or trip carries on untouched.
+          const keeping = sanitizeReply(`Keeping ${currentBusyName() ?? 'your current trip'}.`, PHRASES.noted);
+          opts.speech.say({ text: keeping, priority: 'NAV', dedupeKey: 'voice-reply', cooldownMs: 1000 });
+          opts.conversation?.pushAisle(keeping, 'speech');
+          last = { output: { intent: 'unknown', item: null, reply: keeping }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
+          return last;
+        }
         opts.speech.say({ text: PHRASES.say_item_again, priority: 'NAV', cacheKey: 'say_item_again', dedupeKey: 'voice-reply', cooldownMs: 1000 });
         opts.conversation?.pushAisle(PHRASES.say_item_again, 'speech');
         last = { output: { intent: 'unknown', item: null, reply: PHRASES.say_item_again }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
@@ -566,7 +620,9 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       const newRequest = homeGoal !== null || ABORT_RE.test(transcript) || ['guided_task', 'navigate_to', 'find_item'].includes(correction.intent);
       if (!newRequest && confirmationMisses < 1) {
         confirmationMisses += 1;
-        const question = 'Say yes to confirm, or tell me your request again.';
+        const question = c.kind === 'switch_task' || c.kind === 'switch_route'
+          ? `Say yes to switch, or no to keep ${currentBusyName() ?? 'going'}.`
+          : 'Say yes to confirm, or tell me your request again.';
         opts.speech.say({ text: question, priority: 'NAV', dedupeKey: 'confirm-retry', cooldownMs: 1000 });
         opts.conversation?.pushAisle(question, 'prompt');
         last = { output: { intent: 'unknown', item: null, reply: question }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
@@ -734,6 +790,9 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         await s.handle.ready;
         s.readyAt = now();
       }
+      if (session === s) {
+        try { opts.cues?.listening(); } catch { /* a cue is a courtesy */ }
+      }
     },
 
     end() {
@@ -756,6 +815,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
             }
           }
           s.handle?.stop();
+          try { opts.cues?.sent(); } catch { /* a cue is a courtesy */ }
           await waitForFinal(s);
           if (s.handle?.ended && !s.ended) {
             let timer: ReturnType<typeof setTimeout> | undefined;

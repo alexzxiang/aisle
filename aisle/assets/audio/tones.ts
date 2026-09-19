@@ -7,3 +7,5 @@
 export const BEACON_L: number = require('./beacon_L.wav');
 export const BEACON_R: number = require('./beacon_R.wav');
 export const TICK: number = require('./tick.wav');
+export const LISTEN: number = require('./listen.wav');
+export const SENT: number = require('./sent.wav');

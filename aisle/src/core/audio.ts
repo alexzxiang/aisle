@@ -119,8 +119,13 @@ export interface AudioChannelBackend {
   beaconLeft: OneShotPlayer;
   beaconRight: OneShotPlayer;
   tick: OneShotPlayer;
+  /** Round 9: the talk earcons (listening / sent). Optional so older backends and test fakes still fit. */
+  listen?: OneShotPlayer;
+  sent?: OneShotPlayer;
   setAudioMode(mode: Partial<AudioSessionMode>): Promise<void>;
 }
+
+export type Earcon = 'listen' | 'sent';
 
 export const DEFAULT_AUDIO_MODE: AudioSessionMode = {
   playsInSilentMode: true,
@@ -155,6 +160,8 @@ export interface SignalTicker {
 
 export interface AudioChannels {
   suspendForRecording(): void;
+  /** Round 9: a short non-speech sound now — the microphone is live, or the words were sent. */
+  earcon(name: Earcon): void;
   beacon: DirectionBeacon;
   ticker: SignalTicker;
   /** `setAudioModeAsync` with the 02 Task 5 defaults; call once at app start. */
@@ -306,6 +313,10 @@ export function createAudioChannels(opts: AudioChannelsOptions): AudioChannels {
       recording = false;
       await backend.setAudioMode(sessionMode);
     },
+    earcon(name) {
+      const player = name === 'listen' ? backend.listen : backend.sent;
+      player?.play(1);
+    },
     suspendForRecording() {
       // The recognizer configures AVAudioSession itself. Avoid a second native
       // category switch before it can attach the microphone input tap.
@@ -413,6 +424,8 @@ export function createExpoAudioChannelBackend(): AudioChannelBackend {
     beaconLeft: oneShot(tones.BEACON_L),
     beaconRight: oneShot(tones.BEACON_R),
     tick: oneShot(tones.TICK),
+    listen: oneShot(tones.LISTEN),
+    sent: oneShot(tones.SENT),
     setAudioMode: (mode) => Audio.setAudioModeAsync(mode),
   };
 }

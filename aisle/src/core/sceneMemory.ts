@@ -90,6 +90,26 @@ export function classForWords(words: string): DetectionClass | null {
     [/\b(spoon)\b/, 'spoon'], [/\b(remote|remote control)\b/, 'remote'], [/\b(keyboard)\b/, 'keyboard'], [/\b(phone|cell phone|cellphone)\b/, 'cell_phone'],
     [/\b(toaster)\b/, 'toaster'], [/\b(vase)\b/, 'vase'], [/\b(scissors)\b/, 'scissors'], [/\b(teddy|teddy bear)\b/, 'teddy_bear'],
     [/\b(toothbrush)\b/, 'toothbrush'], [/\b(hair ?dr[iy]er)\b/, 'hair_drier'], [/\b(mouse)\b/, 'mouse'], [/\b(tie)\b/, 'tie'],
+    // Round 9: the Open Images classes. Order matters where a word could mean two things ("door handle" before "door").
+    [/\b(door ?handle|handle|door ?knob|knob)\b/, 'door_handle'], [/\b(doors?|doorway|door ?frame|entrance|exit)\b/, 'door'],
+    [/\b(counter ?top|counter|worktop)\b/, 'countertop'], [/\b(cabinets?|cupboards?)\b/, 'cabinet'], [/\b(drawers?)\b/, 'drawer'],
+    [/\b(light ?switch|switch)\b/, 'light_switch'], [/\b(stairs?|staircase|stairway|steps)\b/, 'stairs'], [/\b(shelf|shelves|shelving|bookcase|bookshelf)\b/, 'shelf'],
+    [/\b(windows?)\b/, 'window'], [/\b(mirror)\b/, 'mirror'], [/\b(pillows?|cushions?)\b/, 'pillow'], [/\b(towels?)\b/, 'towel'],
+    [/\b(trash ?can|trash|garbage|bin|waste ?basket|rubbish)\b/, 'trash_can'], [/\b(lamps?)\b/, 'lamp'], [/\b(plates?|dish)\b/, 'plate'],
+    [/\b(mugs?|coffee cup)\b/, 'mug'], [/\b(kettle|teapot)\b/, 'kettle'], [/\b(cans?|tin)\b/, 'can'], [/\b(box|boxes|package|parcel)\b/, 'box'],
+    [/\b(eggs?|egg carton)\b/, 'egg'], [/\b(milk|milk carton)\b/, 'milk'], [/\b(bread|loaf|bagels?|toast)\b/, 'bread'],
+    [/\b(glasses|spectacles|sunglasses|shades)\b/, 'glasses'], [/\b(shoes?|sneakers?|boots?|footwear|slippers?)\b/, 'shoe'],
+    [/\b(washing machine|washer|laundry machine)\b/, 'washing_machine'], [/\b(dishwasher)\b/, 'dishwasher'], [/\b(bathtub|bath|tub)\b/, 'bathtub'],
+    [/\b(shower)\b/, 'shower'], [/\b(faucet|tap)\b/, 'faucet'], [/\b(desk)\b/, 'desk'], [/\b(stool)\b/, 'stool'],
+    [/\b(nightstand|bedside table|night table)\b/, 'nightstand'], [/\b(wardrobe|closet|armoire)\b/, 'wardrobe'],
+    [/\b(headphones|earphones|headset)\b/, 'headphones'], [/\b(watch|wristwatch)\b/, 'watch'], [/\b(wheelchair)\b/, 'wheelchair'],
+    [/\b(street ?light|lamp ?post|streetlamp)\b/, 'street_light'], [/\b(traffic sign|road sign|street sign|sign)\b/, 'traffic_sign'],
+    [/\b(parking meter)\b/, 'parking_meter'], [/\b(curtains?|blinds?|drapes?)\b/, 'curtain'], [/\b(monitor|computer screen)\b/, 'monitor'],
+    [/\b(printer)\b/, 'printer'], [/\b(fireplace|hearth)\b/, 'fireplace'], [/\b(ladder)\b/, 'ladder'], [/\b(pan|frying pan|skillet|wok)\b/, 'pan'],
+    [/\b(stove|stovetop|hob|burner)\b/, 'stove'], [/\b(cutting board|chopping board)\b/, 'cutting_board'], [/\b(soap|soap dispenser)\b/, 'soap'],
+    [/\b(candles?)\b/, 'candle'], [/\b(trees?)\b/, 'tree'], [/\b(bags?|plastic bag|grocery bag|tote)\b/, 'bag'], [/\b(tomato(?:es)?)\b/, 'tomato'],
+    [/\b(potato(?:es)?)\b/, 'potato'], [/\b(fruit)\b/, 'fruit'], [/\b(vegetables?|veggies)\b/, 'vegetable'], [/\b(snacks?|cookies?|candy|chips|crackers)\b/, 'snack'],
+    [/\b(tablet|ipad)\b/, 'tablet'], [/\b(pens?|pencils?)\b/, 'pen'], [/\b(coins?|change)\b/, 'coin'],
   ];
   for (const [re, cls] of table) if (re.test(w)) return cls;
   return null;
@@ -97,6 +117,8 @@ export function classForWords(words: string): DetectionClass | null {
 
 const SPOKEN: Readonly<Partial<Record<DetectionClass, string>>> = {
   tv: 'TV', traffic_light: 'traffic light', stop_sign: 'stop sign', table: 'table', plant: 'plant',
+  trash_can: 'trash can', light_switch: 'light switch', door_handle: 'door handle', washing_machine: 'washing machine',
+  street_light: 'street light', traffic_sign: 'sign', parking_meter: 'parking meter', cutting_board: 'cutting board', can: 'tin can',
 };
 export function spokenName(cls: DetectionClass | string): string {
   return SPOKEN[cls as DetectionClass] ?? cls.replace(/_/g, ' ');

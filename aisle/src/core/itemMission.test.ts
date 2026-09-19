@@ -10,7 +10,7 @@ const T0 = 1_700_000_000_000;
 describe('parseMissionGoal / names / clock', () => {
   it('splits the item from its place, drops rooms, and leaves fridge goals to the fridge mission', () => {
     expect(parseMissionGoal('bananas on the table')).toMatchObject({ item: 'bananas', itemCls: 'banana', place: 'table', placeCls: 'table' });
-    expect(parseMissionGoal('my keys on the counter')).toMatchObject({ item: 'keys', itemCls: null, place: 'counter', placeCls: null });
+    expect(parseMissionGoal('my keys on the counter')).toMatchObject({ item: 'keys', itemCls: null, place: 'counter', placeCls: 'countertop' });
     expect(parseMissionGoal('the remote in the living room')).toMatchObject({ item: 'remote', itemCls: 'remote', place: null });
     expect(parseMissionGoal('the couch')).toMatchObject({ item: 'couch', itemCls: 'couch', place: null });
     expect(parseMissionGoal('eggs in my fridge')).toBeNull();
@@ -48,6 +48,33 @@ describe('decide: where the person stands → what to say', () => {
     r = decide(goal, r.next, snap({ item: g({ kind: 'arrived', relativeDeg: 0, steps: 1 }) }));
     expect(r.decision).toMatchObject({ phase: 'reach', text: 'Bananas right in front of you. Reach out.', haptic: 'CONFIRM' });
     expect(decide(goal, r.next, snap({})).decision).toMatchObject({ phase: 'reach', text: null });
+  });
+
+  it('push: a shorter walk than last time is "keep going"; the same walk for seven seconds is "keep walking" (round 9)', () => {
+    let r = decide(goal, initialMissionState(), snap({ item: g({ kind: 'forward', relativeDeg: 2, steps: 5 }) }));
+    expect(r.decision.text).toBe('Bananas ahead. Walk forward five steps.');
+    r = decide(goal, r.next, snap({ now: T0 + 2000, item: g({ kind: 'forward', relativeDeg: 2, steps: 3 }) }));
+    expect(r.decision.text).toBe('Keep going. Three steps more.');
+    r = decide(goal, r.next, snap({ now: T0 + 4000, item: g({ kind: 'forward', relativeDeg: 2, steps: 3 }) }));
+    expect(r.decision.text).toBe('Bananas ahead. Walk forward three steps.');       // same line, the runner paces it
+    r = decide(goal, r.next, snap({ now: T0 + 12_000, item: g({ kind: 'forward', relativeDeg: 2, steps: 3 }) }));
+    expect(r.decision.text).toBe('Keep walking forward. Bananas are three steps ahead.');
+  });
+
+  it('pull back: a close item that drops out of the bottom of the frame was walked past — "Stop. You passed the bananas." (round 9)', () => {
+    const close = g({ kind: 'forward', relativeDeg: 6, steps: 2, box: { box: [0.4, 0.6, 0.3, 0.3], at: T0 } });
+    let r = decide(goal, initialMissionState(), snap({ item: close }));
+    expect(r.next.lastSeen).toMatchObject({ what: 'item', steps: 2 });
+    const gone = g({ kind: 'scan_unknown', relativeDeg: null, steps: null, targetVisible: false });
+    r = decide(goal, r.next, snap({ now: T0 + 1500, item: gone, place: gone }));
+    expect(r.decision).toMatchObject({ text: 'Stop. You passed the bananas. Turn around, they are on your right.', haptic: 'STOP', key: 'approach_item:overshoot' });
+    // Said once: the next tick is an ordinary hunt.
+    r = decide(goal, r.next, snap({ now: T0 + 2000, item: gone, place: gone }));
+    expect(r.decision.key).not.toContain('overshoot');
+    // A far thing that drops out is simply lost, not passed.
+    const far = g({ kind: 'forward', relativeDeg: 0, steps: 6, box: { box: [0.4, 0.3, 0.1, 0.1], at: T0 } });
+    const lost = decide(goal, decide(goal, initialMissionState(), snap({ item: far })).next, snap({ now: T0 + 1500, item: gone, place: gone }));
+    expect(lost.decision.key).not.toContain('overshoot');
   });
 
   it('only the table in view: walk to it, then scan its surface; the item appearing takes over', () => {

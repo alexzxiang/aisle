@@ -131,6 +131,13 @@ public struct IoUTracker {
     return output
   }
 
+  /// Every track seen within the last `maxMissedFrames` frames, at its last box (round 9:
+  /// two detectors alternate frames indoors, so one frame's raw list is half the room).
+  public func live(maxMissedFrames: Int) -> [DetectionPayload] {
+    tracks.filter { $0.missedFrames <= maxMissedFrames }
+      .map { DetectionPayload(cls: $0.cls, box: $0.box, score: $0.score, trackId: $0.id) }
+  }
+
   public func track(id: Int) -> Track? {
     tracks.first { $0.id == id }
   }
@@ -320,6 +327,54 @@ public enum CocoLabels {
     "chair": .chair, "couch": .couch, "bed": .bed, "dining table": .table, "tv": .tv, "laptop": .laptop, "refrigerator": .fridge, "oven": .oven, "microwave": .microwave, "sink": .sink, "toilet": .toilet, "bottle": .bottle, "cup": .cup, "bowl": .bowl, "potted plant": .plant, "book": .book, "clock": .clock, "dog": .dog, "cat": .cat, "backpack": .backpack, "handbag": .handbag, "suitcase": .suitcase, "umbrella": .umbrella, "traffic light": .trafficLight, "stop sign": .stopSign, "fire hydrant": .hydrant, "bench": .bench,
     "banana": .banana, "apple": .apple, "sandwich": .sandwich, "orange": .orange, "broccoli": .broccoli, "carrot": .carrot, "pizza": .pizza, "donut": .donut, "cake": .cake, "wine glass": .wineGlass, "fork": .fork, "knife": .knife, "spoon": .spoon, "remote": .remote, "keyboard": .keyboard, "cell phone": .cellPhone, "toaster": .toaster, "vase": .vase, "scissors": .scissors, "teddy bear": .teddyBear, "toothbrush": .toothbrush, "hair drier": .hairDrier, "mouse": .mouse, "tie": .tie,
   ]
+
+  public static func detectionClass(for label: String) -> DetectionClass? {
+    kept[label.lowercased()]
+  }
+}
+
+/// Round 9: the Open Images V7 nano detector (`oiv7-yolo-nano`, 601 labels). It runs on
+/// alternate frames indoors and is a weaker model than COCO's, so only the labels the app
+/// can use are kept, and callers hold it to a higher score. Labels that name a COCO class
+/// feed the same class (the tracker merges them by class and overlap).
+public enum OpenImagesLabels {
+  public static let kept: [String: DetectionClass] = [
+    // What a home is made of.
+    "door": .door, "door handle": .doorHandle, "countertop": .countertop, "cabinetry": .cabinet, "bathroom cabinet": .cabinet,
+    "filing cabinet": .cabinet, "drawer": .drawer, "chest of drawers": .drawer, "light switch": .lightSwitch, "stairs": .stairs,
+    "shelf": .shelf, "bookcase": .shelf, "window": .window, "mirror": .mirror, "pillow": .pillow, "towel": .towel,
+    "paper towel": .towel, "waste container": .trashCan, "lamp": .lamp, "curtain": .curtain, "window blind": .curtain,
+    "fireplace": .fireplace, "ladder": .ladder, "washing machine": .washingMachine, "dishwasher": .dishwasher,
+    "bathtub": .bathtub, "shower": .shower, "tap": .faucet, "plumbing fixture": .faucet, "desk": .desk, "stool": .stool,
+    "nightstand": .nightstand, "wardrobe": .wardrobe, "gas stove": .stove, "wood-burning stove": .stove,
+    // Things people ask for.
+    "plate": .plate, "mug": .mug, "coffee cup": .mug, "kettle": .kettle, "teapot": .kettle, "tin can": .can, "box": .box,
+    "egg (food)": .egg, "milk": .milk, "bread": .bread, "bagel": .bread, "glasses": .glasses, "sunglasses": .glasses,
+    "footwear": .shoe, "boot": .shoe, "headphones": .headphones, "watch": .watch, "computer monitor": .monitor,
+    "tablet computer": .tablet, "printer": .printer, "frying pan": .pan, "wok": .pan, "cutting board": .cuttingBoard,
+    "soap dispenser": .soap, "candle": .candle, "plastic bag": .bag, "tomato": .tomato, "potato": .potato, "fruit": .fruit,
+    "vegetable": .vegetable, "snack": .snack, "cookie": .snack, "candy": .snack, "pen": .pen, "coin": .coin,
+    // Street.
+    "street light": .streetLight, "traffic sign": .trafficSign, "parking meter": .parkingMeter, "wheelchair": .wheelchair,
+    "tree": .tree, "palm tree": .tree,
+    // COCO classes under Open Images names: the same track, twice the update rate.
+    "table": .table, "kitchen & dining room table": .table, "coffee table": .table, "couch": .couch, "sofa bed": .couch,
+    "studio couch": .couch, "bed": .bed, "chair": .chair, "television": .tv, "laptop": .laptop, "refrigerator": .fridge,
+    "oven": .oven, "microwave oven": .microwave, "sink": .sink, "toilet": .toilet, "bottle": .bottle, "bowl": .bowl,
+    "houseplant": .plant, "flowerpot": .plant, "book": .book, "clock": .clock, "wall clock": .clock, "alarm clock": .clock,
+    "dog": .dog, "cat": .cat, "backpack": .backpack, "handbag": .handbag, "suitcase": .suitcase, "umbrella": .umbrella,
+    "traffic light": .trafficLight, "stop sign": .stopSign, "fire hydrant": .hydrant, "bench": .bench, "banana": .banana,
+    "apple": .apple, "orange": .orange, "sandwich": .sandwich, "submarine sandwich": .sandwich, "pizza": .pizza,
+    "broccoli": .broccoli, "carrot": .carrot, "cake": .cake, "donut": .donut, "wine glass": .wineGlass, "fork": .fork,
+    "knife": .knife, "spoon": .spoon, "remote control": .remote, "computer keyboard": .keyboard, "mobile phone": .cellPhone,
+    "toaster": .toaster, "vase": .vase, "scissors": .scissors, "teddy bear": .teddyBear, "toothbrush": .toothbrush,
+    "hair dryer": .hairDrier, "computer mouse": .mouse, "tie": .tie, "person": .person, "man": .person, "woman": .person,
+    "boy": .person, "girl": .person, "car": .car, "taxi": .car, "van": .car, "bus": .bus, "truck": .truck,
+    "motorcycle": .motorcycle, "bicycle": .bicycle, "cart": .cart,
+  ]
+
+  /// Open Images nano is noisier than COCO nano: nothing under this score is kept.
+  public static let minScore: Double = 0.35
 
   public static func detectionClass(for label: String) -> DetectionClass? {
     kept[label.lowercased()]

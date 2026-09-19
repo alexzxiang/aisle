@@ -5,6 +5,8 @@
  *   assets/audio/beacon_L.wav   150 ms pulse, hard left  (direction beacon)
  *   assets/audio/beacon_R.wav   150 ms pulse, hard right (direction beacon)
  *   assets/audio/tick.wav        40 ms click, centred     (signal ticker + centre tick)
+ *   assets/audio/listen.wav     two rising notes         (round 9: the microphone is live)
+ *   assets/audio/sent.wav       two falling notes        (round 9: released, heard, being understood)
  *
  * The beacon is two clips because expo-audio has no pan property (02 Task 5):
  * the manager plays both and sets their volumes by the constant-power law.
@@ -26,15 +28,47 @@ interface ToneSpec {
   left: number;
   right: number;
   gain: number;
+  /** A second note after the first (an earcon): frequency and its own length. */
+  then?: { freqHz: number; durationMs: number };
 }
 
 const SPECS: ToneSpec[] = [
   { file: 'beacon_L.wav', durationMs: 150, freqHz: 880, partialHz: 1320, fadeMs: 12, left: 1, right: 0, gain: 0.8 },
   { file: 'beacon_R.wav', durationMs: 150, freqHz: 880, partialHz: 1320, fadeMs: 12, left: 0, right: 1, gain: 0.8 },
   { file: 'tick.wav', durationMs: 40, freqHz: 1760, partialHz: 0, fadeMs: 4, left: 1, right: 1, gain: 0.7 },
+  // Siri-like: a fifth up says "listening", the same fifth down says "sent". Short, so the
+  // listening one is over before the person starts speaking.
+  { file: 'listen.wav', durationMs: 90, freqHz: 659, partialHz: 1318, fadeMs: 8, left: 1, right: 1, gain: 0.55, then: { freqHz: 988, durationMs: 120 } },
+  { file: 'sent.wav', durationMs: 90, freqHz: 988, partialHz: 1976, fadeMs: 8, left: 1, right: 1, gain: 0.5, then: { freqHz: 659, durationMs: 120 } },
 ];
 
+function renderNote(freqHz: number, partialHz: number, durationMs: number, fadeMs: number, gain: number, left: number, right: number): Int16Array {
+  const frames = Math.round((durationMs / 1000) * SAMPLE_RATE);
+  const fadeFrames = Math.round((fadeMs / 1000) * SAMPLE_RATE);
+  const pcm = new Int16Array(frames * 2);
+  for (let i = 0; i < frames; i += 1) {
+    const t = i / SAMPLE_RATE;
+    let env = 1;
+    if (i < fadeFrames) env = i / fadeFrames;
+    else if (i > frames - fadeFrames) env = (frames - i) / fadeFrames;
+    let s = Math.sin(2 * Math.PI * freqHz * t);
+    if (partialHz > 0) s = 0.75 * s + 0.25 * Math.sin(2 * Math.PI * partialHz * t);
+    const v = s * env * gain;
+    pcm[i * 2] = Math.round(v * left * 32767);
+    pcm[i * 2 + 1] = Math.round(v * right * 32767);
+  }
+  return pcm;
+}
+
 function renderStereo(spec: ToneSpec): Int16Array {
+  if (spec.then) {
+    const first = renderNote(spec.freqHz, spec.partialHz, spec.durationMs, spec.fadeMs, spec.gain, spec.left, spec.right);
+    const second = renderNote(spec.then.freqHz, spec.partialHz > 0 ? spec.then.freqHz * 2 : 0, spec.then.durationMs, spec.fadeMs, spec.gain, spec.left, spec.right);
+    const out = new Int16Array(first.length + second.length);
+    out.set(first, 0);
+    out.set(second, first.length);
+    return out;
+  }
   const frames = Math.round((spec.durationMs / 1000) * SAMPLE_RATE);
   const fadeFrames = Math.round((spec.fadeMs / 1000) * SAMPLE_RATE);
   const pcm = new Int16Array(frames * 2);

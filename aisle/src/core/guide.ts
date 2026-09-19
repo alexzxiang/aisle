@@ -62,6 +62,14 @@ export const CLASS_HEIGHT_M: Readonly<Partial<Record<DetectionClass, number>>> =
   tv: 0.6, laptop: 0.25, bottle: 0.25, cup: 0.1, bowl: 0.08, plant: 0.7, book: 0.25, clock: 0.3, dog: 0.5, cat: 0.3,
   backpack: 0.45, handbag: 0.3, suitcase: 0.6, umbrella: 0.9, bench: 0.9, traffic_light: 1.0, stop_sign: 0.75, hydrant: 0.8,
   person: 1.7, car: 1.5, bus: 3.0, truck: 2.5, bicycle: 1.0, motorcycle: 1.1, cart: 1.0,
+  // Round 9 (Open Images classes).
+  door: 2.0, door_handle: 0.15, countertop: 0.9, cabinet: 0.8, drawer: 0.2, light_switch: 0.12, stairs: 1.5, shelf: 1.2, window: 1.2,
+  mirror: 0.8, pillow: 0.3, towel: 0.5, trash_can: 0.6, lamp: 0.5, plate: 0.03, mug: 0.1, kettle: 0.25, can: 0.12, box: 0.3, egg: 0.08,
+  milk: 0.25, bread: 0.12, glasses: 0.05, shoe: 0.12, washing_machine: 0.85, dishwasher: 0.85, bathtub: 0.55, shower: 2.0, faucet: 0.2,
+  desk: 0.75, stool: 0.6, nightstand: 0.6, wardrobe: 2.0, headphones: 0.18, watch: 0.04, wheelchair: 0.95, street_light: 6.0,
+  traffic_sign: 0.8, parking_meter: 1.4, curtain: 2.0, monitor: 0.4, printer: 0.3, fireplace: 1.0, ladder: 1.8, pan: 0.08, stove: 0.9,
+  cutting_board: 0.02, soap: 0.18, candle: 0.15, tree: 5.0, bag: 0.35, tomato: 0.07, potato: 0.07, fruit: 0.08, vegetable: 0.15,
+  snack: 0.15, tablet: 0.2, pen: 0.14, coin: 0.02,
 };
 export const DEFAULT_HEIGHT_M = 0.8;
 /** Heights for things the detector has no class for but the model can box (round 8). */
@@ -262,6 +270,81 @@ export function createGuide(deps: GuideDeps): Guide {
 
 /** Hand steering from the on-device hand pose against a target box (round 7). */
 export type HandWord = 'left' | 'right' | 'higher' | 'lower' | 'forward' | 'grab' | null;
+
+/** Round 9: what the hand coach said last, so the next line can push ("a little more") or pull back ("too far"). */
+export interface HandCoachPrev {
+  word: Exclude<HandWord, null>;
+  /** Signed offsets target − fingertip at that moment (frame fractions). */
+  dx: number;
+  dy: number;
+}
+
+export type HandCoachKind = 'word' | 'push' | 'pull_back' | 'other_way' | 'reach' | 'reach_further' | 'grab';
+
+export interface HandCoachOut {
+  word: HandWord;
+  kind: HandCoachKind | null;
+  /** The line to say (null = nothing new). Plain words are cached phrases; coaching lines are live. */
+  text: string | null;
+  dx: number;
+  dy: number;
+}
+
+/** The hand is nearer the camera than the target by more than this: it has not reached yet. */
+export const HAND_REACH_GAP = 0.15;
+/** A correction that shrank by this share since the last word is progress ("a little more"). */
+export const HAND_PROGRESS_SHARE = 0.25;
+/** An offset under this when the direction flips means the hand overshot ("too far, back a little"). */
+export const HAND_OVERSHOOT_MAX = 0.25;
+
+const OPPOSITE: Readonly<Record<Exclude<HandWord, null | 'forward' | 'grab'>, HandWord>> = { left: 'right', right: 'left', higher: 'lower', lower: 'higher' };
+const WORD_TEXT: Readonly<Record<Exclude<HandWord, null | 'forward' | 'grab'>, string>> = { left: 'Left.', right: 'Right.', higher: 'Higher.', lower: 'Lower.' };
+const MORE_TEXT: Readonly<Record<Exclude<HandWord, null | 'forward' | 'grab'>, string>> = {
+  left: 'A little more to the left.', right: 'A little more to the right.', higher: 'A little higher.', lower: 'A little lower.',
+};
+const BACK_TEXT: Readonly<Record<Exclude<HandWord, null | 'forward' | 'grab'>, string>> = {
+  left: 'Too far. Back to the left a little.', right: 'Too far. Back to the right a little.', higher: 'Too low. Back up a little.', lower: 'Too high. Back down a little.',
+};
+
+/**
+ * Round 9: the hand coach. The same word as before, but with a sense of progress — the
+ * person is told to keep going ("a little more to the left"), that they overshot ("too far,
+ * back to the right a little"), that they are moving away ("other way"), and, with depth,
+ * whether the hand has actually reached the thing ("reach further forward" vs "grab it").
+ */
+export function coachHand(hand: Pick<HandPoseEvent, 'tipX' | 'tipY'> & { near?: number }, target: { box: [number, number, number, number]; near?: number }, insideFor: number, prev: HandCoachPrev | null): HandCoachOut {
+  const cx = target.box[0] + target.box[2] / 2;
+  const cy = target.box[1] + target.box[3] / 2;
+  const dx = cx - hand.tipX;
+  const dy = cy - hand.tipY;
+  const word = handWord(hand, target.box, insideFor);
+  if (word === 'forward' || word === 'grab') {
+    // Inside the box. Depth, when both sides have it, decides between reaching on and grabbing.
+    if (typeof hand.near === 'number' && typeof target.near === 'number') {
+      const gap = hand.near - target.near;   // + = the hand is nearer the camera than the thing
+      if (gap > HAND_REACH_GAP) return { word: 'forward', kind: 'reach_further', text: 'Reach further forward.', dx, dy };
+      if (gap < -HAND_REACH_GAP) return { word: 'forward', kind: 'pull_back', text: 'Too far. Pull back a little.', dx, dy };
+      return { word: 'grab', kind: 'grab', text: 'Grab it.', dx, dy };
+    }
+    return word === 'grab'
+      ? { word: 'grab', kind: 'grab', text: 'Grab it.', dx, dy }
+      : { word: 'forward', kind: 'reach', text: 'Reach forward.', dx, dy };
+  }
+  if (word === null) return { word: null, kind: null, text: null, dx, dy };
+  const axis = word === 'left' || word === 'right' ? 'x' : 'y';
+  const now = Math.abs(axis === 'x' ? dx : dy);
+  if (prev && prev.word === word) {
+    const before = Math.abs(axis === 'x' ? prev.dx : prev.dy);
+    if (before > 0 && now <= before * (1 - HAND_PROGRESS_SHARE)) return { word, kind: 'push', text: MORE_TEXT[word], dx, dy };
+    if (before > 0 && now >= before * (1 + HAND_PROGRESS_SHARE)) return { word, kind: 'other_way', text: `Other way. ${WORD_TEXT[word]}`, dx, dy };
+    return { word, kind: 'word', text: WORD_TEXT[word], dx, dy };
+  }
+  if (prev && OPPOSITE[prev.word as keyof typeof OPPOSITE] === word) {
+    const before = Math.abs(axis === 'x' ? prev.dx : prev.dy);
+    if (before <= HAND_OVERSHOOT_MAX) return { word, kind: 'pull_back', text: BACK_TEXT[word], dx, dy };
+  }
+  return { word, kind: 'word', text: WORD_TEXT[word], dx, dy };
+}
 
 export const HAND_DEAD_ZONE = 0.08;
 

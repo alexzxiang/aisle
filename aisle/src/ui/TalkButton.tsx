@@ -22,7 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, fontScaleCap, glass, motion, signalColors, sizes, space, type } from './theme';
 import type { VoicePort } from './ports';
-import { useLatest, useOptionalService, usePressScale, useResolvedReduceMotion, useScreenReader } from './hooks';
+import { useLatest, usePressScale, useResolvedReduceMotion, useScreenReader } from './hooks';
 
 export const TALK_LABEL = 'Hold to talk';
 export const TALK_HELD_LABEL = 'Listening';
@@ -61,10 +61,6 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, 
   const toggleMode = screenReader ?? systemScreenReader;
   const reduceMotion = useResolvedReduceMotion(reduceMotionProp);
   const press = usePressScale(reduceMotion);
-  // The one cue a blind user gets that the microphone is actually live: a tap when the
-  // recogniser reports it is listening, not when the finger lands (startup is a few
-  // hundred milliseconds; speaking before the tap is what "cut off my first word").
-  const haptics = useOptionalService('haptics');
 
   const stop = useCallback(() => {
     if (!heldRef.current) return;
@@ -96,7 +92,6 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, 
     const started = (): void => {
       if (attempt.current !== id || unmounting.current) return;
       setReady(true);
-      try { haptics?.play('CONFIRM'); } catch { /* a missing haptic engine is not an error */ }
       onStart?.();
     };
     try {
@@ -106,7 +101,7 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, 
     } catch {
       // Same: never crash the one control the user can always find.
     }
-  }, [voiceRef, onStart, haptics]);
+  }, [voiceRef, onStart]);
 
   const toggle = useCallback(() => {
     if (heldRef.current) stop();

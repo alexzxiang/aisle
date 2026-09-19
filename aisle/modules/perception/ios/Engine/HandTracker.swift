@@ -30,8 +30,11 @@ public struct HandPosePayload: PerceptionPayload, Equatable {
   public var box: NormalizedBox
   public var confidence: Double
   public var timestamp: Double
+  /// Round 9: depth-grid nearness at the fingertip (0 far … 1 near) when the grid is fresh —
+  /// with the target box's own nearness this tells "reach further" from "grab it".
+  public var near: Double?
 
-  public init(tipX: Double, tipY: Double, wristX: Double, wristY: Double, box: NormalizedBox, confidence: Double, timestamp: Double) {
+  public init(tipX: Double, tipY: Double, wristX: Double, wristY: Double, box: NormalizedBox, confidence: Double, timestamp: Double, near: Double? = nil) {
     self.tipX = tipX
     self.tipY = tipY
     self.wristX = wristX
@@ -39,10 +42,13 @@ public struct HandPosePayload: PerceptionPayload, Equatable {
     self.box = box
     self.confidence = confidence
     self.timestamp = timestamp
+    self.near = near
   }
 
   public var dictionary: [String: Any] {
-    ["tipX": tipX, "tipY": tipY, "wristX": wristX, "wristY": wristY, "box": box.array, "confidence": confidence, "timestamp": timestamp]
+    var d: [String: Any] = ["tipX": tipX, "tipY": tipY, "wristX": wristX, "wristY": wristY, "box": box.array, "confidence": confidence, "timestamp": timestamp]
+    if let near { d["near"] = near }
+    return d
   }
 }
 

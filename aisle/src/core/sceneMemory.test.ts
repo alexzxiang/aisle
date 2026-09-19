@@ -117,18 +117,19 @@ describe('createSceneMemory', () => {
     r.mem.dispose();
   });
 
-  it('things only the classifier names (eggs, milk) are remembered image-wide and answered without a distance', () => {
+  it('things only the classifier names (yogurt, ketchup) are remembered image-wide and answered without a distance', () => {
     let t = 0;
     const r = rig(() => t);
-    r.classify(0, [{ id: 'kitchen', confidence: 0.6 }, { id: 'egg', confidence: 0.45 }, { id: 'milk_carton', confidence: 0.35 }, { id: 'refrigerator', confidence: 0.5 }, { id: 'noise', confidence: 0.1 }]);
+    // Round 9: eggs and milk became detector classes, so the classifier-only things here are yogurt and cereal.
+    r.classify(0, [{ id: 'kitchen', confidence: 0.6 }, { id: 'yogurt', confidence: 0.45 }, { id: 'ketchup', confidence: 0.35 }, { id: 'refrigerator', confidence: 0.5 }, { id: 'noise', confidence: 0.1 }]);
     // 'kitchen' is a place, not a thing; 'refrigerator' is a detector class, left to the box path.
-    expect(r.mem.entries().filter((e) => e.source === 'classifier').map((e) => e.cls).sort()).toEqual(['egg', 'milk_carton']);
+    expect(r.mem.entries().filter((e) => e.source === 'classifier').map((e) => e.cls).sort()).toEqual(['ketchup', 'yogurt']);
     r.face(90);
-    expect(r.mem.whereIs('eggs')).toMatchObject({ cls: 'egg', relativeDeg: -90, phrase: 'The eggs are to your left.' });
-    expect(r.mem.whereIs('the milk')).toMatchObject({ cls: 'milk_carton', phrase: 'The milk is to your left.' });
+    expect(r.mem.whereIs('yogurt')).toMatchObject({ cls: 'yogurt', relativeDeg: -90, phrase: 'The yogurt is to your left.' });
+    expect(r.mem.whereIs('the ketchup')).toMatchObject({ cls: 'ketchup', phrase: 'The ketchup is to your left.' });
     expect(r.mem.whereIs('cereal')).toBe('unseen');
-    expect(r.mem.intercept('where are the eggs?')).toBe(true);
-    expect(r.said[r.said.length - 1]).toBe('The eggs are to your left.');
+    expect(r.mem.intercept('where is the yogurt?')).toBe(true);
+    expect(r.said[r.said.length - 1]).toBe('The yogurt is to your left.');
     expect(r.mem.intercept('where is the cereal')).toBe(true);
     expect(r.said.slice(-2)[0]).toBe('I have not seen a cereal yet.');
     expect(labelMatches('milk_carton', 'milk')).toBe(true);

@@ -96,6 +96,12 @@ function cap(s: string): string {
   return s.length ? s[0]!.toUpperCase() + s.slice(1) : s;
 }
 
+/** "bananas are", "the milk is": the user's own word decides. */
+export function isPlural(name: string): boolean {
+  const w = name.trim().toLowerCase();
+  return /s$/.test(w) && !/(?:ss|us|is)$/.test(w);
+}
+
 /** The spoken name: the user's own word when it names the detected class ("bananas", not "banana"). */
 export function missionName(words: string, cls: DetectionClass | null): string {
   const w = words.toLowerCase().replace(/^(?:the|my|a|an|some)\s+/, '').trim();
@@ -137,11 +143,22 @@ export interface MissionState {
   /** The user said the place is elsewhere; we are heading for a doorway. */
   throughDoorAt: number | null;
   scanSince: number | null;
+  /** Round 9: the last time the chased thing was in view, how far it was and where in the frame — for "you passed it". */
+  lastSeen: { what: 'item' | 'place'; at: number; steps: number | null; bottom: number; relativeDeg: number | null } | null;
+  /** Round 9: the previous forward line's step count, for "keep going, two more steps". */
+  lastForwardSteps: number | null;
+  /** When the walk line was last a new one (a person who stalls hears "keep walking"). */
+  forwardSince: number | null;
 }
 
 export function initialMissionState(): MissionState {
-  return { phase: 'find_place', askedRoom: false, throughDoorAt: null, scanSince: null };
+  return { phase: 'find_place', askedRoom: false, throughDoorAt: null, scanSince: null, lastSeen: null, lastForwardSteps: null, forwardSince: null };
 }
+
+/** A close thing that drops out of view within this long was walked past, not lost. */
+export const MISSION_OVERSHOOT_MS = 4000;
+/** "Keep walking" when the same forward line has stood this long without progress. */
+export const MISSION_STALL_MS = 7000;
 
 const itemLine = (name: string, g: GuideInstruction): { text: string; key: string; haptic: HapticPattern | null } => {
   const n = cap(name);
@@ -181,17 +198,53 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
 
   // 1. The item itself is in view (detector or the model's box): chase it.
   if (s.item?.targetVisible) {
+    next.lastSeen = { what: 'item', at: s.now, steps: s.item.steps, bottom: s.item.box ? s.item.box.box[1] + s.item.box.box[3] : 0, relativeDeg: s.item.relativeDeg };
     if (s.item.kind === 'arrived') {
       next.scanSince = null;
+      next.lastForwardSteps = null;
       return out('reach', `${cap(itemName)} right in front of you. Reach out.`, 'arrived', goal.item, 'CONFIRM');
     }
     const l = itemLine(itemName, s.item);
     next.scanSince = null;
+    // Push: the same walk, closer than last time — "keep going"; the same walk, no progress for a while — "keep walking".
+    if (s.item.kind === 'forward' && s.item.steps !== null) {
+      const prev = state.lastForwardSteps;
+      next.lastForwardSteps = s.item.steps;
+      if (prev !== null && s.item.steps < prev) {
+        next.forwardSince = s.now;
+        return out('approach_item', `Keep going. ${cap(stepsWords(s.item.steps))} more.`, `forward:${s.item.steps}`, goal.item, null);
+      }
+      if (prev !== null && s.item.steps === prev) {
+        const since = state.forwardSince ?? s.now;
+        next.forwardSince = since;
+        if (s.now - since >= MISSION_STALL_MS) {
+          next.forwardSince = s.now;
+          return out('approach_item', `Keep walking forward. ${cap(itemName)} ${isPlural(itemName) ? 'are' : 'is'} ${stepsWords(s.item.steps)} ahead.`, `stall:${s.item.steps}`, goal.item, null);
+        }
+      } else next.forwardSince = s.now;
+    } else next.lastForwardSteps = null;
     return out('approach_item', l.text, l.key, goal.item, l.haptic);
   }
+  // Pull back: it was close a moment ago and is gone from the frame — behind or below the camera.
+  const seen = state.lastSeen;
+  if (seen && seen.what === 'item' && s.now - seen.at <= MISSION_OVERSHOOT_MS && seen.steps !== null && seen.steps <= 2) {
+    const behind = s.item && !s.item.targetVisible && s.item.relativeDeg !== null && Math.abs(s.item.relativeDeg) > 100;
+    if (behind || seen.bottom >= 0.85) {
+      next.lastSeen = null;
+      next.lastForwardSteps = null;
+      const side = (seen.relativeDeg ?? 0) < 0 ? 'left' : 'right';
+      return out('approach_item', `Stop. You passed the ${itemName}. Turn around, ${isPlural(itemName) ? 'they are' : 'it is'} on your ${side}.`, 'overshoot', goal.item, 'STOP');
+    }
+  }
+  if (state.phase === 'approach_item' && !s.item?.targetVisible) next.lastForwardSteps = null;
 
   // 2. Not in view, but the place it should be on is: walk there, then look across it.
   if (placeName && s.place) {
+    if (s.place.targetVisible) next.lastSeen = { what: 'place', at: s.now, steps: s.place.steps, bottom: s.place.box ? s.place.box.box[1] + s.place.box.box[3] : 0, relativeDeg: s.place.relativeDeg };
+    else if (seen && seen.what === 'place' && state.phase === 'approach_place' && s.now - seen.at <= MISSION_OVERSHOOT_MS && seen.steps !== null && seen.steps <= 2 && seen.bottom >= 0.85) {
+      next.lastSeen = null;
+      return out('approach_place', `Stop. You walked past the ${placeName}. Turn around slowly.`, 'overshoot', goal.place ?? goal.item, 'STOP');
+    }
     if (s.place.targetVisible || state.phase === 'scan_place') {
       if (s.place.kind === 'arrived' || state.phase === 'scan_place') {
         const since = state.scanSince ?? s.now;

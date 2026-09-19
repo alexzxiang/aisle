@@ -211,6 +211,32 @@ describe('createVoiceInput', () => {
     unbind();
   });
 
+  it('a different spoken goal mid-mission is gated: "Switch to …?" — yes pivots, no keeps going, "stop" still stops at once (round 9)', async () => {
+    const unbind = bindStoreToBus(store, bus);
+    store.setState({ mode: 'IDLE' });
+    const r = fakeRecognizer();
+    const v = make(r.rec, { fetchImpl: (async () => { throw new Error('offline'); }) as unknown as typeof fetch });
+    await v.begin(); r.final('find the eggs in my fridge'); await v.end();
+    expect(store.getState()).toMatchObject({ mode: 'GUIDED_TASK', taskGoal: 'eggs in my fridge' });
+
+    await v.begin(); r.final('find the bananas on the table'); await v.end();
+    expect(said[said.length - 1].text).toBe('Switch to bananas on the table?');
+    expect(store.getState().taskGoal).toBe('eggs in my fridge');           // nothing changed yet
+    await v.begin(); r.final('no'); await v.end();
+    expect(said[said.length - 1].text).toBe('Keeping eggs in my fridge.');
+    expect(store.getState()).toMatchObject({ mode: 'GUIDED_TASK', taskGoal: 'eggs in my fridge' });
+
+    await v.begin(); r.final('find the bananas on the table'); await v.end();
+    await v.begin(); r.final('hmm'); await v.end();
+    expect(said[said.length - 1].text).toBe('Say yes to switch, or no to keep eggs in my fridge.');
+    await v.begin(); r.final('yes'); await v.end();
+    expect(store.getState()).toMatchObject({ mode: 'GUIDED_TASK', taskGoal: 'bananas on the table' });
+
+    await v.begin(); r.final('stop'); await v.end();
+    expect(store.getState().mode).not.toBe('GUIDED_TASK');
+    unbind();
+  });
+
   it('a place correction attaches to the existing item, and asking for the fridge keeps the egg mission', async () => {
     const unbind = bindStoreToBus(store, bus);
     store.setState({ targetItem: 'eggs' });
@@ -388,6 +414,25 @@ describe('createVoiceInput', () => {
     r.final('I need eggs');
     await v.end();
     expect(slept).toEqual([600]);
+  });
+
+  it('cues: "listening" fires when the recogniser is live, "sent" the moment the mic closes on release (round 9)', async () => {
+    const cues: string[] = [];
+    let ready!: () => void;
+    const r = fakeRecognizer();
+    const listen = r.rec.listen;
+    r.rec.listen = (o, h) => ({ ...listen(o, h), ready: new Promise<void>((resolve) => { ready = resolve; }) });
+    const v = make(r.rec, { cues: { listening: () => cues.push('listening'), sent: () => cues.push('sent') } });
+    const begun = v.begin();
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();   // through permissions to listen()
+    expect(cues).toEqual([]);                 // not before the microphone is actually open
+    ready();
+    await begun;
+    expect(cues).toEqual(['listening']);
+    r.final('I need eggs');
+    await v.end();
+    expect(cues).toEqual(['listening', 'sent']);
+    expect(r.calls).toEqual(['listen', 'stop']);
   });
 
   it('waits for native end and the audio file before Scribe fallback', async () => {

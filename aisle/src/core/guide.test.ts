@@ -1,6 +1,6 @@
 import type { Detection } from './contracts';
 import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit } from './phrases';
-import { CLASS_HEIGHT_M, createGuide, degreesFromBox, handWord, phraseFor, stepsFromBox, type GuideKind } from './guide';
+import { CLASS_HEIGHT_M, coachHand, createGuide, degreesFromBox, handWord, phraseFor, stepsFromBox, type GuideKind } from './guide';
 
 const det = (cls: Detection['cls'], cx: number, h: number, near?: number): Detection => ({ cls, box: [cx - 0.15, 0.5 - h / 2, 0.3, h], score: 0.8, trackId: 1, ...(near !== undefined ? { near } : {}) });
 
@@ -117,5 +117,30 @@ describe('createGuide', () => {
     expect(guide.changed(a, { ...a, steps: 5 })).toBe(false);
     expect(guide.changed(a, { ...a, steps: 3 })).toBe(true);
     expect(guide.changed(a, { ...a, kind: 'turn' })).toBe(true);
+  });
+});
+
+describe('coachHand (round 9): push, pull back, other way, reach further vs grab', () => {
+  const box: [number, number, number, number] = [0.6, 0.3, 0.2, 0.2];   // centre (0.7, 0.4)
+  it('says the word, then "a little more" as the gap closes, "other way" when it grows, "too far" on a flip', () => {
+    const first = coachHand({ tipX: 0.3, tipY: 0.4 }, { box }, 0, null);
+    expect(first).toMatchObject({ word: 'right', kind: 'word', text: 'Right.' });
+    const closer = coachHand({ tipX: 0.5, tipY: 0.4 }, { box }, 0, { word: 'right', dx: first.dx, dy: first.dy });
+    expect(closer).toMatchObject({ word: 'right', kind: 'push', text: 'A little more to the right.' });
+    const away = coachHand({ tipX: 0.1, tipY: 0.4 }, { box }, 0, { word: 'right', dx: closer.dx, dy: closer.dy });
+    expect(away).toMatchObject({ word: 'right', kind: 'other_way', text: 'Other way. Right.' });
+    const overshoot = coachHand({ tipX: 0.9, tipY: 0.4 }, { box }, 0, { word: 'right', dx: 0.1, dy: 0 });
+    expect(overshoot).toMatchObject({ word: 'left', kind: 'pull_back', text: 'Too far. Back to the left a little.' });
+    const farFlip = coachHand({ tipX: 0.95, tipY: 0.4 }, { box }, 0, { word: 'right', dx: 0.5, dy: 0 });
+    expect(farFlip).toMatchObject({ word: 'left', kind: 'word' });   // a flip after a big correction is just a new word
+    expect(coachHand({ tipX: 0.7, tipY: 0.9 }, { box }, 0, { word: 'higher', dx: 0, dy: -0.55 })).toMatchObject({ word: 'higher', kind: 'word' });
+    expect(coachHand({ tipX: 0.7, tipY: 0.1 }, { box }, 0, { word: 'higher', dx: 0, dy: -0.1 })).toMatchObject({ word: 'lower', kind: 'pull_back', text: 'Too high. Back down a little.' });
+  });
+  it('inside the box: without depth reach then grab; with depth the hand must actually get there', () => {
+    expect(coachHand({ tipX: 0.7, tipY: 0.4 }, { box }, 0, null)).toMatchObject({ word: 'forward', kind: 'reach', text: 'Reach forward.' });
+    expect(coachHand({ tipX: 0.7, tipY: 0.4 }, { box }, 2, null)).toMatchObject({ word: 'grab', kind: 'grab' });
+    expect(coachHand({ tipX: 0.7, tipY: 0.4, near: 0.9 }, { box, near: 0.5 }, 3, null)).toMatchObject({ word: 'forward', kind: 'reach_further', text: 'Reach further forward.' });
+    expect(coachHand({ tipX: 0.7, tipY: 0.4, near: 0.55 }, { box, near: 0.5 }, 0, null)).toMatchObject({ word: 'grab', kind: 'grab', text: 'Grab it.' });
+    expect(coachHand({ tipX: 0.7, tipY: 0.4, near: 0.2 }, { box, near: 0.5 }, 0, null)).toMatchObject({ word: 'forward', kind: 'pull_back', text: 'Too far. Pull back a little.' });
   });
 });

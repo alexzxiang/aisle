@@ -373,6 +373,11 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   };
   const voice = createVoiceInput({
     onDiagnostic: (data) => trace('voice_capture', data),
+    // Round 9: the two moments a blind user needs to feel — "speak now" and "heard".
+    cues: {
+      listening: () => { haptics.play('LISTEN'); audio.earcon('listen'); },
+      sent: () => { haptics.play('SENT'); audio.earcon('sent'); },
+    },
     speech,
     bus,
     store,

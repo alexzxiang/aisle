@@ -15,3 +15,10 @@ each expected file will carry and what must be verified on delivery.
 Attribution lines for the README / slides (06 "Failure-mode checklist"): Ultralytics YOLO,
 Depth Anything V2 (HKU / TikTok), ElevenLabs, and the pedestrian-signal datasets named in
 `training/LICENSES.md`.
+
+## oiv7-yolo-nano (round 9)
+
+- Weights: Ultralytics `yolov8n-oiv7.pt` (YOLOv8n trained on Open Images V7), AGPL-3.0 like the
+  COCO detector above; the same licence position applies.
+- Training data: Open Images V7 (Google), annotations CC BY 4.0, images under their own
+  licences (CC BY 2.0 per image). Nothing from the dataset ships in the app; only the weights.

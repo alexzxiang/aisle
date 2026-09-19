@@ -61,6 +61,8 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   public private(set) var isRunning = false
 
   private var tracker = IoUTracker()
+  /// Round 9: which detector the next indoor frame goes to (false = COCO).
+  private var detectorParity = false
   private var looming = LoomingFilter()
   private var hazards = HazardFilter()
   private var obstacles = ObstacleEstimator()
@@ -250,6 +252,13 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
         sink?.perceptionEngine(self, log: "model load failed: \(error)")
       }
     }
+    // Round 9: indoors the Open Images detector alternates frames with COCO. Outdoors the
+    // looming filter needs COCO's 15 fps on vehicles, so it stays off there.
+    if p == .indoorNav || p == .itemPickup || p == .aware {
+      registry.loadOpenImagesDetector()
+    } else {
+      detectorParity = false
+    }
 
     if schedule.sessionRunning {
       if !session.isRunning { session.run() }
@@ -341,18 +350,29 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   // MARK: Stages
 
   private func runDetector(_ context: FrameContext) {
-    guard let model = registry.model(for: .detector) else { return }
+    guard let coco = registry.model(for: .detector) else { return }
     throttles[.detector]?.markBusy()
     let frameTime = context.geometry.timestamp
     let indoor = profile == .indoorNav || profile == .itemPickup || profile == .aware
+    // Round 9: indoors, every other frame goes to the Open Images detector (doors, counters,
+    // drawers, switches, the small things). The tracker merges both streams; the emitted
+    // list is every live track, so JS never sees half the room.
+    let extra = indoor ? registry.openImagesDetector() : nil
+    let useExtra = extra != nil && detectorParity
+    detectorParity = extra != nil && !detectorParity
+    let model = useExtra ? extra! : coco
+    let labelMap: (String) -> DetectionClass? = useExtra
+      ? { OpenImagesLabels.detectionClass(for: $0) }
+      : { CocoLabels.detectionClass(for: $0) }
+    let minScore = useExtra ? OpenImagesLabels.minScore : 0
     detectorQueue.async { [self] in
       let raw = VisionRunner.detect(
         model: model, pixelBuffer: context.pixelBuffer, orientation: context.orientation,
-        roi: nil, labelMap: { CocoLabels.detectionClass(for: $0) })
+        roi: nil, labelMap: labelMap).filter { $0.score >= minScore }
       session.frameQueue.async { [self] in
         throttles[.detector]?.markIdle()
         fpsMeters[.detector]?.tick(at: frameTime)
-        var tracked = tracker.update(raw, at: frameTime)
+        var tracked = extra != nil ? mergedAfterUpdate(raw, at: frameTime) : tracker.update(raw, at: frameTime)
         // Round 7: the user's own arm is not a person ahead. With a fresh hand pose, the person
         // box that holds the hand and reaches the frame's bottom edge becomes `hand`.
         let freshHand = (frameTime - lastHandAt) <= handFreshSeconds ? lastHand : nil
@@ -382,6 +402,13 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
         }
       }
     }
+  }
+
+  /// Update the tracker with one detector's frame, then return every track either detector
+  /// saw in the last two frames (round 9: the two alternate, so one frame is half the room).
+  private func mergedAfterUpdate(_ raw: [RawDetection], at t: Double) -> [DetectionPayload] {
+    _ = tracker.update(raw, at: t)
+    return tracker.live(maxMissedFrames: 1)
   }
 
   private func runSignal(_ context: FrameContext) {
@@ -476,7 +503,11 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
       session.frameQueue.async { [self] in
         throttles[.hand]?.markIdle()
         fpsMeters[.hand]?.tick(at: frameTime)
-        if let hand {
+        if var hand {
+          // Round 9: the fingertip's nearness from a fresh depth grid, for "reach further" vs "grab it".
+          if let grid = lastDepthGrid, frameTime - grid.timestamp <= depthGridFreshSeconds {
+            hand.near = grid.nearness(atNormalizedX: hand.tipX, y: hand.tipY)
+          }
           lastHand = hand
           lastHandAt = frameTime
           emit(.handPose, hand.dictionary, frameTime: nil)

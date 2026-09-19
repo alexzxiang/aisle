@@ -163,6 +163,77 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
   case hairDrier = "hair_drier"
   case mouse
   case tie
+  // Round 9: the Open Images V7 detector (`oiv7-yolo-nano`, alternating frames with COCO
+  // indoors) names the things a home is made of: doors and handles, counters, cabinets,
+  // drawers, switches, stairs, shelves, windows, and the small things people ask for.
+  case door
+  case doorHandle = "door_handle"
+  case countertop
+  case cabinet
+  case drawer
+  case lightSwitch = "light_switch"
+  case stairs
+  case shelf
+  case window
+  case mirror
+  case pillow
+  case towel
+  case trashCan = "trash_can"
+  case lamp
+  case plate
+  case mug
+  case kettle
+  case can
+  case box
+  case egg
+  case milk
+  case bread
+  case glasses
+  case shoe
+  case washingMachine = "washing_machine"
+  case dishwasher
+  case bathtub
+  case shower
+  case faucet
+  case desk
+  case stool
+  case nightstand
+  case wardrobe
+  case headphones
+  case watch
+  case wheelchair
+  case streetLight = "street_light"
+  case trafficSign = "traffic_sign"
+  case parkingMeter = "parking_meter"
+  case curtain
+  case monitor
+  case printer
+  case fireplace
+  case ladder
+  case pan
+  case stove
+  case cuttingBoard = "cutting_board"
+  case soap
+  case candle
+  case tree
+  case bag
+  case tomato
+  case potato
+  case fruit
+  case vegetable
+  case snack
+  case tablet
+  case pen
+  case coin
+
+  /// Round 9 additions, as one set so the scenery set below stays readable.
+  public static let homeClasses: Set<DetectionClass> = [
+    .door, .doorHandle, .countertop, .cabinet, .drawer, .lightSwitch, .stairs, .shelf, .window, .mirror, .pillow, .towel,
+    .trashCan, .lamp, .plate, .mug, .kettle, .can, .box, .egg, .milk, .bread, .glasses, .shoe, .washingMachine, .dishwasher,
+    .bathtub, .shower, .faucet, .desk, .stool, .nightstand, .wardrobe, .headphones, .watch, .wheelchair, .streetLight,
+    .trafficSign, .parkingMeter, .curtain, .monitor, .printer, .fireplace, .ladder, .pan, .stove, .cuttingBoard, .soap,
+    .candle, .tree, .bag, .tomato, .potato, .fruit, .vegetable, .snack, .tablet, .pen, .coin,
+  ]
 
   /// Classes 09 §5.2 treats as vehicles for the looming filter.
   public static let vehicleClasses: Set<DetectionClass> = [.car, .bus, .truck, .motorcycle, .bicycle]
@@ -171,13 +242,13 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
   /// Classes 09 §5.1 feeds to the signal filter.
   public static let signalClasses: Set<DetectionClass> = [.pedWalk, .pedHand, .pedCountdown]
   /// Everything that is scenery rather than a hazard: reported, never acted on.
-  public static let sceneClasses: Set<DetectionClass> = [
+  public static let sceneClasses: Set<DetectionClass> = Set<DetectionClass>([
     .chair, .couch, .bed, .table, .tv, .laptop, .fridge, .oven, .microwave, .sink, .toilet,
     .bottle, .cup, .bowl, .plant, .book, .clock, .dog, .cat, .backpack, .handbag, .suitcase,
     .umbrella, .trafficLight, .stopSign, .hydrant, .bench,
     .banana, .apple, .sandwich, .orange, .broccoli, .carrot, .pizza, .donut, .cake, .wineGlass, .fork, .knife,
     .spoon, .remote, .keyboard, .cellPhone, .toaster, .vase, .scissors, .teddyBear, .toothbrush, .hairDrier, .mouse, .tie,
-  ]
+  ]).union(homeClasses)
 
   /// The signal state a per-frame signal detection votes for; `nil` for
   /// everything that is not a pedestrian head.

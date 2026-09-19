@@ -20,6 +20,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, StyleSheet, Text, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import type { Detection, PerceptionService } from '../core/contracts';
+import { HOME_DETECTION_CLASSES } from '../core/contracts';
 import { services } from '../core/services';
 import { getPerceptionNative, getPerceptionPreviewView, type PerceptionPreviewReadyEvent } from '../../modules/perception';
 
@@ -52,6 +53,7 @@ export function isCameraPreviewAvailable(): boolean {
 
 const SCENERY_COLOR = '#9CC3FF';
 const FOOD_COLOR = '#FFE08A';
+const STRUCTURE_COLOR = '#B8E1C8';
 
 /** One colour per kept class (09 §3). Vehicles warm, people/carts cool, signals in OKO's convention, scenery pale. */
 export const DETECTION_COLORS: Readonly<Record<Detection['cls'], string>> = Object.freeze({
@@ -78,6 +80,8 @@ export const DETECTION_COLORS: Readonly<Record<Detection['cls'], string>> = Obje
   spoon: SCENERY_COLOR, remote: SCENERY_COLOR, keyboard: SCENERY_COLOR, cell_phone: SCENERY_COLOR, toaster: SCENERY_COLOR,
   vase: SCENERY_COLOR, scissors: SCENERY_COLOR, teddy_bear: SCENERY_COLOR, toothbrush: SCENERY_COLOR, hair_drier: SCENERY_COLOR,
   mouse: SCENERY_COLOR, tie: SCENERY_COLOR,
+  // Round 9: the Open Images classes — structure in a second neutral, food in the food colour.
+  ...(Object.fromEntries(HOME_DETECTION_CLASSES.map((c) => [c, /^(egg|milk|bread|tomato|potato|fruit|vegetable|snack)$/.test(c) ? FOOD_COLOR : STRUCTURE_COLOR])) as Record<(typeof HOME_DETECTION_CLASSES)[number], string>),
 });
 
 /** Short names for the label; a class without an entry uses its own name. */

@@ -306,6 +306,8 @@ export interface HapticBackend {
   impact(style: PulseStyle): void;
   /** notificationAsync(Error) */
   notificationError(): void;
+  /** notificationAsync(Success) — round 9, the "sent" cue. Optional for older fakes (falls back to two taps). */
+  notificationSuccess?(): void;
 }
 
 export interface HapticServiceOptions {
@@ -333,7 +335,7 @@ export interface AisleHapticService extends HapticService {
 export const TURN_SEQUENCE_MS: readonly number[] = [0, 110, 220];
 export const STOP_SEQUENCE_MS: readonly number[] = [0, 70, 140];
 
-const TRAINING_LABEL: Readonly<Record<HapticPattern, PhraseKey>> = {
+const TRAINING_LABEL: Readonly<Partial<Record<HapticPattern, PhraseKey>>> = {
   TURN: 'label_turn',
   STOP: 'label_stop',
   CONFIRM: 'label_okay',
@@ -355,6 +357,9 @@ export function createExpoHapticBackend(): HapticBackend {
     },
     notificationError() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(swallow);
+    },
+    notificationSuccess() {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(swallow);
     },
   };
 }
@@ -427,11 +432,23 @@ export function createHapticService(opts: HapticServiceOptions = {}): AisleHapti
       case 'CONFIRM':
         backend.impact('Light');
         break;
+      case 'LISTEN':
+        backend.impact('Medium');
+        later(90, () => backend.impact('Light'));
+        break;
+      case 'SENT':
+        if (backend.notificationSuccess) backend.notificationSuccess();
+        else {
+          backend.impact('Light');
+          later(70, () => backend.impact('Light'));
+        }
+        break;
       default:
         return;
     }
-    if (opts.store?.getState().trainingMode) {
-      speakKey(TRAINING_LABEL[pattern], 'INFO', 3000);
+    const label = TRAINING_LABEL[pattern];
+    if (label && opts.store?.getState().trainingMode) {
+      speakKey(label, 'INFO', 3000);
     }
   };
 

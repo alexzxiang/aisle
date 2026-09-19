@@ -288,6 +288,8 @@ public enum ModelRegistryError: Error, CustomStringConvertible {
 public final class ModelRegistry {
   public static let cocoModelName = "coco-yolo-nano"
   public static let cocoFallbackModelName = "coco-yolo-nano-416"
+  /// Round 9: the Open Images V7 nano detector, optional (a bundle without it runs COCO alone).
+  public static let openImagesModelName = "oiv7-yolo-nano"
   public static let signalModelName = "ped-signal-v1"
   public static let depthModelName = "depth-anything-v2-small"
   public static let segmentationModelName = "walkable-seg"
@@ -298,6 +300,8 @@ public final class ModelRegistry {
   private let bundle: Bundle
   private var loaded: [PipelineStage: LoadedModel] = [:]
   private var failed: Set<PipelineStage> = []
+  private var extraDetector: LoadedModel?
+  private var extraDetectorFailed = false
   private var lastLoadLog: [String] = []
 
   public init(bundle: Bundle = Bundle.main) {
@@ -349,16 +353,41 @@ public final class ModelRegistry {
     }
   }
 
+  /// The second detector (Open Images), once `loadOpenImagesDetector()` succeeded.
+  public func openImagesDetector() -> LoadedModel? {
+    extraDetector
+  }
+
+  /// Round 9: load the Open Images detector for the indoor profiles. Optional: a missing or
+  /// broken package is logged once and the engine runs COCO alone.
+  @discardableResult
+  public func loadOpenImagesDetector() -> LoadedModel? {
+    if let extraDetector { return extraDetector }
+    if extraDetectorFailed { return nil }
+    do {
+      let model = try loadModel(named: ModelRegistry.openImagesModelName)
+      extraDetector = model
+      lastLoadLog.append("\(ModelRegistry.openImagesModelName): units=\(ModelRegistry.describe(model.computeUnits)) labels=\(model.manifest?.labels.count ?? 0)")
+      return model
+    } catch {
+      extraDetectorFailed = true
+      lastLoadLog.append("\(ModelRegistry.openImagesModelName): not loaded (optional) \(error)")
+      return nil
+    }
+  }
+
   /// Unload what the profile does not use (04 Task 2). The model file stays in
   /// the bundle; only the in-memory `MLModel` is dropped.
   public func retainOnly(_ stages: Set<PipelineStage>) {
     for stage in loaded.keys where !stages.contains(stage) {
       loaded.removeValue(forKey: stage)
     }
+    if !stages.contains(.detector) { extraDetector = nil }
   }
 
   public func unloadAll() {
     loaded.removeAll()
+    extraDetector = nil
   }
 
   public func resetFailures() {

@@ -135,6 +135,19 @@ describe('createAudioChannels', () => {
     return createAudioChannels({ backend: be, store, heading: () => heading, speaking: () => speaking });
   };
 
+  it('earcons play the listen / sent clips at full volume, and are silent on a backend without them (round 9)', () => {
+    const listen = { plays: 0, play() { this.plays += 1; }, stop() {}, dispose() {} };
+    const sent = { plays: 0, play() { this.plays += 1; }, stop() {}, dispose() {} };
+    const withEarcons = { ...fakeBackend(), listen, sent };
+    store.setState({ mode: 'IDLE' });
+    const ch = createAudioChannels({ backend: withEarcons, store, heading: () => null, speaking: () => false });
+    ch.earcon('listen');
+    ch.earcon('sent');
+    ch.earcon('sent');
+    expect([listen.plays, sent.plays]).toEqual([1, 2]);
+    expect(() => make('IDLE').earcon('listen')).not.toThrow();
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(1_000_000);
