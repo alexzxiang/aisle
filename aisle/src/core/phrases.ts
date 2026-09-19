@@ -128,7 +128,7 @@ export type ASideKey =
   | 'onboarding_ticker_countdown' | 'onboarding_keep_cane' | 'onboarding_wear_phone'
   | 'onboarding_ring_switch' | 'onboarding_walk_straight' | 'onboarding_practice_scene' | 'onboarding_done'
   | 'route_unavailable' | 'no_route_data'
-  | 'need_location' | 'no_store_nearby' | 'say_item_one_word' | 'describe_nothing'
+  | 'need_location' | 'no_store_nearby' | 'say_item_one_word' | 'describe_nothing' | 'not_caught'
   | 'let_me_see' | 'planning_route' | 'no_place_found' | 'arrived_destination' | 'task_done' | 'task_next' | 'task_step_done' | 'task_still_looking'
   | 'show_surroundings' | 'tell_me_where' | 'noted'
   | 'grab_it' | 'hold_out_hand' | 'move_hand_slowly';
@@ -242,6 +242,7 @@ export const PHRASE_LIST: readonly Phrase[] = [
   P('no_store_nearby', 'I cannot find a store nearby.', 'always', true),
   P('say_item_one_word', 'Say the item again, one word.', 'reply', true),
   P('describe_nothing', 'Nothing to describe right now.', 'reply', true),
+  P('not_caught', 'I did not catch that. Say it again.', 'reply', true),
   // --- A-side additions (flagged for 01 §3) ---
   P('course_hint_left', 'Bear left.', 'course_hint', true),
   P('course_hint_right', 'Bear right.', 'course_hint', true),

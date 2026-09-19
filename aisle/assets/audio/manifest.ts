@@ -45,6 +45,7 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
   no_store_nearby: require('./no_store_nearby.mp3') as number,
   no_vehicles_left: require('./no_vehicles_left.mp3') as number,
   no_vehicles_right: require('./no_vehicles_right.mp3') as number,
+  not_caught: require('./not_caught.mp3') as number,
   noted: require('./noted.mp3') as number,
   now_right: require('./now_right.mp3') as number,
   obstacle_ahead: require('./obstacle_ahead.mp3') as number,
@@ -99,8 +100,8 @@ export const AUDIO_MANIFEST: Readonly<Record<string, number>> = Object.freeze({
 });
 
 export const AUDIO_MANIFEST_META = Object.freeze({
-  generatedAt: "2026-09-19T17:06:45.614Z",
+  generatedAt: "2026-09-19T17:58:45.564Z",
   voiceId: "77PfBlxcTFzlg9xS12zb",
   model: "eleven_flash_v2_5",
-  count: 87,
+  count: 88,
 });
