@@ -248,12 +248,22 @@ export type ModeProfile =
   | 'IDLE' | 'OUTDOOR_NAV' | 'APPROACH_CROSSING' | 'CROSSING' | 'INDOOR_NAV' | 'ITEM_PICKUP';
   // AT_CURB uses the APPROACH_CROSSING profile; TRANSITION uses OUTDOOR_NAV.
 
+/** Safety classes (vehicles, people, carts, signal heads) plus the scenery classes the room needs (round 6). */
+export const SAFETY_DETECTION_CLASSES = ['car', 'bus', 'truck', 'motorcycle', 'bicycle', 'person', 'cart', 'ped_walk', 'ped_hand', 'ped_countdown'] as const;
+export const SCENE_DETECTION_CLASSES = ['chair', 'couch', 'bed', 'table', 'tv', 'laptop', 'fridge', 'oven', 'microwave', 'sink', 'toilet', 'bottle', 'cup', 'bowl', 'plant', 'book', 'clock', 'dog', 'cat', 'backpack', 'handbag', 'suitcase', 'umbrella', 'traffic_light', 'stop_sign', 'hydrant', 'bench'] as const;
+export const DETECTION_CLASSES = [...SAFETY_DETECTION_CLASSES, ...SCENE_DETECTION_CLASSES] as const;
+export type DetectionClass = (typeof DETECTION_CLASSES)[number];
+
 export interface Detection {
-  cls: 'car' | 'bus' | 'truck' | 'motorcycle' | 'bicycle' | 'person' | 'cart'
-     | 'ped_walk' | 'ped_hand' | 'ped_countdown';
+  cls: DetectionClass;
   box: [x: number, y: number, w: number, h: number];  // normalized 0..1, upright frame
   score: number;
   trackId: number;
+}
+
+export interface SceneClassEvent {
+  labels: Array<{ id: string; confidence: number }>;   // VNClassifyImageRequest identifiers, best first
+  timestamp: number;
 }
 
 export interface OcrRead {
@@ -298,6 +308,8 @@ export interface PerceptionService {
   onPlanes(cb: (e: { floors: number; verticals: number }) => void): () => void;  // 1 Hz
   onDepth(cb: (d: DepthSummary) => void): () => void;           // ≤ 5 Hz
   onTrackingState(cb: (s: TrackingState) => void): () => void;
+  /** Round 6: Apple's on-device scene classifier, top labels at ≤ 2 Hz ("kitchen 0.71", "refrigerator 0.4"). */
+  onSceneClass(cb: (e: SceneClassEvent) => void): () => void;
 
   snapshotJPEG(maxWidth: SnapshotWidth): Promise<Snapshot>;  // upright, EXIF baked in
   getTrackingState(): TrackingState;
@@ -341,6 +353,7 @@ export interface VisionRequest {
     headingDeg?: number;
     knownSigns?: string[];                  // aisle_disambiguate only
     targetItem?: string;                    // hand_guidance only
+    sceneLabels?: string[];                 // round 6: Apple's scene classifier, "kitchen 0.71" … (≤ 8)
   };
   userText?: string;                        // 'free' only
 }

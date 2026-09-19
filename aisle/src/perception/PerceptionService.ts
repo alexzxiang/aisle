@@ -104,6 +104,7 @@ export function createNativePerceptionService(native: PerceptionNativeModule): P
     onPlanes: (cb) => subscribePerceptionEvent(native, 'onPlanes', cb),
     onDepth: (cb) => subscribePerceptionEvent(native, 'onDepth', cb),
     onTrackingState: (cb) => subscribePerceptionEvent(native, 'onTrackingState', cb),
+    onSceneClass: (cb) => subscribePerceptionEvent(native, 'onSceneClass', cb),
 
     async snapshotJPEG(maxWidth): Promise<Snapshot> {
       if (!isSnapshotWidth(maxWidth)) {

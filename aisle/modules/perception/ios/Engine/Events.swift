@@ -38,6 +38,7 @@ public enum PerceptionEventName: String, CaseIterable, Sendable {
   case planes = "onPlanes"
   case depth = "onDepth"
   case trackingState = "onTrackingState"
+  case sceneClass = "onSceneClass"   // round 6: Apple's scene classifier, top labels
 }
 
 // MARK: - Enumerations (raw values are the contract strings)
@@ -103,6 +104,37 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
   case pedWalk = "ped_walk"
   case pedHand = "ped_hand"
   case pedCountdown = "ped_countdown"
+  // Round 6: the surroundings. COCO already sees these at 15 fps; keeping them
+  // is what lets the app say "couch ahead, tv on your left" without a network
+  // call and gives Claude facts to anchor on. None of these reach the vehicle,
+  // hazard or signal filters (those use the sets below).
+  case chair
+  case couch
+  case bed
+  case table
+  case tv
+  case laptop
+  case fridge
+  case oven
+  case microwave
+  case sink
+  case toilet
+  case bottle
+  case cup
+  case bowl
+  case plant
+  case book
+  case clock
+  case dog
+  case cat
+  case backpack
+  case handbag
+  case suitcase
+  case umbrella
+  case trafficLight = "traffic_light"
+  case stopSign = "stop_sign"
+  case hydrant
+  case bench
 
   /// Classes 09 §5.2 treats as vehicles for the looming filter.
   public static let vehicleClasses: Set<DetectionClass> = [.car, .bus, .truck, .motorcycle, .bicycle]
@@ -110,6 +142,12 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
   public static let hazardClasses: Set<DetectionClass> = [.person, .cart]
   /// Classes 09 §5.1 feeds to the signal filter.
   public static let signalClasses: Set<DetectionClass> = [.pedWalk, .pedHand, .pedCountdown]
+  /// Everything that is scenery rather than a hazard: reported, never acted on.
+  public static let sceneClasses: Set<DetectionClass> = [
+    .chair, .couch, .bed, .table, .tv, .laptop, .fridge, .oven, .microwave, .sink, .toilet,
+    .bottle, .cup, .bowl, .plant, .book, .clock, .dog, .cat, .backpack, .handbag, .suitcase,
+    .umbrella, .trafficLight, .stopSign, .hydrant, .bench,
+  ]
 
   /// The signal state a per-frame signal detection votes for; `nil` for
   /// everything that is not a pedestrian head.

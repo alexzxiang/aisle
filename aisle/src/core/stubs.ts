@@ -191,6 +191,7 @@ export function createStubPerception(log?: CallLog): PerceptionService {
     onPlanes: sub('onPlanes'),
     onDepth: sub('onDepth'),
     onTrackingState: sub('onTrackingState'),
+    onSceneClass: sub('onSceneClass'),
     async snapshotJPEG(maxWidth) {
       seq += 1;
       record(log, 'perception', 'snapshotJPEG', [maxWidth]);

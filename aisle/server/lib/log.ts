@@ -8,7 +8,7 @@
  * which logs once per request after the audio has been sent.
  */
 
-export type LanguageVerdict = 'pass' | 'blanked' | 'rejected_422' | 'allowlisted' | 'n/a';
+export type LanguageVerdict = 'pass' | 'repaired' | 'blanked' | 'rejected_422' | 'allowlisted' | 'n/a';
 
 export interface RequestLogLine {
   ts: string;                       // ISO

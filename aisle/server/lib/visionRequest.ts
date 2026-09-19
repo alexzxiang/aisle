@@ -5,7 +5,7 @@
  * messages readable in the log.
  */
 import { z } from 'zod';
-import type { AppMode, VisionQuestion, VisionRequest } from '../../src/core/contracts';
+import { DETECTION_CLASSES, type AppMode, type VisionQuestion, type VisionRequest } from '../../src/core/contracts';
 import { MAX_IMAGE_LONG_EDGE } from './anthropic';
 
 export const APP_MODES: readonly AppMode[] = [
@@ -17,7 +17,7 @@ export const VISION_QUESTIONS: readonly VisionQuestion[] = [
 ];
 
 const detection = z.object({
-  cls: z.enum(['car', 'bus', 'truck', 'motorcycle', 'bicycle', 'person', 'cart', 'ped_walk', 'ped_hand', 'ped_countdown']),
+  cls: z.enum(DETECTION_CLASSES as unknown as [string, ...string[]]),
   box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
   score: z.number(),
   trackId: z.number(),
@@ -45,6 +45,7 @@ export const visionRequestSchema = z.object({
     headingDeg: z.number().optional(),
     knownSigns: z.array(z.string()).optional(),
     targetItem: z.string().optional(),
+    sceneLabels: z.array(z.string().max(48)).max(8).optional(),
   }),
   userText: z.string().max(500).optional(),
 });

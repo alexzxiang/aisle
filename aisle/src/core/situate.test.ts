@@ -8,6 +8,7 @@ import {
   SITUATE_QUESTION_GAP_MS,
   SITUATE_REENTRY_MS,
   SITUATE_SETTLE_MS,
+  classifySceneLabels,
   contextForSetting,
   createSituate,
   isNo,
@@ -106,6 +107,22 @@ describe('situate (pure)', () => {
     expect(sameScene({ setting: 'kitchen', label: 'in a kitchen' }, { setting: 'room', label: 'in a living room' })).toBe(false);
     expect(sameScene({ setting: 'street', label: 'on a sidewalk' }, { setting: 'street', label: 'on a street corner' })).toBe(false);
     expect(sameScene({ setting: 'street', label: '' }, { setting: 'street', label: 'on a street corner' })).toBe(true);
+  });
+});
+
+describe('classifySceneLabels (Apple on-device labels → a place)', () => {
+  it('votes by setting and names the room and the nearest thing', () => {
+    expect(classifySceneLabels([{ id: 'kitchen', confidence: 0.6 }, { id: 'refrigerator', confidence: 0.3 }, { id: 'indoor', confidence: 0.2 }]))
+      .toMatchObject({ setting: 'kitchen', label: 'in a kitchen by a fridge' });
+    expect(classifySceneLabels([{ id: 'kitchen', confidence: 0.6 }, { id: 'refrigerator', confidence: 0.3 }])!.score).toBeCloseTo(0.9);
+    expect(classifySceneLabels([{ id: 'living_room', confidence: 0.5 }, { id: 'couch', confidence: 0.4 }, { id: 'television', confidence: 0.2 }]))
+      .toMatchObject({ setting: 'room', label: 'in a living room by a couch' });
+    expect(classifySceneLabels([{ id: 'crosswalk', confidence: 0.4 }, { id: 'street', confidence: 0.5 }, { id: 'building', confidence: 0.3 }]))
+      .toMatchObject({ setting: 'street', label: 'on a street by a crosswalk' });
+    expect(classifySceneLabels([{ id: 'supermarket', confidence: 0.7 }, { id: 'shelf', confidence: 0.4 }]))
+      .toMatchObject({ setting: 'store', label: 'in a grocery store by shelves' });
+    expect(classifySceneLabels([{ id: 'sky', confidence: 0.9 }, { id: 'cloud', confidence: 0.5 }])).toBeNull();
+    expect(classifySceneLabels([])).toBeNull();
   });
 });
 
@@ -252,6 +269,31 @@ describe('createSituate', () => {
     await flush(SITUATE_SETTLE_MS + SITUATE_ASK_INTERVAL_MS);
     expect(h2.said.filter((r) => r.dedupeKey === 'situate-narration')).toHaveLength(0);
     s2.dispose();
+  });
+
+  it('two agreeing on-device readings propose the place at once; a lone or weak reading does not', async () => {
+    const listeners = new Set<(e: { labels: Array<{ id: string; confidence: number }>; timestamp: number }) => void>();
+    const h = harness();
+    const s = createSituate({ ...h.deps, perception: { onSceneClass: (cb) => { listeners.add(cb); return () => listeners.delete(cb); } } });
+    s.start();
+    await flush(SITUATE_REENTRY_MS);
+    const fire = (labels: Array<{ id: string; confidence: number }>) => { for (const cb of Array.from(listeners)) cb({ labels, timestamp: Date.now() }); };
+    fire([{ id: 'kitchen', confidence: 0.5 }, { id: 'refrigerator', confidence: 0.3 }]);
+    expect(h.store.getState().scene).toBeNull();                       // one reading: not yet
+    fire([{ id: 'living_room', confidence: 0.5 }]);                    // a different setting resets the streak
+    fire([{ id: 'kitchen', confidence: 0.5 }, { id: 'refrigerator', confidence: 0.3 }]);
+    expect(h.store.getState().scene).toBeNull();
+    fire([{ id: 'kitchen', confidence: 0.4 }, { id: 'stove', confidence: 0.2 }]);
+    expect(h.store.getState().scene).toMatchObject({ setting: 'kitchen', confirmed: false, source: 'camera' });
+    // The standing ask had already gone out at the hold's end (nothing known then); the question follows.
+    expect(h.said.map((r) => r.text)).toEqual([PHRASES.show_surroundings, 'You seem to be in a kitchen by a stove. Correct?']);
+    expect(s.getDebugState()).toMatchObject({ classReadings: 4, classAccepted: 1 });
+    // Weak labels never count.
+    fire([{ id: 'street', confidence: 0.05 }]);
+    fire([{ id: 'street', confidence: 0.05 }]);
+    expect(h.store.getState().scene).toMatchObject({ setting: 'kitchen' });
+    s.dispose();
+    expect(listeners.size).toBe(0);
   });
 
   it('a vision error or a low-confidence reading changes nothing', async () => {

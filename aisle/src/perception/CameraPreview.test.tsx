@@ -5,7 +5,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-import type { Detection, PerceptionService } from '../core/contracts';
+import { SAFETY_DETECTION_CLASSES, type Detection, PerceptionService } from '../core/contracts';
 import { services } from '../core/services';
 import { createStubPerception } from '../core/stubs';
 import { findForbidden } from '../ui/copy';
@@ -124,7 +124,7 @@ describe('pure helpers', () => {
   it('keeps only the kept classes with a real box', () => {
     const items = [
       det('car', 0.9, 1),
-      { cls: 'dog', score: 0.9, trackId: 2, box: [0, 0, 0.5, 0.5] } as unknown as Detection,
+      { cls: 'giraffe', score: 0.9, trackId: 2, box: [0, 0, 0.5, 0.5] } as unknown as Detection,
       det('person', 0.5, 3, [0.1, 0.1, 0, 0.2]),
       det('cart', 0.5, 4, [0.1, 0.1, Number.NaN, 0.2]),
       det('bus', 0.6, 5),
@@ -142,7 +142,10 @@ describe('pure helpers', () => {
 
   it('every class has a distinct colour', () => {
     const values = Object.values(DETECTION_COLORS);
-    expect(new Set(values).size).toBe(values.length);
+    // Safety classes are told apart by colour; scenery shares one quiet colour on purpose.
+    const safety = SAFETY_DETECTION_CLASSES.map((c) => DETECTION_COLORS[c]);
+    expect(new Set(safety).size).toBe(safety.length);
+    expect(new Set(values).size).toBeGreaterThanOrEqual(safety.length);
   });
 });
 
@@ -218,7 +221,7 @@ describe('detection overlay', () => {
     const r = await render(<CameraPreview perception={perception} testID="cam" />);
     await layout(r, 'cam', 200, 100);
     await act(async () => {
-      perception.fire([det('car', 0.81, 7, [0.1, 0.2, 0.3, 0.4]), det('person', 0.55, 8, [0.5, 0.5, 0.2, 0.2]), { cls: 'dog', score: 0.9, trackId: 9, box: [0, 0, 1, 1] } as unknown as Detection]);
+      perception.fire([det('car', 0.81, 7, [0.1, 0.2, 0.3, 0.4]), det('person', 0.55, 8, [0.5, 0.5, 0.2, 0.2]), { cls: 'giraffe', score: 0.9, trackId: 9, box: [0, 0, 1, 1] } as unknown as Detection]);
     });
     const b = boxes(r, 'cam');
     expect(b).toHaveLength(2);

@@ -45,10 +45,11 @@
     "test:all": "npm test && npm run test:server",
     "lint": "npm run typecheck && npm run lint:deps && npm run lint:phrases",
     "start:mock": "EXPO_PUBLIC_MOCK=1 expo start --dev-client",
-    "ios:device": "expo run:ios --device",
+    "ios:device": "bash scripts/ios-build.sh device",
     "models:coco": "bash -c 'cd training && . .venv/bin/activate && python export_coreml.py --weights yolo11n.pt --name coco-yolo-nano --coco'",
     "models:venv": "bash -c 'cd training && python3.12 -m venv .venv && . .venv/bin/activate && pip install -q --upgrade pip && pip install -q \"ultralytics>=8.3,<9\" \"coremltools>=8.0\" \"numpy<2\"'",
-    "models:depth": "bash -c 'cd training && . .venv/bin/activate && pip install -q huggingface_hub && python -c \"from huggingface_hub import snapshot_download as s; s(\\\"apple/coreml-depth-anything-v2-small\\\", local_dir=\\\"export/depth-anything-v2-small\\\", allow_patterns=[\\\"README.md\\\",\\\"*F16.mlpackage/*\\\"])\" && rm -rf ../models/depth-anything-v2-small.mlpackage && cp -R export/depth-anything-v2-small/DepthAnythingV2SmallF16.mlpackage ../models/depth-anything-v2-small.mlpackage'"
+    "models:depth": "bash -c 'cd training && . .venv/bin/activate && pip install -q huggingface_hub && python -c \"from huggingface_hub import snapshot_download as s; s(\\\"apple/coreml-depth-anything-v2-small\\\", local_dir=\\\"export/depth-anything-v2-small\\\", allow_patterns=[\\\"README.md\\\",\\\"*F16.mlpackage/*\\\"])\" && rm -rf ../models/depth-anything-v2-small.mlpackage && cp -R export/depth-anything-v2-small/DepthAnythingV2SmallF16.mlpackage ../models/depth-anything-v2-small.mlpackage'",
+    "ios:check": "bash scripts/ios-build.sh check"
   },
   "private": true,
   "jest": {

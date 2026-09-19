@@ -310,12 +310,14 @@ public struct HazardFilter {
 
 // MARK: - Class filtering
 
-/// The COCO manifest carries the 80-class label order; the module keeps six
-/// (10 §6). Anything else is dropped before the tracker sees it.
+/// The COCO manifest carries the 80-class label order. The module keeps the six
+/// safety classes (10 §6) plus the scenery classes (round 6, `sceneClasses`);
+/// the rest is dropped before the tracker sees it.
 public enum CocoLabels {
   public static let kept: [String: DetectionClass] = [
     "car": .car, "bus": .bus, "truck": .truck, "motorcycle": .motorcycle,
     "bicycle": .bicycle, "person": .person,
+    "chair": .chair, "couch": .couch, "bed": .bed, "dining table": .table, "tv": .tv, "laptop": .laptop, "refrigerator": .fridge, "oven": .oven, "microwave": .microwave, "sink": .sink, "toilet": .toilet, "bottle": .bottle, "cup": .cup, "bowl": .bowl, "potted plant": .plant, "book": .book, "clock": .clock, "dog": .dog, "cat": .cat, "backpack": .backpack, "handbag": .handbag, "suitcase": .suitcase, "umbrella": .umbrella, "traffic light": .trafficLight, "stop sign": .stopSign, "fire hydrant": .hydrant, "bench": .bench,
   ]
 
   public static func detectionClass(for label: String) -> DetectionClass? {

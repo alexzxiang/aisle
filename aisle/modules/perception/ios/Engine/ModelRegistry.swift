@@ -32,6 +32,7 @@ public enum PipelineStage: String, CaseIterable, Sendable {
   case depth         // Depth Anything V2 small
   case ocr           // Apple Vision text recognition (system, not a file)
   case segmentation  // optional walkable-surface model
+  case scene         // Apple Vision scene classification (system, not a file) — round 6, "where am I" on-device
 }
 
 // MARK: - Schedule
@@ -43,16 +44,19 @@ public struct ProfileSchedule: Equatable, Sendable {
   public var depthFps: Double
   public var ocrFps: Double
   public var segmentationFps: Double
+  /// Scene classification: ~50 ms on the Neural Engine; 2 fps is plenty for a place that changes when you walk.
+  public var sceneFps: Double
   /// IDLE pauses the ARSession entirely (09 §9).
   public var sessionRunning: Bool
 
   public init(detectorFps: Double, signalFps: Double, depthFps: Double,
-              ocrFps: Double, segmentationFps: Double, sessionRunning: Bool = true) {
+              ocrFps: Double, segmentationFps: Double, sceneFps: Double = 0, sessionRunning: Bool = true) {
     self.detectorFps = detectorFps
     self.signalFps = signalFps
     self.depthFps = depthFps
     self.ocrFps = ocrFps
     self.segmentationFps = segmentationFps
+    self.sceneFps = sceneFps
     self.sessionRunning = sessionRunning
   }
 
@@ -63,6 +67,7 @@ public struct ProfileSchedule: Equatable, Sendable {
     case .depth: return depthFps
     case .ocr: return ocrFps
     case .segmentation: return segmentationFps
+    case .scene: return sceneFps
     }
   }
 
@@ -76,10 +81,11 @@ public struct ProfileSchedule: Equatable, Sendable {
     case .serious:
       return ProfileSchedule(
         detectorFps: detectorFps / 2, signalFps: signalFps / 2, depthFps: depthFps / 2,
-        ocrFps: ocrFps / 2, segmentationFps: segmentationFps / 2, sessionRunning: sessionRunning)
+        ocrFps: ocrFps / 2, segmentationFps: segmentationFps / 2, sceneFps: min(sceneFps, 1),
+        sessionRunning: sessionRunning)
     case .critical:
       var only = ProfileSchedule(
-        detectorFps: 0, signalFps: 0, depthFps: 0, ocrFps: 0, segmentationFps: 0,
+        detectorFps: 0, signalFps: 0, depthFps: 0, ocrFps: 0, segmentationFps: 0, sceneFps: 0,
         sessionRunning: sessionRunning)
       let kept = max(5, fps(for: safetyStage) / 2)
       switch safetyStage {
@@ -88,6 +94,7 @@ public struct ProfileSchedule: Equatable, Sendable {
       case .depth: only.depthFps = kept
       case .ocr: only.ocrFps = kept
       case .segmentation: only.segmentationFps = kept
+      case .scene: only.sceneFps = kept
       }
       return only
     @unknown default:
@@ -111,19 +118,19 @@ public enum ProfileSchedules {
                              segmentationFps: 0, sessionRunning: false)
     case .outdoorNav:
       return ProfileSchedule(detectorFps: 15, signalFps: 0, depthFps: 10, ocrFps: 0,
-                             segmentationFps: seg ? 10 : 0)
+                             segmentationFps: seg ? 10 : 0, sceneFps: 2)
     case .approachCrossing:
       return ProfileSchedule(detectorFps: 15, signalFps: 15, depthFps: 10, ocrFps: 0,
-                             segmentationFps: 0)
+                             segmentationFps: 0, sceneFps: 1)
     case .crossing:
       return ProfileSchedule(detectorFps: 15, signalFps: 15, depthFps: 10, ocrFps: 0,
-                             segmentationFps: seg ? 5 : 0)
+                             segmentationFps: seg ? 5 : 0, sceneFps: 0)
     case .indoorNav:
       return ProfileSchedule(detectorFps: 15, signalFps: 0, depthFps: 10, ocrFps: 3,
-                             segmentationFps: 0)
+                             segmentationFps: 0, sceneFps: 2)
     case .itemPickup:
       return ProfileSchedule(detectorFps: 5, signalFps: 0, depthFps: 5, ocrFps: 0,
-                             segmentationFps: 0)
+                             segmentationFps: 0, sceneFps: 1)
     }
   }
 
@@ -295,6 +302,7 @@ public final class ModelRegistry {
     case .depth: return ModelRegistry.depthModelName
     case .segmentation: return ModelRegistry.segmentationModelName
     case .ocr: return nil // Apple Vision is a system request, not a file
+    case .scene: return nil // Apple Vision scene classification: system, not a file
     }
   }
 

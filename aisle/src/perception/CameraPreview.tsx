@@ -50,7 +50,9 @@ export function isCameraPreviewAvailable(): boolean {
 // Pure helpers (tested)
 // ---------------------------------------------------------------------------
 
-/** One colour per kept class (09 §3). Vehicles warm, people/carts cool, signals in OKO's convention. */
+const SCENERY_COLOR = '#9CC3FF';
+
+/** One colour per kept class (09 §3). Vehicles warm, people/carts cool, signals in OKO's convention, scenery pale. */
 export const DETECTION_COLORS: Readonly<Record<Detection['cls'], string>> = Object.freeze({
   car: '#FF8A1F',
   bus: '#FFC21F',
@@ -62,6 +64,13 @@ export const DETECTION_COLORS: Readonly<Record<Detection['cls'], string>> = Obje
   ped_walk: '#3DDC84',
   ped_hand: '#FF4D4D',
   ped_countdown: '#FFA726',
+  // Scenery (round 6): one quiet neutral so the safety colours above stay the loud ones.
+  chair: SCENERY_COLOR, couch: SCENERY_COLOR, bed: SCENERY_COLOR, table: SCENERY_COLOR, tv: SCENERY_COLOR,
+  laptop: SCENERY_COLOR, fridge: SCENERY_COLOR, oven: SCENERY_COLOR, microwave: SCENERY_COLOR, sink: SCENERY_COLOR,
+  toilet: SCENERY_COLOR, bottle: SCENERY_COLOR, cup: SCENERY_COLOR, bowl: SCENERY_COLOR, plant: SCENERY_COLOR,
+  book: SCENERY_COLOR, clock: SCENERY_COLOR, dog: SCENERY_COLOR, cat: SCENERY_COLOR, backpack: SCENERY_COLOR,
+  handbag: SCENERY_COLOR, suitcase: SCENERY_COLOR, umbrella: SCENERY_COLOR, traffic_light: '#FFD54F',
+  stop_sign: '#FF6B6B', hydrant: SCENERY_COLOR, bench: SCENERY_COLOR,
 });
 
 /** Short names for the label; a class without an entry uses its own name. */
@@ -69,6 +78,8 @@ const DETECTION_NAMES: Readonly<Partial<Record<Detection['cls'], string>>> = Obj
   ped_walk: 'walk',
   ped_hand: 'hand',
   ped_countdown: 'countdown',
+  traffic_light: 'light',
+  stop_sign: 'stop',
 });
 
 export const KEPT_CLASSES: ReadonlySet<string> = new Set(Object.keys(DETECTION_COLORS));

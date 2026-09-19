@@ -68,6 +68,7 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'Question: where does the camera seem to be? Fill scene.setting with the coarse kind of place (street, crossing, entrance, store, home, kitchen, hallway, room, vehicle, unknown) and scene.label with a place phrase of at most five words that a blind person would recognise, e.g. "on a sidewalk by a road", "in a kitchen", "in a store aisle", "at a store entrance", "in a hallway". scene.confidence is your belief in the label.',
     'speech is required and never empty: one plain sentence of at most twelve words that tells a blind person what the camera is pointed at right now, in the second person, e.g. "You are looking at a wall.", "You are facing down a quiet street.", "A person walking a dog is ahead of you.", "Kitchen counter ahead, fridge on your left." Name the nearest thing that matters and where it is (ahead, left, right, close). Numbers as words. Never say that it is fine to proceed or to cross.',
     'If the frame shows too little to tell (a blank wall, the floor, darkness), say so in speech ("You are looking at the floor."), set scene.setting unknown, an empty label, and cameraRequest to what would help (up, left, right).',
+    'onDeviceScene (when present) lists the phone\'s own scene classifier labels with confidences and onDeviceSees names the detected objects with sides: treat them as strong hints for the setting and name them in speech when the image agrees.',
     'userText may carry what the user said about where they are; if it disagrees with the image, trust the user for the setting and describe what differs in the label.',
   ].join(' '),
   free: [
@@ -76,6 +77,19 @@ export const VISION_PROMPTS: Readonly<Record<VisionQuestion, string>> = Object.f
     'If the question is about whether to cross or whether traffic allows it, reply only "I report what I see. You decide." and nothing else.',
   ].join(' '),
 });
+
+/** "couch ahead (large), tv left, cup right (small)" from normalized upright boxes: x → side, area → size. */
+export function describeDetections(dets: VisionRequest['facts']['detections']): string {
+  const side = (cx: number): string => (cx < 0.36 ? 'left' : cx > 0.64 ? 'right' : 'ahead');
+  const size = (area: number): string => (area > 0.25 ? ' (large, close)' : area < 0.02 ? ' (small, far)' : '');
+  return dets
+    .slice(0, 12)
+    .map((d) => {
+      const [x, , w, h] = d.box;
+      return `${d.cls} ${side(x + w / 2)}${size(w * h)}`;
+    })
+    .join(', ');
+}
 
 /** Render the on-device facts as a short text block above the image (05 Part 2). */
 export function renderFacts(req: VisionRequest): string {
@@ -88,12 +102,15 @@ export function renderFacts(req: VisionRequest): string {
       .map((d) => `${d.cls}@${d.box.map((n) => n.toFixed(2)).join(',')} p=${d.score.toFixed(2)} id=${d.trackId}`)
       .join('; ');
     lines.push(`detections: ${dets}`);
+    // The same facts in words, so the model can quote them without reading boxes (round 6).
+    lines.push(`onDeviceSees: ${describeDetections(f.detections)}`);
   } else {
     lines.push('detections: none');
   }
   lines.push(`ocr: ${f.ocr.length ? f.ocr.slice(0, 12).join(' | ') : 'none'}`);
   if (f.depth) lines.push(`depth: centerBottomRel=${f.depth.centerBottomRel.toFixed(2)} closingRate=${f.depth.closingRate.toFixed(2)}`);
   if (f.signalState) lines.push(`onDeviceSignalState: ${f.signalState}`);
+  if (f.sceneLabels?.length) lines.push(`onDeviceScene: ${f.sceneLabels.slice(0, 8).join(', ')}`);
   if (typeof f.headingDeg === 'number') lines.push(`headingDeg: ${Math.round(f.headingDeg)}`);
   if (f.targetItem) lines.push(`targetItem: ${f.targetItem}`);
   if (req.userText) lines.push(`userText: ${req.userText.slice(0, 200)}`);

@@ -17,6 +17,7 @@
  */
 import { createHash } from 'node:crypto';
 import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit } from '../../src/core/phrases';
+import { digitsToWords } from '../../src/outdoor/plannerJobs';
 import { WALKING_BETA_WARNING } from '../../src/outdoor/types';
 
 export type { LanguageVerdict } from './log';
@@ -54,12 +55,16 @@ export interface CheckOptions {
  *              forbidden or > 12 words → 'rejected_422'.
  */
 export function checkLanguage(text: string, opts: CheckOptions): LanguageCheck {
-  const words = countWords(text);
   if (opts.lane === 'tts' && TTS_ALLOWLIST.has(sha256Hex(text))) {
-    return { verdict: 'allowlisted', text, words };
+    return { verdict: 'allowlisted', text, words: countWords(text) };
   }
-  const term = findForbiddenTerm(text);
   const max = opts.maxWords ?? MAX_UTTERANCE_WORDS;
+  // Speech lane, round 6: repair before judging. Digits become words and a long
+  // answer is cut to its first sentence(s) within the budget — a description that
+  // ran to fourteen words used to be thrown away whole, which read as silence.
+  const candidate = opts.lane === 'speech' ? capitalize(trimToBudget(digitsToWords(text), max)) : text;
+  const words = countWords(candidate);
+  const term = findForbiddenTerm(candidate);
   const fail = (reason: 'forbidden' | 'too_long' | 'digit'): LanguageCheck => ({
     verdict: opts.lane === 'speech' ? 'blanked' : 'rejected_422',
     text: '',
@@ -68,9 +73,28 @@ export function checkLanguage(text: string, opts: CheckOptions): LanguageCheck {
     words,
   });
   if (term) return fail('forbidden');
-  if (opts.lane === 'speech' && hasDigit(text)) return fail('digit');
+  if (opts.lane === 'speech' && hasDigit(candidate)) return fail('digit');
   if (words > max) return fail('too_long');
-  return { verdict: 'pass', text, words };
+  const repaired = candidate.toLowerCase() !== text.trim().toLowerCase();
+  return { verdict: repaired ? 'repaired' : 'pass', text: candidate, words };
+}
+
+const capitalize = (s: string): string => (s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s);
+
+/** Keep whole sentences while they fit; else the first `max` words with a full stop. */
+export function trimToBudget(text: string, max: number): string {
+  const t = text.trim();
+  if (countWords(t) <= max) return t;
+  const sentences = t.match(/[^.!?]+[.!?]?/g) ?? [t];
+  let out = '';
+  for (const s of sentences) {
+    const next = `${out} ${s.trim()}`.trim();
+    if (countWords(next) > max) break;
+    out = next;
+  }
+  if (out.length > 0) return out;
+  const cut = t.split(/\s+/).slice(0, max).join(' ').replace(/[,;:]$/, '');
+  return /[.!?]$/.test(cut) ? cut : `${cut}.`;
 }
 
 /** Convenience for the vision path: the speech string Claude may say, or ''. */

@@ -185,6 +185,8 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
   public private(set) var isInterrupted = false
   public private(set) var frameIndex = 0
   public private(set) var lastFrameContext: FrameContext?
+  /// The sharpest frame of the last second, copied out of ARKit's pool (round 6).
+  public let sharpFrames = SharpFrameKeeper()
 
   private var watchdog = TrackingWatchdog()
   private var drift = DriftEstimator()
@@ -239,6 +241,7 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
 
   public func pause() {
     session.pause()
+    sharpFrames.reset()   // a paused session must not hand out an old room
     isRunning = false
     frameQueue.async { [weak self] in
       self?.watchdog.reset()
@@ -330,6 +333,9 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
       pixelBuffer: frame.capturedImage, orientation: .right,
       frameIndex: frameIndex, timestampMs: timestampMs)
     lastFrameContext = context
+    // Round 6: keep a private copy of the sharpest recent frame for stills (SharpFrameKeeper.swift).
+    sharpFrames.offer(pixelBuffer: frame.capturedImage, orientation: .right, horizonRow: horizon,
+                      timestampMs: timestampMs, now: nowSeconds)
 
     // A course reference set before the first frame anchors now.
     if let pending = pendingCourseBearing {

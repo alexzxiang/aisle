@@ -410,6 +410,8 @@ export interface VisionFacts {
   depth?: DepthSummary;
   signalState?: SignalState;
   headingDeg?: number;
+  /** Apple's scene classifier, "kitchen 0.71" … , kept while fresh (round 6). */
+  sceneLabels?: string[];
 }
 
 /**
@@ -525,7 +527,7 @@ export interface AskOptions {
 
 export interface SemanticVisionOptions {
   transport: VisionTransport;
-  perception: Pick<PerceptionService, 'snapshotJPEG' | 'onDetections' | 'onOcrText' | 'onDepth' | 'onSignalState'>;
+  perception: Pick<PerceptionService, 'snapshotJPEG' | 'onDetections' | 'onOcrText' | 'onDepth' | 'onSignalState'> & Partial<Pick<PerceptionService, 'onSceneClass'>>;
   speech: Pick<SpeechService, 'say' | 'playStream'>;
   bus: Pick<AppEventBus, 'emit'>;
   store: Pick<AppStore, 'getState'>;
@@ -578,7 +580,15 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
 
   // Facts, refreshed from the perception streams.
   const facts: VisionFacts = { detections: [], ocrTokens: [] };
+  let sceneLabelsAt = 0;
+  const SCENE_LABELS_FRESH_MS = 4000;
   const unsubs: Array<() => void> = [];
+  if (perception.onSceneClass) {
+    unsubs.push(perception.onSceneClass((e) => {
+      facts.sceneLabels = e.labels.slice(0, 8).map((l) => `${l.id} ${l.confidence.toFixed(2)}`);
+      sceneLabelsAt = now();
+    }));
+  }
   unsubs.push(perception.onDetections((d) => {
     facts.detections = d;
   }));
@@ -655,6 +665,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
         ...(facts.depth ? { depth: facts.depth } : {}),
         ...(facts.signalState ? { signalState: facts.signalState } : {}),
         ...(typeof heading === 'number' ? { headingDeg: heading } : {}),
+        ...(facts.sceneLabels && now() - sceneLabelsAt <= SCENE_LABELS_FRESH_MS ? { sceneLabels: facts.sceneLabels } : {}),
         ...(question === 'aisle_disambiguate' && o.knownSigns ? { knownSigns: o.knownSigns } : {}),
         ...(question === 'hand_guidance' && o.targetItem ? { targetItem: o.targetItem } : {}),
       },

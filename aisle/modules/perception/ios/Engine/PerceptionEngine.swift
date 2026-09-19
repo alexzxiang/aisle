@@ -83,6 +83,8 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   private let signalQueue = DispatchQueue(label: "aisle.perception.signal", qos: .userInteractive)
   private let depthQueue = DispatchQueue(label: "aisle.perception.depth", qos: .userInitiated)
   private let ocrQueue = DispatchQueue(label: "aisle.perception.ocr", qos: .utility)
+  private let sceneQueue = DispatchQueue(label: "aisle.perception.scene", qos: .utility)
+  private let sceneClassifier = SceneClassifier()
 
   private var debugExport: DebugExportRecorder?
 
@@ -175,7 +177,14 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
 
   public func snapshotJPEG(maxWidth: Int, completion: @escaping (Result<SnapshotPayload, Error>) -> Void) {
     snapshots.snapshot(maxWidth: maxWidth, source: { [weak self] in
-      guard let self, let ctx = self.session.lastFrameContext else { return nil }
+      guard let self else { return nil }
+      // The sharpest recent frame when there is one (round 6); the live frame otherwise.
+      if let kept = self.session.sharpFrames.best {
+        return SnapshotSource(
+          pixelBuffer: kept.pixelBuffer, orientation: kept.orientation,
+          horizonRow: kept.horizonRow, timestampMs: kept.timestampMs)
+      }
+      guard let ctx = self.session.lastFrameContext else { return nil }
       return SnapshotSource(
         pixelBuffer: ctx.pixelBuffer, orientation: ctx.orientation,
         horizonRow: ctx.geometry.horizonRow, timestampMs: ctx.timestampMs)
@@ -216,7 +225,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
     // Lazy load / evict per profile (04 Task 2).
     let required = ProfileSchedules.requiredModels(for: p, segmentationEnabled: registry.segmentationEnabled)
     registry.retainOnly(required)
-    for stage in required where stage != .ocr {
+    for stage in required where stage != .ocr && stage != .scene {
       do {
         if let loaded = try registry.load(stage), stage == .signal {
           signal.applyManifest(loaded.manifest)
@@ -273,6 +282,9 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
     }
     if effective.ocrFps > 0, throttles[.ocr]?.shouldRun(frame: context.frameIndex, targetFps: effective.ocrFps) == true {
       runOcr(context)
+    }
+    if effective.sceneFps > 0, throttles[.scene]?.shouldRun(frame: context.frameIndex, targetFps: effective.sceneFps) == true {
+      runScene(context)
     }
   }
 
@@ -415,6 +427,22 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
            let chosen = lateralArbiter.offer(offset, at: frameTime, tracking: session.trackingState) {
           emit(.lateralOffset, chosen.dictionary, frameTime: nil)
         }
+      }
+    }
+  }
+
+  /// Round 6: Apple's scene classifier at the profile's `sceneFps`, off the frame
+  /// queue like OCR; `onSceneClass` carries the top labels for JS to weigh.
+  private func runScene(_ context: FrameContext) {
+    let frameTime = context.geometry.timestamp
+    throttles[.scene]?.markBusy()
+    sceneQueue.async { [self] in
+      let result = sceneClassifier.classify(
+        pixelBuffer: context.pixelBuffer, orientation: context.orientation, timestampMs: context.timestampMs)
+      session.frameQueue.async { [self] in
+        throttles[.scene]?.markIdle()
+        fpsMeters[.scene]?.tick(at: frameTime)
+        if let result { emit(.sceneClass, result.dictionary, frameTime: nil) }
       }
     }
   }

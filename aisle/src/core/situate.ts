@@ -22,7 +22,7 @@
  * Speech classes: the cached lines are 'reply' phrases; the question is live
  * text ('unknown'), allowed in every aware mode by the mode policy.
  */
-import type { AppMode, SceneHypothesis, SceneSetting, SpeechService, TaskContext, VisionResponse } from './contracts';
+import type { AppMode, PerceptionService, SceneClassEvent, SceneHypothesis, SceneSetting, SpeechService, TaskContext, VisionResponse } from './contracts';
 import type { AppStore } from './store';
 import type { ConversationLog } from './conversation';
 import { MAX_UTTERANCE_WORDS, PHRASES, countWords, findForbiddenTerm, hasDigit } from './phrases';
@@ -92,6 +92,74 @@ export function settingFromWords(phrase: string): SceneSetting {
   return 'unknown';
 }
 
+// ---------------------------------------------------------------------------
+// Apple's on-device scene classifier (round 6): identifiers → a setting + phrase
+// ---------------------------------------------------------------------------
+
+/** Substrings of `VNClassifyImageRequest` identifiers that vote for a setting. Order matters only for ties. */
+const SCENE_VOTES: ReadonlyArray<[SceneSetting, RegExp]> = [
+  ['kitchen', /kitchen|refrigerator|fridge|stove|oven|microwave|dishwasher|kettle|toaster|countertop/],
+  ['crossing', /crosswalk|zebra|intersection|traffic_light|traffic_sign|pedestrian/],
+  ['store', /supermarket|grocery|store|shop|market|mall|shelf|shelves|aisle|pharmacy|checkout|cashier|bakery|deli|retail/],
+  ['entrance', /door|doorway|entrance|gate|porch|entryway|foyer|vestibule/],
+  ['hallway', /hallway|corridor|stair|elevator|escalator|lobby|passage/],
+  ['vehicle', /car_interior|vehicle_interior|bus_interior|train|subway|cockpit|dashboard|steering/],
+  ['street', /street|sidewalk|road|avenue|alley|parking|city|urban|building|skyscraper|park|campus|plaza|outdoor|bus_stop|storefront/],
+  ['room', /living_room|bedroom|bathroom|dining_room|office|couch|sofa|bed|television|bookshelf|desk|apartment|home|indoor|lamp|carpet|curtain|room/],
+];
+
+/** The thing worth naming next to the setting ("in a kitchen by a fridge"). */
+const SCENE_OBJECT: ReadonlyArray<[RegExp, string]> = [
+  [/refrigerator|fridge/, 'a fridge'], [/stove|oven/, 'a stove'], [/sink/, 'a sink'], [/couch|sofa/, 'a couch'],
+  [/television|tv/, 'a tv'], [/\bbed\b/, 'a bed'], [/dining_table|table/, 'a table'], [/desk/, 'a desk'],
+  [/door|doorway/, 'a door'], [/stair/, 'stairs'], [/elevator/, 'an elevator'], [/shelf|shelves/, 'shelves'],
+  [/traffic_light/, 'a traffic light'], [/crosswalk|zebra/, 'a crosswalk'], [/bus_stop/, 'a bus stop'],
+  [/storefront|shop_window/, 'a storefront'], [/bench/, 'a bench'], [/plant|tree/, 'a plant'],
+];
+
+const SETTING_PHRASE: Readonly<Record<SceneSetting, string>> = {
+  street: 'on a street', crossing: 'at a crossing', entrance: 'at a doorway', store: 'in a store', home: 'at home',
+  kitchen: 'in a kitchen', hallway: 'in a hallway', room: 'in a room', vehicle: 'in a vehicle', unknown: '',
+};
+
+const ROOM_PHRASE: ReadonlyArray<[RegExp, string]> = [
+  [/living_room/, 'in a living room'], [/bedroom/, 'in a bedroom'], [/bathroom/, 'in a bathroom'],
+  [/dining_room/, 'in a dining room'], [/office/, 'in an office'], [/supermarket|grocery/, 'in a grocery store'],
+  [/pharmacy/, 'in a pharmacy'], [/sidewalk/, 'on a sidewalk'], [/parking/, 'in a parking lot'], [/park\b/, 'in a park'],
+];
+
+export interface SceneClassReading {
+  setting: SceneSetting;
+  /** "in a living room by a couch" */
+  label: string;
+  /** Summed label confidence for the winning setting, 0..1+. */
+  score: number;
+}
+
+/** Weigh Apple's labels into one setting + phrase; null when nothing votes. Pure; tested. */
+export function classifySceneLabels(labels: SceneClassEvent['labels']): SceneClassReading | null {
+  const votes = new Map<SceneSetting, number>();
+  const ids: string[] = [];
+  for (const l of labels) {
+    const id = l.id.toLowerCase();
+    ids.push(id);
+    for (const [setting, re] of SCENE_VOTES) {
+      if (re.test(id)) {
+        votes.set(setting, (votes.get(setting) ?? 0) + l.confidence);
+        break; // one vote per label, the most specific setting first
+      }
+    }
+  }
+  if (votes.size === 0) return null;
+  const [setting, score] = Array.from(votes.entries()).sort((a, b) => b[1] - a[1])[0]!;
+  const joined = ids.join(' ');
+  let phrase = SETTING_PHRASE[setting];
+  for (const [re, p] of ROOM_PHRASE) if (re.test(joined)) { phrase = p; break; }
+  const object = SCENE_OBJECT.find(([re]) => re.test(joined))?.[1];
+  const label = object && !phrase.includes(object.replace(/^an? /, '')) ? `${phrase} by ${object}` : phrase;
+  return { setting, label, score };
+}
+
 const SETTING_LABEL: Readonly<Record<SceneSetting, string>> = {
   street: 'on a street',
   crossing: 'at a crossing',
@@ -159,10 +227,16 @@ export function sameScene(a: Pick<SceneHypothesis, 'setting' | 'label'>, b: Pick
   return wa.some((w) => wb.includes(w));
 }
 
+export const SITUATE_CLASS_MIN_SCORE = 0.15;
+/** Two agreeing on-device readings (≈1 s at 2 fps) before a place is proposed from them. */
+export const SITUATE_CLASS_STREAK = 2;
+
 export interface SituateDeps {
   store: Pick<AppStore, 'getState' | 'setState' | 'subscribe'>;
   speech: Pick<SpeechService, 'say'>;
   vision: Pick<SemanticVision, 'ask'>;
+  /** Apple's on-device scene classifier (round 6): the fast path to "where am I". */
+  perception?: Pick<PerceptionService, 'onSceneClass'>;
   conversation?: Pick<ConversationLog, 'pushAisle'>;
   /** Default: the mode is in AWARE_MODES. */
   active?: () => boolean;
@@ -193,6 +267,9 @@ export interface SituateDebugState {
   prompts: number;
   questions: number;
   narrations: number;
+  /** On-device classifier readings received / accepted into a hypothesis. */
+  classReadings: number;
+  classAccepted: number;
   lastAskAt: number | null;
 }
 
@@ -264,6 +341,10 @@ export function createSituate(deps: SituateDeps): Situate {
   let narrations = 0;
   let lastNarrationAt: number | null = null;
   const recentNarration = new Map<string, number>();
+  let classReadings = 0;
+  let classAccepted = 0;
+  let classStreak: { setting: SceneSetting; n: number } | null = null;
+  let unsubScene: (() => void) | null = null;
 
   const scene = (): SceneHypothesis | null => deps.store.getState().scene;
   const setScene = (s: SceneHypothesis | null): void => deps.store.setState({ scene: s });
@@ -307,8 +388,7 @@ export function createSituate(deps: SituateDeps): Situate {
     deps.conversation?.pushAisle(text, 'describe');
   };
 
-  const consider = (res: VisionResponse, t: number): void => {
-    const r = res.scene;
+  const consider = (r: { setting: SceneSetting; label: string; confidence: number }, t: number): void => {
     if (r.setting === 'unknown' || r.confidence < minConfidence) return;
     const candidate: SceneHypothesis = { setting: r.setting, label: r.label, confidence: r.confidence, confirmed: false, source: 'camera', at: t };
     const cur = scene();
@@ -358,7 +438,7 @@ export function createSituate(deps: SituateDeps): Situate {
           if (out.status === 'applied' && out.response) {
             const at = now();
             narrate(out.response, at);
-            consider(out.response, at);
+            consider(out.response.scene, at);
           }
         })
         .catch(() => undefined)
@@ -366,6 +446,21 @@ export function createSituate(deps: SituateDeps): Situate {
           inFlight = false;
         });
     }
+  };
+
+  /** An on-device reading: two in a row for the same setting become a camera hypothesis (Claude refines the words later). */
+  const onSceneClass = (e: SceneClassEvent): void => {
+    if (disposed || !active()) return;
+    classReadings += 1;
+    const r = classifySceneLabels(e.labels);
+    if (!r || r.score < SITUATE_CLASS_MIN_SCORE) {
+      classStreak = null;
+      return;
+    }
+    classStreak = classStreak && classStreak.setting === r.setting ? { setting: r.setting, n: classStreak.n + 1 } : { setting: r.setting, n: 1 };
+    if (classStreak.n < SITUATE_CLASS_STREAK) return;
+    classAccepted += 1;
+    consider({ setting: r.setting, label: r.label, confidence: Math.min(0.95, 0.45 + r.score) }, now());
   };
 
   const confirmScene = (label: string, setting: SceneSetting, source: SceneHypothesis['source'], t: number): void => {
@@ -381,6 +476,9 @@ export function createSituate(deps: SituateDeps): Situate {
     handle = null;
     startedAt = null;
     pending = null;
+    classStreak = null;
+    unsubScene?.();
+    unsubScene = null;
   };
 
   return {
@@ -389,6 +487,7 @@ export function createSituate(deps: SituateDeps): Situate {
       startedAt = now();
       speakSince = voiceFree() ? startedAt : null;
       handle = setI(tick, tickMs);
+      if (deps.perception && !unsubScene) unsubScene = deps.perception.onSceneClass(onSceneClass);
     },
     stop,
     intercept(transcript) {
@@ -427,7 +526,7 @@ export function createSituate(deps: SituateDeps): Situate {
       return c === 'unknown' ? null : c;
     },
     getDebugState() {
-      return { running: handle !== null, scene: scene(), pending: pending?.kind ?? null, asks, prompts, questions, narrations, lastAskAt };
+      return { running: handle !== null, scene: scene(), pending: pending?.kind ?? null, asks, prompts, questions, narrations, classReadings, classAccepted, lastAskAt };
     },
     dispose() {
       if (disposed) return;

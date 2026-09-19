@@ -24,6 +24,7 @@ import type {
   OcrRead,
   Pose,
   SignalState,
+  SceneClassEvent,
   Snapshot,
   TrackingState,
 } from '../../src/core/contracts';
@@ -56,6 +57,7 @@ export interface PerceptionEventMap {
   onPlanes: PlanesEvent;
   onDepth: DepthSummary;
   onTrackingState: TrackingState;
+  onSceneClass: SceneClassEvent;
 }
 
 export type PerceptionEventName = keyof PerceptionEventMap;
@@ -63,7 +65,7 @@ export type PerceptionEventName = keyof PerceptionEventMap;
 /** Mirrors `PerceptionEventName.allCases` in Events.swift. Order is irrelevant; the set is the contract. */
 export const EVENT_NAMES: readonly PerceptionEventName[] = [
   'onSignalState', 'onVehicleApproaching', 'onObstacleAhead', 'onHazard', 'onOcrText',
-  'onDetections', 'onPose', 'onLateralOffset', 'onPlanes', 'onDepth', 'onTrackingState',
+  'onDetections', 'onPose', 'onLateralOffset', 'onPlanes', 'onDepth', 'onTrackingState', 'onSceneClass',
 ];
 
 // ---------------------------------------------------------------------------
@@ -82,6 +84,7 @@ type WireEvents = {
   onPlanes: (e: PlanesEvent) => void;
   onDepth: (e: DepthSummary) => void;
   onTrackingState: (e: { state: TrackingState }) => void;
+  onSceneClass: (e: SceneClassEvent) => void;
 };
 
 /**

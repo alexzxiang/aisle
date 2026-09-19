@@ -392,6 +392,9 @@ const SEEN_NAMES: Readonly<Partial<Record<Detection['cls'], string>>> = Object.f
   ped_walk: 'walk signal',
   ped_hand: 'hand signal',
   ped_countdown: 'countdown',
+  traffic_light: 'traffic light',
+  stop_sign: 'stop sign',
+  plant: 'plant',
 });
 
 /** "a person, two carts" from the detector's current tracks; "nothing yet" when empty. */
