@@ -359,3 +359,21 @@ One was applied differently from the reviewer's first choice: #8 keeps the scan 
 the module, no hosted proxy. The 906 + 140 tests still prove internal consistency between four
 agents' code and their own fakes. The status words in §1 are unchanged: 8 Implemented, 9 Partial,
 1 Stub, 1 Not started.
+
+## Live verification from the Mac — 2026-09-18 evening (proxy with real keys)
+
+Proven end-to-end through the proxy (`/api/health` green for Anthropic, NVIDIA, ElevenLabs
+TTS + STT, Overpass; Google Routes red until the Routes API is enabled on project
+188682982044 — Google's own message; regenerating the key does not help):
+
+| Path | Result |
+|---|---|
+| `/api/stt` (ElevenLabs Scribe) | spoken clip "I need eggs" → `{"text":"I need eggs"}` in 374 ms |
+| `/api/vision` (Claude Haiku 4.5, structured output, 512 px image) | full `VisionResponse` in 2.5 → 2.1 → 1.4 s warm; first cold call hit the old 4 s cap → slack-tolerant questions now 6 s (`curb_crop` stays 4 s) |
+| `/api/plan` (Nemotron 3.5 Lightning) | hosted endpoint rejects `nvext.guided_json` (400) and stalls on streaming → non-streaming `json_object` + schema-in-prompt; parseIntent / disambiguate / crossingAnnounce / answer answer from Nemotron in 0.4–1.9 s; routeCompile ~4 s with occasional 8 s deadline misses on the free tier (templates cover them); digits in replies are spelled out before validation |
+| `/api/tts` live tier (Flash v2.5) | 200, valid mp3, 1.3 s for a whole non-streamed clip (variable phrases are pre-synthesized at route/store load, so this is off the walk) |
+| `/api/route` | Google failing → disk cache → **recorded route when both ends match** (Forbes/Bouquet: 200, `google: fixture`, live Overpass crossings) → otherwise 502 and the app now speaks "Route unavailable. Try again shortly." (new cached phrase, 66 total) |
+
+Not yet exercised (needs the phone in live mode): ARKit camera + on-device detector/depth/OCR fps,
+hold-to-talk → on-device STT, the DebugPanel readouts. Proxy route counters were empty at
+20:48, i.e. the phone has not connected live yet.
