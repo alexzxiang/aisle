@@ -29,6 +29,21 @@ describe('VISION_RESPONSE_SCHEMA', () => {
     expect(VISION_RESPONSE_SCHEMA_JSON).not.toMatch(/minimum|maximum|minLength|maxLength|pattern/);
   });
 
+  it('uses no constraint the Messages API rejects in output_config (minItems > 1, maxItems, min/max, lengths, patterns)', () => {
+    const banned = ['maxItems', 'minimum', 'maximum', 'minLength', 'maxLength', 'pattern', 'format', 'uniqueItems', 'multipleOf'];
+    const hits: string[] = [];
+    const walk = (o: unknown, path: string): void => {
+      if (!o || typeof o !== 'object') return;
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        if (banned.includes(k)) hits.push(`${path}.${k}`);
+        if (k === 'minItems' && v !== 0 && v !== 1) hits.push(`${path}.minItems=${String(v)}`);
+        walk(v, `${path}.${k}`);
+      }
+    };
+    walk(VISION_RESPONSE_SCHEMA, '$');
+    expect(hits).toEqual([]);
+  });
+
   it('is byte-stable across calls (one grammar compile per model)', () => {
     expect(JSON.stringify(VISION_RESPONSE_SCHEMA)).toBe(VISION_RESPONSE_SCHEMA_JSON);
     expect(VISION_RESPONSE_SCHEMA_SHA256).toMatch(/^[0-9a-f]{64}$/);

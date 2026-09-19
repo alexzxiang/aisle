@@ -47,7 +47,9 @@ export const VISION_RESPONSE_SCHEMA: Readonly<Record<string, unknown>> = Object.
       confidence: { type: 'number' },
     }),
     target: obj({
-      box: { type: ['array', 'null'], items: { type: 'number' }, minItems: 4, maxItems: 4, description: 'task_step / hand_guidance: the target item\'s box in the image as [x, y, w, h], each 0..1 with origin top-left; null when not visible' },
+      // No minItems/maxItems: the Messages API rejects array counts other than 0 or 1 in
+      // output_config schemas (400 on every vision call, round 7b). box4() enforces four numbers.
+      box: { type: ['array', 'null'], items: { type: 'number' }, description: 'task_step / hand_guidance: the target item\'s box in the image as exactly four numbers [x, y, w, h], each 0..1 with origin top-left; null when not visible' },
       confidence: { type: 'number' },
     }),
     confidence: { type: 'number' },
