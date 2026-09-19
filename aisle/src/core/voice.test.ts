@@ -11,6 +11,7 @@ import {
   bestTranscript,
   coerceParseIntentOutput,
   createVoiceInput,
+  goalConfirmQuestion,
   keytermsFrom,
   VOICE_VOCABULARY,
   parseIntentFallback,
@@ -573,5 +574,65 @@ describe('round 4: destinations and guided tasks through the voice path', () => 
     expect(coerceParseIntentOutput({ intent: 'navigate_to', item: null, destination: null, goal: null, reply: 'Planning a route.' }, fb)).toMatchObject({ intent: 'navigate_to', destination: 'CVS' });
     const fb2 = parseIntentFallback('eggs in my fridge', KNOWN);
     expect(coerceParseIntentOutput({ intent: 'guided_task', item: null, destination: null, goal: null, reply: 'Let me see.' }, fb2)).toMatchObject({ intent: 'guided_task', goal: 'eggs in my fridge' });
+  });
+});
+
+describe('goal confirmation when a spoken item is uncertain', () => {
+  it('goalConfirmQuestion builds a safe question, or null for digits / forbidden / empty', () => {
+    expect(goalConfirmQuestion('pasta')).toBe('Pasta. Did I get that right?');
+    expect(goalConfirmQuestion('eggs in my fridge')).toBe('Eggs in my fridge. Did I get that right?');
+    expect(goalConfirmQuestion('aisle 3')).toBeNull();
+    expect(goalConfirmQuestion('')).toBeNull();
+  });
+
+  const setup = (scene: 'store' | 'home' | 'street') => {
+    const bus = createEventBus();
+    const store = createAppStore({ bus, warn: () => {} });
+    store.setState({ mode: 'IDLE' });
+    const said: SpeechRequest[] = [];
+    const events: Array<{ type: string } & Record<string, unknown>> = [];
+    bus.onAny((r) => events.push(r.event as { type: string } & Record<string, unknown>));
+    const rec = fakeRecognizer();
+    const v = createVoiceInput({
+      speech: { say: (s: SpeechRequest) => { said.push(s); }, playStream() {}, clearQueue() {}, isSpeaking: () => false, setRate() {} } as unknown as SpeechService,
+      bus, store, proxyUrl: 'http://proxy', knownItems: () => KNOWN, recognizer: rec.rec,
+      fetchImpl: (async () => { throw new Error('offline'); }) as unknown as typeof fetch,  // planner misses → uncertain
+      sceneContext: () => scene,
+    });
+    return { v, rec, said, events };
+  };
+
+  it('an uncertain spoken item in a store scene is confirmed first; "yes" then starts the search', async () => {
+    const { v, rec, said, events } = setup('store');
+    await v.begin();
+    rec.final('find the pasta');
+    await v.end();
+    expect(said.some((s) => s.text === 'Pasta. Did I get that right?')).toBe(true);
+    expect(events.find((e) => e.type === 'TASK_REQUESTED')).toBeUndefined();   // not launched yet
+
+    await v.begin();
+    rec.final('yes');
+    const out = await v.end();
+    expect(events.find((e) => e.type === 'TASK_REQUESTED')).toMatchObject({ goal: 'pasta', context: 'store' });
+    expect(out.localIntent).toBe('intercepted');
+  });
+
+  it('"no" asks again and starts nothing', async () => {
+    const { v, rec, said, events } = setup('store');
+    await v.begin();
+    rec.final('find the pasta');
+    await v.end();
+    await v.begin();
+    rec.final('no');
+    await v.end();
+    expect(said[said.length - 1].text).toBe(PHRASES.say_item_again);
+    expect(events.find((e) => e.type === 'TASK_REQUESTED')).toBeUndefined();
+  });
+
+  it('a keyboard item is certain (typed) → starts immediately, no confirmation', async () => {
+    const { v, said, events } = setup('store');
+    await v.submitText('find the pasta');
+    expect(said.some((s) => s.text === 'Pasta. Did I get that right?')).toBe(false);
+    expect(events.find((e) => e.type === 'TASK_REQUESTED')).toMatchObject({ goal: 'pasta', context: 'store' });
   });
 });
