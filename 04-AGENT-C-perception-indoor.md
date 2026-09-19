@@ -28,6 +28,59 @@ answer is ambiguous. Relative, not absolute. Defend this if a judge asks how you
 
 ---
 
+## Task 0 — Store resolution: map load, item → aisle, target hand-off (`src/indoor/storeResolver.ts`)
+
+Nobody else can own this: the store-map format is yours (01 §6), the navigator is your file and
+the aisle labels are your pre-synthesis. Write it before Task 3 — Tasks 3, 4, 9 and 10 all start
+from its output, and the demo's first beat ("I need eggs" → "Route ready: two legs, one crossing")
+does not exist without it.
+
+**Trigger:** `ITEM_REQUESTED {item, source}` on the bus (01 §5; A emits it from voice or the
+keyboard fallback). One resolver, idempotent, re-runnable on a second `ITEM_REQUESTED`.
+
+1. **Load the map.** Read `fixtures/stores/<storeId>.json` (01 §6) — D produces the fixture, you
+   own the format (Task 11). The demo runs one store, so `storeId` is a fixture constant shared
+   with B's `GET /api/route?…&storeId=`; choosing between stores at runtime is out of scope and
+   would be A's screen, not yours. Validate on load: `entrance.pinnedBy` present, every `order`
+   unique, every `signText` non-empty, every `itemIndex` entry pointing at a real `aisleId`. A map
+   that fails validation is `ERROR {scope: 'store-map'}` plus a loud DebugPanel line, never a
+   silent null. The same file loads in mock mode with no camera and no proxy.
+2. **Resolve the item.** Normalize the requested item as Task 3 normalizes OCR text (uppercase,
+   strip punctuation, collapse whitespace), then `itemIndex[item]` →
+   `{aisleId, sideWhenAscending, shelf?, packageHint?}`. `targetOrder` is that aisle's `order`
+   from `aisles[]`, never parsed from the label.
+3. **Item absent → B's `disambiguate`.** Call the planner job (01 §9, input `{item, storeMap}`)
+   through B's `src/outdoor/planner.ts` client; B owns the route, you are the caller
+   (`07-SPONSOR-STACK.md` job table). 1.5 s first-token deadline, category-substring fallback.
+   `aisleId` non-null → use it, with `sideWhenAscending` unknown (Task 4's "item side unknown"
+   edge case). `askBack` non-null → speak it once as INFO (≤ 12 words) and wait for the next
+   `ITEM_REQUESTED`. Never guess an aisle.
+4. **Nothing resolves.** No `aisleId` from the map and none from `disambiguate`: speak cached
+   `ask_staff`, emit `ERROR {scope: 'store-resolve'}`, leave the target null. The indoor leg still
+   runs — aisle signs are still identified and announced — but the navigator stays in its
+   `targetOrder === null` state and never claims an arrival. Never fall back to "aisle 1".
+5. **Hand the target to A's store.** `02-AGENT-A-core-shell.md` declares `storeId`,
+   `targetAisleId` and `targetSide` in the store with no writer, and only the store writes
+   itself. `targetSide` already has one (A sets it from `TARGET_AISLE_REACHED {side}`, 02's
+   transition table) and `targetOrder` stays in your navigator — it is not a store field. That
+   leaves `storeId` and `targetAisleId`: agree one mechanism with A before either side codes,
+   preferably an A-side store action `setStoreTarget({storeId, targetAisleId})` in the shape of
+   A's `prefetch` extension. **Contract flag, not a unilateral change** — it lands in 01 §6 and
+   02's store slice; raise it with the vehicle-ownership line from Task 1.
+6. **Start pre-synthesis and prime OCR.** Immediately after a successful load, call A's
+   `prefetch(text)` (02's live tier) for every variable indoor phrase: each aisle's arrival
+   utterance (Task 4), the checkout phrase (Task 10) and the pick-up opener (Task 9). Batch ≤ 4
+   at a time (ElevenLabs free-plan concurrency is 4) and run it while the user is still outdoors,
+   so nothing is synthesized live indoors. Call `perception.setKnownSigns(<every signText token>)`
+   (01 §7) from the same load; the OCR `customWords` list has no other source.
+
+Definition of done for this task: in mock mode, `ITEM_REQUESTED {item: 'eggs'}` yields a validated
+map, `targetAisleId` + `targetOrder`, one `setKnownSigns` call and a complete set of cached aisle
+labels, with no camera and no proxy; `ITEM_REQUESTED {item: 'caviar'}` yields an ask-back or
+`ask_staff`, and never a wrong aisle.
+
+---
+
 ## Task 1 — The native `PerceptionModule` (spec: `09-PERCEPTION-MODULE.md`)
 
 One Swift module (Expo Modules API) on ARKit world tracking, `gravityAndHeading`, headless
@@ -63,12 +116,33 @@ JS side, `src/perception/PerceptionService.ts`:
 - Re-broadcasts native events on the bus as `SIGNAL_STATE`, `VEHICLE_APPROACHING`,
   `SCAN_RESULT {source: 'detector'}`, `OBSTACLE_AHEAD`, `HAZARD`, and re-emits pose to the
   `SensorService`.
-- **Owns the two time-critical reflexes**, because frame → haptic < 150 ms cannot survive
-  another hop: on `onVehicleApproaching` it calls `haptics.play('STOP')` and
-  `speech.say({cacheKey: 'vehicle_left' | 'vehicle_right' | 'vehicle_ahead', priority: 'CRITICAL', interrupt: true})`
-  *before* emitting the bus event; on `onObstacleAhead` with `NEAR` and positive closing
-  rate it plays `STOP` + `obstacle_ahead` the same way. Everything else about a crossing
-  (signal phrase choice, ticker, scan flow) belongs to B's `CrossingController`.
+- **Owns the two time-critical reflexes, and owns the vehicle one alone.** 01 §11 puts the
+  Tier 0 frame → haptic budget (< 150 ms) on you, and it cannot survive another hop:
+  - `onVehicleApproaching` → `haptics.play('STOP')`, then
+    `speech.say({cacheKey: 'vehicle_left' | 'vehicle_right' | 'vehicle_ahead', priority: 'CRITICAL', interrupt: true, dedupeKey: 'vehicle-' + direction, cooldownMs: 4000})`
+    — both synchronous inside the handler, no `await` before `play`, *before* emitting the bus
+    event. The `dedupeKey` / `cooldownMs` pair is 01 §3's and mirrors the module's 4 s
+    per-track cooldown; carry it even though you are the only reactor, so a stray second
+    reactor is deduped instead of doubling the interrupt.
+  - `onObstacleAhead` with `NEAR` and positive closing rate → `STOP` **only**, with no
+    utterance, in the `OUTDOOR_NAV`, `APPROACH_CROSSING` and `CROSSING` profiles (so in the
+    `OUTDOOR_NAV`, `APPROACH_CROSSING`, `AT_CURB` and `CROSSING` modes): 01 §3's mode policy
+    permits no obstacle phrase in any of them, so an `obstacle_ahead` utterance there is dropped
+    by policy and the drop looks like a bug in testing. `STOP` + `obstacle_ahead` (CRITICAL)
+    fires only in the `INDOOR_NAV` profile (modes `INDOOR_NAV`, `AT_ITEM`, `CHECKOUT_NAV`) and
+    the `ITEM_PICKUP` profile, where the policy allows it. If the team wants an outdoor obstacle
+    phrase, that is a change to 01 §3 and A's mode table — flag it; do not speak a key the
+    policy will drop.
+
+  **Single-reactor rule for `VEHICLE_APPROACHING` (raise it, do not edit their files).** The bus
+  event is bookkeeping for everyone else. `03-AGENT-B-outdoor-crossing.md`'s `VehicleAlert`
+  currently repeats the same `play('STOP')` + `say(...)` pair; with the reflex owned here it
+  keeps only the DebugPanel counters, the frame → haptic readout and the scan verdicts, and
+  neither plays nor speaks. Two STOP bursts and two CRITICAL interrupts per vehicle — at the
+  curb, where the policy demands near-silence — is exactly what this rule prevents. The
+  ownership line belongs next to `onVehicleApproaching` in 01 §7: flag it to A and B in one
+  message with the Task 0 store flag, and do not change 03 yourself. Everything else about a
+  crossing (signal phrase choice, ticker, scan flow) belongs to B's `CrossingController`.
 
 ---
 
@@ -131,8 +205,8 @@ set; the video is the false-positive set.
 
 ## Task 4 — Navigator (`src/indoor/navigator.ts`)
 
-State: `currentOrder: number | null`, `targetOrder`, `direction: 'ASC' | 'DESC' | null`,
-`lastReadAt`, `stepsAtLastRead`.
+State: `currentOrder: number | null`, `targetOrder` (from Task 0's resolved aisle, `null` until
+it resolves), `direction: 'ASC' | 'DESC' | null`, `lastReadAt`, `stepsAtLastRead`.
 
 ```
 currentOrder === null            → keep_going (INFO, once per 15 s) — first confident read sets it
@@ -141,8 +215,9 @@ currentOrder >  targetOrder      → direction DESC; passed_it_turn_around (NAV)
 currentOrder === targetOrder     → TARGET_AISLE_REACHED {aisleId, side}
 ```
 
-`side` = `itemIndex[item].sideWhenAscending`, inverted when `direction === 'DESC'`. The
-arrival utterance is pre-synthesized at store load (aisle labels are variable text):
+`side` = `itemIndex[item].sideWhenAscending` as Task 0 resolved it, inverted when
+`direction === 'DESC'`. The arrival utterance is pre-synthesized at store load by Task 0 (aisle
+labels are variable text):
 `"<label> aisle. <item> on your <side>."` — six words; resist the sentence. Play `CONFIRM`.
 
 Edge cases, each with a unit test against a synthetic read sequence:
@@ -162,8 +237,11 @@ Edge cases, each with a unit test against a synthetic read sequence:
   a further 20 s, a `CAMERA_REQUEST {direction: 'up'}` → `tilt_camera_up`, once.
 - **Same sign re-read while standing still:** dedupe on `aisleId` + 10 s; do not advance
   the step prior.
-- **Target order reached but item side unknown** (item not in `itemIndex`): B's
-  `disambiguate` job has already picked the aisle; say the aisle label only.
+- **Target order reached but item side unknown** (item not in `itemIndex`, so Task 0 resolved
+  the aisle through B's `disambiguate` job and has no `sideWhenAscending`): say the aisle label
+  only.
+- **`targetOrder` still null** (Task 0 resolved nothing): announce identified aisles, never an
+  arrival; no `TARGET_AISLE_REACHED`, no side.
 
 The win condition is aisle-level. `TARGET_AISLE_REACHED` → mode `AT_ITEM` is the payoff
 that always ships; Task 9 is the stretch on top of it.
@@ -217,8 +295,9 @@ Verify on a taped straight line in phase 0: 0.5 m of real offset reads 0.5 ± 0.
 From `onObstacleAhead {distanceClass, direction}` (depth, ≤ 1 per 2 s) and
 `onHazard {kind, direction}` (COCO person / cart, ≤ 1 per 3 s):
 
-- `NEAR` + closing → `STOP` + `obstacle_ahead` (CRITICAL) — done in `PerceptionService`
-  (Task 1) so it never waits on this file.
+- `NEAR` + closing → `STOP`, plus `obstacle_ahead` (CRITICAL) **in the indoor profiles only**
+  — done in `PerceptionService` (Task 1) so it never waits on this file. Outdoors and while
+  crossing the same reflex is STOP-only, because 01 §3 permits no obstacle phrase there.
 - `MID` closing, or `NEAR` static → `OBSTACLE_AHEAD` on the bus + `obstacle_ahead` as INFO,
   cooldown 8 s. End-of-aisle wall shows up here first; the navigator uses it to expect a
   cross-aisle turn.
@@ -372,18 +451,20 @@ Module (details in `09-PERCEPTION-MODULE.md` §11; these are the gates you are j
 - [ ] Runs on the demo phone from `npx expo run:ios --device`; `getStats()` live in DebugPanel; ARKit video format logged
 - [ ] COCO detector ≥ 15 fps; depth ≥ 10 fps **[verify build]**; OCR 3 fps indoors; per-profile schedule enforced; thermal `.serious` halves rates
 - [ ] STOP fires on recorded curb footage with frame → haptic < 150 ms; < 1 false alert per 5 min of curb footage
+- [ ] Vehicle reflex is single-owner: `STOP` + one CRITICAL phrase with `dedupeKey: 'vehicle-<dir>'` and `cooldownMs: 4000`, verified in integration that B's `VehicleAlert` neither plays nor speaks (one STOP, one utterance per vehicle)
 - [ ] Signal model v1 on-device with gate, 5-of-8 and onset rule; at +14 h from integration start on held-out local frames: false-WALK precision > 95 %, WALK/HAND recall > 80 % at 10–20 m, parallel confusion < 2 %
 - [ ] Every event name, payload and rate limit matches 01 §7; D's replayer consumes the module's own fixture format
 - [ ] `snapshotJPEG` returns upright 512 / 640 / 1024 frames without blocking the loop
 
 Indoor:
 
+- [ ] Store resolution (Task 0): map validated on load, `ITEM_REQUESTED` → `targetAisleId` + `targetOrder` (or ask-back / `ask_staff`, never a wrong aisle), `setKnownSigns` called, aisle labels pre-synthesized before the store, `storeId` / `targetAisleId` hand-off to A agreed and wired
 - [ ] `AISLE_IDENTIFIED` for ≥ 18 of the 20 venue stills, zero wrong-aisle emissions on the full-route video, digits never fuzzy-matched
 - [ ] A sign entering view at ≤ 5 m is identified within 3 s at walking pace (2-of-3 at 3 fps) on the replay and live
 - [ ] Navigator passes synthetic sequences for: forward, backward, overshoot, mid-store entry, wrong-way flip with side inversion, cross-aisle skip held then accepted, two signs in one frame, 20 s silence → one INFO
 - [ ] Pedometer prior drives `keep_going` cadence and the plausibility window; no step count is ever spoken as fact
 - [ ] Aisle centring: 0.5 m taped offset reads 0.5 ± 0.1 m; COURSE silent when centred; re-anchored on every cross-aisle turn
-- [ ] Obstacle: NEAR + closing → STOP once per 2 s; person / cart → INFO only; wall-approach sequence FAR → MID → NEAR in order on the demo phone
+- [ ] Obstacle: NEAR + closing → STOP once per 2 s; `obstacle_ahead` spoken in the indoor profiles only, STOP-only outdoors and while crossing; person / cart → INFO only; wall-approach sequence FAR → MID → NEAR in order on the demo phone
 - [ ] Claude called only on no-match / two-match / storefront / scan / hand guidance / user speech; ≤ 1 per 4 s indoors; stale or `< 0.5` results never spoken; camera / user prompts ≤ 1 per 3 s and never during the COURSE buzz
 - [ ] Streaming path measured: first spoken word ~1.5 s after the snapshot on the venue Wi-Fi or hotspot; p95 end-to-end < 3 s
 - [ ] Item pick-up loop gives up after 8 with `ask_staff`; `touching` → CONFIRM; demoed on the distinctive package or cut without touching the aisle-level path

@@ -108,7 +108,7 @@ wired open-ear headphones to the judging table.
 ### Model
 
 `eleven_flash_v2_5` only. Turbo is deprecated; v3 Conversational is slower (~280 ms). Flash
-does **no text normalization**: write numbers as words ("twenty feet"), expand abbreviations
+does **no text normalization**: write numbers as words ("sixty feet"), expand abbreviations
 ("N Craig St" → "North Craig Street") in code before sending, and test with real Pittsburgh
 street strings. Same `voice_id` and same model on both tiers or the seam is audible.
 
@@ -120,8 +120,8 @@ style 0), `output_format: 'mp3_44100_64'`, speed 1.0 (rate is applied on-device,
 Batch four at a time on Free, ten on Creator. Run once, commit the files, re-run only when the
 phrase table changes. Preload every file with `expo-audio` at app start.
 
-Canonical text per cache key (keys from `01-SHARED-CONTRACTS.md` §3; every line ≤ 12 words
-except the disclaimer, which is ≤ 12 s spoken):
+Canonical text per cache key (keys from `01-SHARED-CONTRACTS.md` §3, plus the additions
+flagged below; every line ≤ 12 words except the disclaimer, which is ≤ 12 s spoken):
 
 ```
 disclaimer: Aisle is a prototype, not a safety device. Keep using your cane or guide dog.
@@ -137,9 +137,9 @@ no_vehicles_left | no_vehicles_right: No vehicles seen to the left. | ... to the
 listen_then_cross: Listen, then cross.
 vehicle_approaching_left | _right: Vehicle approaching from the left. | ... from the right.
 cant_see_well_left | _right: Can't see well to the left. | ... to the right.
-turn_left_soon | turn_right_soon: Turn left in twenty feet. | Turn right in twenty feet.
+turn_left_soon | turn_right_soon: Turn left in sixty feet. | Turn right in sixty feet.
 turn_left_now | turn_right_now: Turn left now. | Turn right now.
-entering_store: Entering the store. Looking for aisle signs.
+entering_store: Entering the store.   looking_for_signs: Looking for aisle signs.
 keep_going: Keep going, looking for a sign.   passed_it_turn_around: You've passed it. Turn around.
 checkout_ahead: Checkout ahead.   obstacle_ahead: Obstacle ahead.   tilt_camera_up: Tilt the camera up.
 turn_left_a_little | turn_right_a_little: Turn left a little. | Turn right a little.
@@ -150,10 +150,30 @@ ask_staff: Ask staff for help finding it.   offline_notice: Offline. Signal read
 `crossing_ahead_signalized` is the street-less fallback; the street variant ("Crossing ahead:
 Forbes. Signalized.") is live-tier, pre-synthesized at route load.
 
+Two strings that other docs quote loosely. The mp3 is generated from this table, so this table
+is the string; a doc that disagrees is wrong:
+
+- `turn_left_soon` / `turn_right_soon` say **sixty feet**, never "twenty feet". The trigger
+  stays where `03-AGENT-B-outdoor-crossing.md` puts it (~20 m before the maneuver); twenty feet
+  is about 6 m, which a blind pedestrian hears after the turn is gone. Agent A owns this text.
+  `00-PROJECT-BRIEF.md`, `03-AGENT-B-outdoor-crossing.md`, `06-INTEGRATION-AND-DEMO.md` (0:45)
+  and `08-ROADMAP-AND-CONCERNS.md` quote the cue and must be corrected to this string; the
+  distance-free "Turn left soon." was the alternative and is not what we generate.
+- `entering_store` is exactly "Entering the store." and nothing more. The second beat is its
+  own key, `looking_for_signs` ("Looking for aisle signs."), spoken ≥ 4 s later at INFO, which
+  keeps both utterances under 2 s and preserves the two-beat handoff in
+  `05-AGENT-D-harness-transition-demo.md`. Callers pass a `cacheKey` with the identical `text`
+  — a cache key carrying different words plays this file while the code reads as something
+  else, which is how three wordings got into four docs. "Arrived. Switching to store mode."
+  is retired. The item line ("Eggs: aisle three.") is live-tier and not part of the handoff
+  phrase: the aisle label is variable, so it is pre-synthesized at store load.
+
 Onboarding needs its own cached lines ("This is turn", "This is stop", "This is confirm",
-"Turn until the pulse is centered"); those keys are not in 01 §3 yet — Agent A flags the
-addition there before generating them. Forbidden words (safe, clear, go, cross now, no cars,
-you can cross) must not appear in any file; the generator script rejects them.
+"Turn until the pulse is centered"); those keys and `looking_for_signs` are not in 01 §3 yet —
+Agent A flags the additions there before generating them; once `looking_for_signs` exists as
+a key, `05-AGENT-D-harness-transition-demo.md` plays the file instead of passing the string as
+a bare `dedupeKey`. Forbidden words (safe, clear, go, cross now, no cars, you can cross) must
+not appear in any file; the generator script rejects them.
 
 ### Live tier (pre-synthesized at route load and store load)
 
@@ -290,10 +310,33 @@ POST /api/tts      → ElevenLabs Flash v2.5 (pre-synthesis + rare live)      (A
 POST /api/stt      → ElevenLabs Scribe v2 (fallback STT)                    (A caller, D route)
 GET  /api/route    → Google Routes API computeRoutes WALK, field mask,
                      OSM/WPRDC crossing join, walking-beta warning passed through (B)
-GET  /api/health   → all five upstreams individually: Anthropic, NIM, OpenRouter,
-                     ElevenLabs, Google Routes — status, last latency, last error,
-                     429 count since start; Overpass reachability as an unkeyed extra
+GET  /api/health   → six upstream checks, one key each, shape below               (D)
 ```
+
+`/api/health` body — one shape, used by the DebugPanel dots, the pre-demo readiness check in
+`06-INTEGRATION-AND-DEMO.md` and C1 in `11-PHASE-0-CHECKLIST.md`:
+
+```json
+{ "schemasWarm": { "haiku:aisle": true },
+  "upstreams": {
+    "anthropic":      { "ok": true,  "ms": 210,  "err": null, "http429": 0 },
+    "nvidia":         { "ok": true,  "ms": 340,  "err": null, "http429": 0, "modelSeen": true },
+    "openrouter":     { "ok": false, "ms": null, "err": "model not listed", "http429": 0,
+                        "required": false },
+    "elevenlabs_tts": { "ok": true,  "ms": 180,  "err": null, "http429": 0, "creditsLeft": 8120 },
+    "elevenlabs_stt": { "ok": true,  "ms": 190,  "err": null, "http429": 0 },
+    "google_routes":  { "ok": true,  "ms": 260,  "err": null, "http429": 0 } },
+  "overpass": { "ok": true, "ms": 900 } }
+```
+
+Six keys, not five: ElevenLabs is checked twice because TTS and STT are separate products with
+separate failure modes, and OpenRouter is checked because it is the Nemotron failover. **Five of
+the six are red when down — `anthropic`, `nvidia`, `elevenlabs_tts`, `elevenlabs_stt`,
+`google_routes`.** `openrouter` is informational: `ok: false` means the same-model failover is
+absent and a Nemotron 429 falls straight to the templated phrase, which is a degraded path, not
+a broken demo. DebugPanel draws it grey, never red; no gate blocks on it. `overpass` sits
+outside `upstreams` because it is unkeyed and only needed at route fetch. Six dots, one grey
+allowed.
 
 At start the proxy warms every Claude (model, schema) pair and probes each Nemotron job
 schema; `/api/health` reports the results and DebugPanel shows it in one glance, so on demo
@@ -312,7 +355,7 @@ whether a late answer is still fresh.
 - [ ] Authenticated `GET /v1/models` lists the primary and fallback ids; exact strings copied into proxy config
 - [ ] One `parseIntent` call with `enable_thinking: false` + `nvext.guided_json` returns schema-valid JSON whose first token is `{`; `response_format json_schema` probed as the alternative; result recorded
 - [ ] 20 streamed calls: p50/p95 first-token and total latency logged; 1.5 s deadline + templated fallback exercised by forcing a timeout
-- [ ] OpenRouter lists the same model and one call succeeds [verify], or the failover is marked absent in `/api/health`
+- [ ] OpenRouter lists the same model and one call succeeds [verify], or `/api/health` reports `openrouter` as `{ ok: false, required: false }` and the templated fallback is exercised in its place
 
 **Anthropic (C, D)**
 - [ ] Console org has a payment method; rate-limit tier and live RPM/ITPM read from the Console
@@ -324,7 +367,7 @@ whether a late answer is still fresh.
 **ElevenLabs (A)**
 - [ ] Creator-month perk redeemed on the key's account; concurrency limit noted
 - [ ] Voice chosen by audition in noise; `ELEVENLABS_VOICE_ID` set
-- [ ] `scripts/generate-audio.ts` run: every cache key in 01 §3 has a file, none contains a forbidden word, all preload and play through `expo-audio` with `setRate(1.15)`
+- [ ] `scripts/generate-audio.ts` run: every cache key in 01 §3 plus the flagged additions (onboarding lines, `looking_for_signs`) has a file, none contains a forbidden word, all preload and play through `expo-audio` with `setRate(1.15)`
 - [ ] One live Flash call through `/api/tts` measured on-device (< 400 ms first audio); one Scribe call through `/api/stt` from an `expo-audio` M4A recording returns the spoken item
 - [ ] `expo-speech` fallback verified with the mute switch off
 
@@ -334,7 +377,7 @@ whether a late answer is still fresh.
 - [ ] Overpass query for the demo bbox returns crossing nodes and is cached; WPRDC signalized-intersection JSON bundled
 
 **Proxy (D)**
-- [ ] Deployed in us-east; `/api/health` green for all five upstreams from the demo phone on the phone hotspot
+- [ ] Deployed in us-east; `/api/health` green for the five required upstreams (`anthropic`, `nvidia`, `elevenlabs_tts`, `elevenlabs_stt`, `google_routes`) from the demo phone on the phone hotspot; a grey `openrouter` is acceptable
 - [ ] Built JS bundle grepped for key material (prefixes such as `sk-ant-`, `nvapi-`, `AIza`): nothing found
 - [ ] `EXPO_PUBLIC_MOCK=1` build runs the whole flow with the proxy unreachable
 

@@ -6,7 +6,8 @@ Tier 0 models on-device, applies every temporal filter, and emits rate-limited e
 Nothing time-critical in Aisle waits on anything outside this module.
 
 **Owns:** `modules/perception/` (Swift + JS bridge), `src/perception/`, `models/`
-**Never touches:** `src/core/`, `src/outdoor/`, `src/crossing/`, `src/transition/`, `server/`
+**Never touches:** `src/core/`, `src/outdoor/`, `src/crossing/`, `src/transition/`, `server/`,
+`app.json` (A owns it; you supply strings, A commits them — §8 step 5)
 **Contract:** event and method names are fixed in `01-SHARED-CONTRACTS.md` §5 and §7.
 Change them there first, or not at all.
 
@@ -103,7 +104,8 @@ Per-profile schedule (frame counter at 30 Hz; this **is** the thermal schedule):
 Budget per frame on an A15+ class phone: resize/rotate 2–5 ms, YOLO-nano 10–20 ms on the
 ANE, tracker < 2 ms, decision < 1 ms. Depth 30–60 ms **[verify]**. OCR `.fast` on a sparse
 band: tens to a few hundred ms, which is why it runs at 3 fps and only indoors. Measure
-every one of these on the demo phone in phase 0 and put them in `getStats()`.
+every one of these on the demo phone in phase 0; per-stage numbers go to the native log and
+the debug export (§10), not into `getStats()` — see §6 for what `getStats()` may return.
 
 Cart is not a COCO class: use the "large moving rectangular object" heuristic (a tall
 `person`-adjacent box or a wide low box moving with the person) or a small fine-tune if
@@ -193,9 +195,14 @@ semantics in JS: the cane already covers it. Never STOP from this pipeline.
 - **Blur gate:** skip the OCR frame when gyro rate over the exposure window exceeds a
   threshold set in phase 0 (motion energy, GLIMPSE-style), or when tracking is LIMITED
   with reason `excessiveMotion`.
-- **Normalization** in Swift before emitting: uppercase, strip punctuation, collapse
-  whitespace; apply the digit-confusion map (O→0, I/l→1, S→5, B→8, Z→2) only to tokens
-  that are otherwise numeric. Emit raw and normalized text with the box.
+- **No normalization in Swift.** `OcrRead` in `01-SHARED-CONTRACTS.md` §7 has one text
+  field, documented as raw, and that contract is frozen: emit the string exactly as Vision
+  returned it, with the box. Uppercasing, punctuation stripping, whitespace collapse and the
+  digit-confusion map (O→0, I/l→1, S→5, B→8, Z→2 on otherwise-numeric tokens) live once in
+  JS, in `04-AGENT-C-perception-indoor.md` Task 3 step 1 — one implementation, so a fixture
+  replayed through the mock and a live frame normalize identically and D's replayer can
+  reproduce either. A `normalized` field on the wire would be a flagged 01 §7 change with an
+  ack, never an undeclared field added here.
 - Two signs in one frame: emit both; JS takes the larger box. Emit ≤ 3 Hz via `onOcrText`.
 - The fuzzy match (edit distance ≤ 2, digits exact) and the 2-of-3 vote live in
   `src/indoor/`, not here — the module reports text; the navigator decides.
@@ -236,7 +243,12 @@ semantics in JS: the cane already covers it. Never STOP from this pipeline.
 
 Methods: `start(profile)`, `setProfile(profile)`, `stop()`, `setCrossingBearing(deg|null)`,
 `setCourseReference({bearingDeg}|null)`, `setBodyOffsetDeg(deg)`, `setKnownSigns(words)`,
-`snapshotJPEG(maxWidth)`, `getTrackingState()`, `getStats()`. Boxes are normalized 0..1 in
+`snapshotJPEG(maxWidth)`, `getTrackingState()`, `getStats()`. `getStats()` returns exactly
+the five fields frozen in 01 §7 — `detectorFps`, `depthFps`, `ocrFps`, `frameToEventMs`,
+`thermalState` — and nothing else. Per-model fps, per-stage ms and the compute unit each
+model actually landed on at first load (a model on the CPU is a phase-0 bug) go to the native
+log and to the debug export of §10, which is where DebugPanel reads them; widening
+`getStats()` is a flagged 01 §7 change, not a unilateral one. Boxes are normalized 0..1 in
 the upright frame. Timestamps are `Date.now()`-comparable milliseconds, converted from
 `frame.timestamp` once at session start. Events cross the bridge as plain JSON; keep
 `onDetections` ≤ 5 Hz and never send pixels through an event.
@@ -272,8 +284,11 @@ the upright frame. Timestamps are `Date.now()`-comparable milliseconds, converte
    Accelerate; iOS deployment target as the Expo SDK 57 template sets it.
 4. Models: copy `models/*.mlpackage` into the pod resources (or reference via a script
    phase); load lazily per profile and unload what the profile does not use.
-5. `app.json` → `ios.infoPlist` before the first build (strings are read aloud by iOS; keep
-   them honest and short):
+5. `app.json` → `ios.infoPlist` before the first build. **A owns `app.json`** (it is in A's
+   file list in `02-AGENT-A-core-shell.md`, beside `eas.json`), so you do not edit it: hand A
+   these exact strings, A commits them before the first `npx expo prebuild`, and you verify
+   every prompt on the demo phone (`11-PHASE-0-CHECKLIST.md` T4). The strings are read aloud
+   by iOS; keep them honest and short.
    - `NSCameraUsageDescription` — "Aisle reads signs and signals through the camera."
    - `NSLocationWhenInUseUsageDescription` — "Aisle needs your location to guide you."
    - `NSMotionUsageDescription` — "Aisle counts steps to estimate progress."
@@ -319,7 +334,10 @@ synthetic):
 - Vehicle looming: parked-car track (constant area) never fires; 1.4× area in 0.5 s at age
   0.3 s fires once, then not again for 4 s; yaw-sweep suppression holds.
 - Depth: wall-approach sequence crosses FAR → MID → NEAR in order; NEAR + closing once per 2 s.
-- OCR normalization: "AISLE 3" / "Aisle3" / "A1SLE 3" → tokens `AISLE`, `3`; `c001` unchanged.
+- OCR emit: the recognized string crosses the bridge unmodified (no case or digit fixing in
+  Swift), the box is normalized to the upright frame, a gyro-flagged frame is skipped. The
+  "AISLE 3" / "Aisle3" / "A1SLE 3" / `c001` normalization cases are JS tests against
+  `04-AGENT-C-perception-indoor.md` Task 3 step 1.
 - Drift: straight synthetic pose track yields 0 ± 0.02 m; 0.5 m parallel offset yields 0.5 m.
 
 On-device measurement (DebugPanel, phase 0 and again at integration start): fps per model
@@ -344,10 +362,10 @@ the phone is throttling — find out which before the next run.
 - [ ] COCO detector ≥ 15 fps; STOP fires on recorded curb footage with frame → haptic < 150 ms; < 1 false alert per 5 min
 - [ ] Signal model v1 on-device with gate, 5-of-8 and onset rule; measured against the +14 h gate on held-out local frames
 - [ ] Depth model runs at 10 fps **[verify build]**; NEAR / MID / FAR calibrated on the demo phone; obstacle event once per 2 s
-- [ ] OCR at 3 fps indoors, upper band, language correction off, `customWords` from the store map, blur-gated
+- [ ] OCR at 3 fps indoors, upper band, language correction off, `customWords` from the store map, blur-gated, raw text emitted (no Swift normalization)
 - [ ] Pose-derived lateral offset within ±0.1 m on a taped straight line; `bodyOffsetDeg` applied everywhere heading is compared
 - [ ] `snapshotJPEG` returns upright 512 / 640 / 1024 frames without blocking the loop; the curb crop keeps the horizon strip
 - [ ] Every event name, payload and rate limit matches 01 §7; the mock replayer consumes the module's own fixture format
 - [ ] Per-profile schedule enforced; `.serious` thermal state halves rates and is visible in DebugPanel
-- [ ] All `app.json` permission strings present before the first build; models and dataset licences committed under `models/`
+- [ ] All `app.json` permission strings and `UIRequiredDeviceCapabilities: ["arkit"]` present before the first build — strings supplied by you, committed by A, prompts verified by you on the demo phone; models and dataset licences committed under `models/`
 - [ ] [verify] items closed or downgraded in phase 0: Depth Anything CoreML build and timing, segmentation export (or dropped to heading + dead reckoning only), ARKit geo tracking availability in Pittsburgh (informational)

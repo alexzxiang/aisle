@@ -5,10 +5,11 @@ one whose mistake hurts most.** The pedestrian-signal detector decides whether t
 "Walk signal on". Everything else in this track (the COCO vehicle detector, the depth model,
 the optional segmentation model) is acquisition, export and measurement, not training.
 
-**Owns:** `training/` (data, notebooks, export scripts, evaluation report), the contents of
-`models/` up to the handoff (Agent C owns the directory once a file is accepted)
-**Never touches:** `modules/perception/`, `src/perception/`, `src/indoor/`, `src/core/`,
-`src/outdoor/`, `src/crossing/`
+**Owns:** `training/` (data, notebooks, export scripts, evaluation report)
+**Never touches:** `models/` — Agent C owns that directory (`09-PERCEPTION-MODULE.md` §1);
+every artifact in §6 crosses as a PR that Agent C merges, per
+`06-INTEGRATION-AND-DEMO.md`. Also never: `modules/perception/`, `src/perception/`,
+`src/indoor/`, `src/core/`, `src/outdoor/`, `src/crossing/`
 **Contracts:** class names are `Detection.cls` in `01-SHARED-CONTRACTS.md` §7; the module
 that consumes the model is `09-PERCEPTION-MODULE.md` §3 and §5.1. Neither changes for this
 track's convenience.
@@ -177,9 +178,9 @@ fantasy. Rules:
 
 Ultralytics YOLO11n (or YOLOv8n if the toolchain fights you) from COCO-pretrained weights;
 licence AGPL-3.0 for the framework and weights **[verify current terms]**, recorded in
-`training/LICENSES.md` and `models/LICENSES.md`. Colab free T4 is enough: a nano model at
-640 px on one to three thousand images for ~50 epochs finishes well inside an hour
-[verify on the first run; record the time].
+`training/LICENSES.md` and carried into `models/LICENSES.md` by the handoff PR (§6). Colab
+free T4 is enough: a nano model at 640 px on one to three thousand images for ~50 epochs
+finishes well inside an hour [verify on the first run; record the time].
 
 - `imgsz=640`, `epochs=50`, `patience=15`, `batch=32` (drop to 16 on memory error),
   default optimizer. `close_mosaic=10` so the last epochs see un-tiled crops.
@@ -234,7 +235,10 @@ The COCO vehicle detector is exported the same way (§8) so Agent C has one load
 
 ## 6. Handoff contract to Agent C
 
-Files under `models/`, committed with their licences:
+`models/` is Agent C's directory; you never commit into it. Each artifact below is delivered
+as a **PR against `models/` that Agent C reviews and merges** — the model file, its manifest
+and its `models/LICENSES.md` entry in one PR, with a one-line changelog. The paths below are
+where each file lands after that merge:
 
 ```
 models/ped-signal-v1.mlpackage           the model (Vision pipeline with NMS)
@@ -270,11 +274,13 @@ models/LICENSES.md                       per-model and per-dataset licences
   at the F1 knee. Agent C applies these before the 5-of-8 vote and may raise, never lower,
   the walk threshold from device measurements.
 - `measuredOn` starts as `python` (D's export check) and becomes `device` once Agent C
-  has run §7; the manifest is re-committed with the device numbers.
+  has run §7: D scores the run and sends the updated manifest, Agent C commits it under
+  `models/`.
 - The COCO manifest carries the 80-class COCO label order and the six classes the module
   keeps (`car`, `bus`, `truck`, `motorcycle`, `bicycle`, `person`); filtering is Agent C's.
-- A new model version is a new file name (`ped-signal-v2.*`); 09's schedule and filter
-  code stay put and only the file reference moves. No silent overwrite of v1.
+- A new model version is a new file name (`ped-signal-v2.*`) in a new PR; 09's schedule and
+  filter code stay put and only the file reference moves. No silent overwrite of v1, and no
+  in-place edit of a merged artifact.
 
 ---
 
@@ -332,11 +338,12 @@ there is a day to spare.
 published Core ML conversions of Depth Anything V2; confirm the exact repository, the
 input size — 518 px class — and the licence, which for the small variant is expected to be
 permissive while larger variants are non-commercial [verify all three]). If a build exists,
-download, record the licence, hand it to Agent C as `models/depth-anything-v2-small.mlpackage`
-in phase 0; Agent C measures ms per frame and calibrates NEAR/MID/FAR by walking at a wall
-(09 §5.3). If no build exists, budget two hours for a coremltools conversion from the
-PyTorch checkpoint; if that fails, tell Agent C to fall back to heading + dead reckoning
-for obstacles (R27 in `08-ROADMAP-AND-CONCERNS.md`).
+download, record the licence, and send it as a §6 PR that lands at
+`models/depth-anything-v2-small.mlpackage` in phase 0; Agent C measures ms per frame and
+calibrates NEAR/MID/FAR by walking at a wall (09 §5.3). If no build exists, budget two
+hours for a coremltools conversion from the PyTorch checkpoint; if that fails, tell Agent C
+to fall back to heading + dead reckoning for obstacles (R27 in
+`08-ROADMAP-AND-CONCERNS.md`).
 
 **Walkable-surface segmentation (optional, later) [verify].** A Cityscapes-class model
 (road / sidewalk / wall / building) exported to CoreML at ~512×256, ≥ 5 fps on the demo
@@ -406,8 +413,9 @@ because of the two-times-of-day rule):
    data in parallel.
 5. Capture session 2 (other time of day); label; v1 run with one crossing held out;
    export; Python export check; manifest with `measuredOn: python`.
-6. Handoff: Agent C loads `ped-signal-v1.mlpackage` and `coco-yolo-nano.mlpackage` into
-   the module, runs §7, commits device numbers. Depth Anything located and handed over.
+6. Handoff: open the §6 PR; Agent C merges it, loads `ped-signal-v1.mlpackage` and
+   `coco-yolo-nano.mlpackage` into the module, runs §7 and commits the device numbers. Depth
+   Anything located and sent the same way.
 7. Vehicle event labels (`vehicle-events.csv`) delivered with the curb footage to the
    fixtures pipeline.
 
@@ -431,12 +439,12 @@ Phase 1 (relative to integration start):
 - [ ] Every training frame hand-corrected after the VLM pass; class definitions in `training/README.md`; first 50 frames double-labelled
 - [ ] Split is leave-one-crossing-out; `training/data/splits/heldout-<crossingId>.txt` committed
 - [ ] v0 (public-only) and v1 (public + local) runs logged under `training/runs/`
-- [ ] `models/ped-signal-v1.mlpackage` + `.json` manifest with label order `ped_walk, ped_hand, ped_countdown`, per-class thresholds, held-out metrics
-- [ ] `models/coco-yolo-nano.mlpackage` (+ 416 variant) and manifest delivered before the +6 h gate
+- [ ] `ped-signal-v1.mlpackage` + `.json` manifest with label order `ped_walk, ped_hand, ped_countdown`, per-class thresholds and held-out metrics, delivered as a PR Agent C merged into `models/`
+- [ ] `coco-yolo-nano.mlpackage` (+ 416 variant) and manifest delivered the same way before the +6 h gate
 - [ ] Python export check: class indices match on ten held-out crops
 - [ ] Agent C's device measurement recorded in `training/eval/ped-signal-v1-device.csv`; manifest updated to `measuredOn: device`
 - [ ] +14 h gate decided against §1 and the rung recorded; model frozen afterwards
 - [ ] `vehicle-events.csv` labelled; looming false-alarm rate scored on curb footage
 - [ ] Depth Anything V2 small CoreML located with licence, or the conversion attempt and its outcome recorded [verify]
 - [ ] `training/eval/ped-signal-v1-report.md` complete with a real failure case and device numbers
-- [ ] No file outside `training/` and `models/` touched by this track
+- [ ] Nothing committed outside `training/` by this track; every `models/` artifact arrived as a PR Agent C merged

@@ -457,8 +457,16 @@ Request to NIM (`https://integrate.api.nvidia.com/v1/chat/completions`, `NVIDIA_
   "messages": [{"role": "system", "content": "<job prompt>"}, {"role": "user", "content": "<JSON input>"}],
   "chat_template_kwargs": {"enable_thinking": false},
   "nvext": {"guided_json": "<job schema>"},
-  "stream": true, "temperature": 0.2, "max_tokens": 400 }
+  "stream": true, "temperature": 0, "max_completion_tokens": 400 }
 ```
+
+That body is `07-SPONSOR-STACK.md` §1 ("Model and request shape") verbatim: 07 owns the
+provider request shape and wins over this doc if the two ever differ, so change it there first
+and copy it back. Two fields are not stylistic. `max_completion_tokens` is the name the NIM
+catalog sample uses — the OpenAI SDK maps `max_tokens`, a raw `fetch` body may not, so a
+`max_tokens` cap can cap nothing; confirm on day 0 that the cap is actually applied. Temperature
+0 is what makes the wording repeatable, which the cached script, the pre-synthesized audio and
+the wording A/B all assume.
 
 Rules: confirm the model id and `nvext` acceptance against the authenticated `/v1/models` in
 phase 0 (fallback id `nvidia/nemotron-nano-3-30b-a3b`; spelling varies by surface). Always
@@ -580,7 +588,7 @@ every rung; the demo script (`06-INTEGRATION-AND-DEMO.md`) must name the rung in
 - [ ] `CrossingController` passes the scripted sequences: a stale WALK never speaks `walk_signal_on`; `cant_see_signal` after 10 s UNKNOWN; rung-2 requests sequence-numbered and dropped when stale; manual override always works
 - [ ] Unsignalized scan: left and right windows, one Claude still per side, 2 s pause, exact wording for all nine verdict combinations, `SCAN_RESULT(claude)` per side
 - [ ] `VehicleAlert`: STOP + two words, CRITICAL, forward FOV only, frame → haptic < 150 ms measured on recorded curb footage
-- [ ] Nemotron: `enable_thinking: false` and `guided_json` verified against the live endpoint; every job has a validator and a template; deadline and OpenRouter failover exercised by a fault-injection test; schemas warmed at proxy start
+- [ ] Nemotron: request body identical to `07-SPONSOR-STACK.md` §1 (temperature 0, `max_completion_tokens`, stream, `chat_template_kwargs`, `nvext`) with the token cap proven to be honoured; `enable_thinking: false` and `guided_json` verified against the live endpoint; every job has a validator and a template; deadline and OpenRouter failover exercised by a fault-injection test; schemas warmed at proxy start
 - [ ] Handoff: `TransitionDetector.start` with the store-JSON entrance; all B listeners gone after `STORE_ENTERED`; nothing spoken at arrival
 - [ ] Forbidden-word lint clean over `src/outdoor/`, `src/crossing/`, `server/routes/`, the fixtures you produced and the eval page
 - [ ] `server/routes/plan.eval.md` in the repo: intent accuracy, wording A/B, latency, fallback rates

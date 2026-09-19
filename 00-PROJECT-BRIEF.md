@@ -1,5 +1,17 @@
 # 00 — Project Brief (READ FIRST, ALL AGENTS)
 
+**Canonical document set — these twelve files, in this spelling, and nothing else:**
+`00-PROJECT-BRIEF.md`, `01-SHARED-CONTRACTS.md`, `02-AGENT-A-core-shell.md`,
+`03-AGENT-B-outdoor-crossing.md`, `04-AGENT-C-perception-indoor.md`,
+`05-AGENT-D-harness-transition-demo.md`, `06-INTEGRATION-AND-DEMO.md`,
+`07-SPONSOR-STACK.md`, `08-ROADMAP-AND-CONCERNS.md`, `09-PERCEPTION-MODULE.md`,
+`10-CV-TRAINING-TRACK.md`, `11-PHASE-0-CHECKLIST.md`. Cross-reference these names only.
+Everything under `archive/v1-2026-09-16/` is superseded v1, kept for history and not to
+be built from — including the old briefs `03-AGENT-B-outdoor.md`,
+`04-AGENT-C-indoor-vision.md` and `05-AGENT-D-transition-harness.md`, which 03, 04 and 05
+above replace. Where v1 conflicts with the twelve, the twelve win;
+`08-ROADMAP-AND-CONCERNS.md` records what changed and why.
+
 ## What we are building
 
 A phone-only navigation aid for blind and low-vision users that takes a person

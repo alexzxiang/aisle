@@ -33,16 +33,41 @@ export type AppMode =
   | 'DONE';
 ```
 
-Legal transitions only:
+Legal transitions only. Every edge names the event that carries it; `setMode` rejects
+everything else loudly, so an edge missing from this table is a dead end at runtime. The
+event → edge mapping in `02-AGENT-A-core-shell.md` Task 2 must match this table row for row.
 
 ```
-IDLE → ONBOARDING → OUTDOOR_NAV
-OUTDOOR_NAV → APPROACH_CROSSING → AT_CURB → CROSSING → OUTDOOR_NAV   (repeats per crossing)
-APPROACH_CROSSING → OUTDOOR_NAV                                        (route re-plan, crossing dropped)
-OUTDOOR_NAV → TRANSITION → INDOOR_NAV → AT_ITEM → CHECKOUT_NAV → DONE
-AT_ITEM → ITEM_PICKUP → CHECKOUT_NAV                                   (stretch beat)
-* → IDLE                                                               (abort)
+IDLE → ONBOARDING                       ITEM_REQUESTED while firstRun
+IDLE → OUTDOOR_NAV                      ROUTE_READY while firstRun is false
+ONBOARDING → OUTDOOR_NAV                onboarding finished AND ROUTE_READY
+OUTDOOR_NAV → APPROACH_CROSSING         CROSSING_AHEAD            (cycle repeats per crossing)
+APPROACH_CROSSING → AT_CURB             CURB_REACHED
+AT_CURB → CROSSING                      CROSSING_STARTED
+CROSSING → OUTDOOR_NAV                  FAR_CURB_REACHED
+APPROACH_CROSSING → OUTDOOR_NAV         ROUTE_READY              (re-plan, crossing dropped)
+AT_CURB → OUTDOOR_NAV                   CROSSING_ABORTED         (user does not cross / walked past)
+CROSSING → OUTDOOR_NAV                  CROSSING_ABORTED         (abandoned mid-crossing)
+OUTDOOR_NAV → TRANSITION                STORE_ENTERED
+TRANSITION → INDOOR_NAV                 transition speech ends (3 s cap)
+INDOOR_NAV → AT_ITEM                    TARGET_AISLE_REACHED
+AT_ITEM → ITEM_PICKUP                   first ITEM_HAND_GUIDANCE (stretch beat)
+AT_ITEM / ITEM_PICKUP → CHECKOUT_NAV    hint 'touching', step ≥ 8, or user "next"
+CHECKOUT_NAV → DONE                     CHECKOUT_REACHED
+* → IDLE                                abort (from any mode, including ONBOARDING and DONE)
 ```
+
+`IDLE → OUTDOOR_NAV` is the ordinary path, not an exception: only the **first** run passes
+through `ONBOARDING`, so every later run — every rehearsal, every fixture replay and the judged
+demo — leaves `IDLE` on `ROUTE_READY` with `firstRun === false`. Quitting the practice path is
+the abort edge `* → IDLE`; there is no separate practice-exit edge. A DebugPanel jump-to-mode
+(`05-AGENT-D-harness-transition-demo.md`) emits the events above in order instead of calling
+`setMode`, so it needs no edges of its own.
+
+`CROSSING → AT_CURB` is deliberately **not** legal. The curb has one entry point, so a user who
+steps back to the near curb goes out through `CROSSING_ABORTED → OUTDOOR_NAV` and B re-arms the
+crossing (`CROSSING_AHEAD` → `CURB_REACHED`). One entry keeps the ticker, the near-silence
+speech policy and the WALK onset rule starting from a single known state.
 
 `CROSSED` is not a mode: `FAR_CURB_REACHED` (§5) returns the machine to `OUTDOOR_NAV`.
 Any agent may **read** mode; only Agent A's store may **write** it, via `setMode()`.
@@ -111,6 +136,7 @@ export type SpeechPriority = 'CRITICAL' | 'NAV' | 'INFO';
 
 export interface SpeechRequest {
   text: string;            // ≤ 12 words, numbers written as words ("twenty feet")
+                           // except when cacheKey is on the long-phrase allow-list (below)
   priority: SpeechPriority;
   cacheKey?: string;       // plays assets/audio/<cacheKey>.mp3 locally — 0 ms network
   dedupeKey?: string;      // suppresses a repeat within cooldownMs
@@ -145,6 +171,12 @@ Queue rules Agent A must enforce:
 - A `dedupeKey` that fired within `cooldownMs` is dropped silently.
 - **Never more than one utterance per 4 s** outside `CRITICAL`. Utterance ≤ 2 s.
 - `text` with more than 12 words is rejected in dev (throw) and truncated at 12 in prod.
+- **Long-phrase allow-list — one member, `disclaimer`.** When `cacheKey` is on the allow-list,
+  the 12-word check, the digits-written-as-words check and the ≤ 2 s utterance length do not
+  apply; the limit is instead **≤ 12 s of generated audio**, measured on the file. The
+  first-launch disclaimer is ~45 words and plays through this same queue, so without the
+  exemption the first launch of every build throws. Nothing else joins the allow-list without
+  the flag-and-ack in this file's header, and the forbidden-word check is never exempt.
 - Forbidden words, rejected at the call site by a lint rule and at runtime: **safe, clear,
   go, cross now, no cars, you can cross.**
 
@@ -261,6 +293,7 @@ export type AppEvent =
   | { type: 'SCAN_RESULT'; side: Side; vehiclesSeen: VehiclesSeen; source: 'detector' | 'claude' }
   | { type: 'CROSSING_STARTED'; crossingId: string }
   | { type: 'FAR_CURB_REACHED'; crossingId: string }
+  | { type: 'CROSSING_ABORTED'; crossingId: string; reason: 'user' | 'walked_past' | 'replan' }
   // course keeping (all modes)
   | { type: 'COURSE_DEVIATION'; meters: number; side: Side }
   | { type: 'OBSTACLE_AHEAD'; distanceClass: DistanceClass; direction: Direction }
@@ -288,11 +321,26 @@ export interface EventBus {
 ```
 
 Who emits what: B — ROUTE_READY, OUTDOOR_LEG_ADVANCED, CROSSING_AHEAD, CURB_REACHED,
-CROSSING_STARTED, FAR_CURB_REACHED, SCAN_RESULT(claude); C — SIGNAL_STATE,
-VEHICLE_APPROACHING, SCAN_RESULT(detector), OBSTACLE_AHEAD, HAZARD, AISLE_IDENTIFIED,
+CROSSING_STARTED, FAR_CURB_REACHED, CROSSING_ABORTED, SCAN_RESULT (both `source` values);
+C — SIGNAL_STATE, VEHICLE_APPROACHING, OBSTACLE_AHEAD, HAZARD, AISLE_IDENTIFIED,
 TARGET_AISLE_REACHED, CHECKOUT_REACHED, CAMERA_REQUEST, USER_ACTION, ITEM_HAND_GUIDANCE;
 D — STORE_ENTERED; A — ITEM_REQUESTED, COURSE_DEVIATION, ERROR. Mock mode (§12) may emit
 any of them.
+
+**`SCAN_RESULT` has exactly one emitter: Agent B's `CrossingController`, for both `source`
+values.** The native module is never told which side is being scanned — `setCrossingBearing`
+(§7) arms the signal gate and nothing else, and there is deliberately no `setScanSide` — so
+the side is known only to the code that owns the scan window. Inside each window B derives the
+detector verdict from the `VEHICLE_APPROACHING` events C emitted during it (`approaching` if
+any fired, `none` if none did) and emits `SCAN_RESULT {side, vehiclesSeen, source: 'detector'}`;
+it emits the `source: 'claude'` result when the still it sent returns, or `unclear` on low
+confidence or timeout. The spoken report takes the worse of the two per side.
+
+This closes the open contract flag in `03-AGENT-B-outdoor-crossing.md`: "JS emits
+`SCAN_RESULT` from this event" in `09-PERCEPTION-MODULE.md` §5.2 means B's controller, not C's
+bridge, so C emits `VEHICLE_APPROACHING` only and `04-AGENT-C-perception-indoor.md` drops
+`SCAN_RESULT` from C's emitter list. 05's DebugPanel scan-result override is unchanged: it
+injects the event B would have emitted.
 
 `SIGNAL_STATE` is emitted on every state change and at least every 2 s while a state
 holds; `UNKNOWN` produces silence downstream, never a guess. `fresh: false` means WALK
@@ -313,14 +361,16 @@ walk** — Places returns a centroid, which can be 50–100 m from the door.
                 "pinnedBy": "venue-walk", "pinnedAt": "2026-09-18" },
   "signHeightM": 2.4,
   "aisles": [
-    { "id": "a1", "label": "Aisle 1", "signText": ["1", "PRODUCE"], "order": 1,
+    { "id": "a1", "label": "Aisle 1", "spokenLabel": "Aisle one",
+      "signText": ["1", "PRODUCE"], "order": 1,
       "categories": ["produce", "fruit", "vegetables"] },
-    { "id": "a3", "label": "Aisle 3", "signText": ["3", "DAIRY"], "order": 3,
+    { "id": "a3", "label": "Aisle 3", "spokenLabel": "Aisle three",
+      "signText": ["3", "DAIRY"], "order": 3,
       "categories": ["dairy", "eggs", "milk", "cheese", "butter"] }
   ],
   "landmarks": [
-    { "id": "checkout", "label": "Checkout", "signText": ["CHECKOUT", "REGISTERS", "LANES"],
-      "afterAisleOrder": 99 }
+    { "id": "checkout", "label": "Checkout", "spokenLabel": "Checkout",
+      "signText": ["CHECKOUT", "REGISTERS", "LANES"], "afterAisleOrder": 99 }
   ],
   "itemIndex": {
     "eggs":  { "aisleId": "a3", "sideWhenAscending": "RIGHT", "shelf": "middle",
@@ -337,8 +387,10 @@ export interface StoreMap {
   displayName: string;
   entrance: { lat: number; lng: number; radiusM: number; pinnedBy: string; pinnedAt: string };
   signHeightM?: number;
-  aisles: Array<{ id: string; label: string; signText: string[]; order: number; categories: string[] }>;
-  landmarks: Array<{ id: string; label: string; signText: string[]; afterAisleOrder: number }>;
+  aisles: Array<{ id: string; label: string; spokenLabel: string; signText: string[];
+                 order: number; categories: string[] }>;
+  landmarks: Array<{ id: string; label: string; spokenLabel: string; signText: string[];
+                     afterAisleOrder: number }>;
   itemIndex: Record<string, { aisleId: string; sideWhenAscending: Side; shelf?: string; packageHint?: string }>;
 }
 ```
@@ -347,6 +399,20 @@ export interface StoreMap {
 aisle's `order` to the target's. `sideWhenAscending` is the side when walking toward
 increasing `order`; the navigator inverts it when travelling in descending order. Order
 comes from the map, never from the sign text, so non-numeric labels (`DAIRY`) work.
+
+`label` is display and log text only — it carries digits (`Aisle 3`), and so does the `label`
+field on `AISLE_IDENTIFIED` (§5). **Everything spoken comes from `spokenLabel`**, written as
+words (`Aisle three`) because Flash does no text normalization and A rejects a digit in `text`
+in dev (§3). One arrival template, used by `04-AGENT-C-perception-indoor.md` and by the demo
+lines in `06-INTEGRATION-AND-DEMO.md` and `00-PROJECT-BRIEF.md`:
+
+```
+"<spokenLabel>. <item> on your <side>."   →   "Aisle three. Eggs on your right."
+```
+
+Both parts are variable text: D writes `spokenLabel` by hand when the store map is built and A
+pre-synthesizes the utterance at store load (§3), so nothing is live during the walk. A store
+map whose `spokenLabel` contains a digit is a fixture bug — fail the load in dev.
 
 ---
 
@@ -392,7 +458,7 @@ export interface PerceptionService {
   stop(): void;
 
   // context the native filters need (set by B / A / C-indoor; null clears)
-  setCrossingBearing(bearingDeg: number | null): void;   // arms the signal gate + onset tracking
+  setCrossingBearing(bearingDeg: number | null): void;   // arms the signal gate + onset tracking; NOT a scan-side setter (§5)
   setCourseReference(ref: { bearingDeg: number } | null): void;  // anchors pose-derived drift at the current pose
   setBodyOffsetDeg(offsetDeg: number): void;             // from SensorService.calibrateBodyOffset
   setKnownSigns(words: string[]): void;                  // OCR customWords from the store map
@@ -581,7 +647,7 @@ export interface CrossingController {
   crossingStarted(): void;              // → CROSSING: beacon to farCurb, COURSE holds bearing
   farCurbReached(): void;               // CONFIRM, beacon off, → OUTDOOR_NAV
   setManualSignal(state: SignalState | null): void;   // DebugPanel rung 4 — always wired
-  abort(): void;
+  abort(reason?: 'user' | 'walked_past' | 'replan'): void;   // emits CROSSING_ABORTED → OUTDOOR_NAV (§1)
 }
 ```
 

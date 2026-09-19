@@ -148,7 +148,7 @@ receives none; every upstream call originates here.
 |---|---|---|---|
 | `POST /api/vision` | Anthropic Messages, `claude-haiku-4-5`; `claude-sonnet-5` with `thinking: {type:'disabled'}` for `question: 'curb_crop'` only | D | body = `VisionRequest` (§8); streamed variant over the WebSocket below |
 | `POST /api/plan` | NIM `nvidia/nemotron-3.5-lightning-30b-a3b`, `chat_template_kwargs: {enable_thinking: false}`, `nvext: {guided_json}`, `stream: true` | **B** (`server/routes/plan.ts`) | you host it, own the process, the deadline helper and the OpenRouter failover plumbing; B owns the five job schemas and templated fallbacks |
-| `POST /api/tts` | ElevenLabs `POST /v1/text-to-speech/{voice}` (whole file) and `/stream`, `model_id: eleven_flash_v2_5` passed explicitly (the endpoint default is multilingual v2) | D | pre-synthesis of the ~40 cached phrases and of variable phrases at route/store load; `output_format` `mp3_44100_64` |
+| `POST /api/tts` | ElevenLabs `POST /v1/text-to-speech/{voice}` (whole file) and `/stream`, `model_id: eleven_flash_v2_5` passed explicitly (the endpoint default is multilingual v2) | D | pre-synthesis of the ~40 cached phrases and of variable phrases at route/store load; B's route-load batch carries the allow-listed walking-beta sentence, which must not 422; `output_format` `mp3_44100_64` |
 | `POST /api/stt` | ElevenLabs `POST /v1/speech-to-text`, `scribe_v2`, multipart, `keyterms` = the store's item and aisle words | D | fallback only; primary STT is on-device in the dev build. Min audio 100 ms |
 | `GET /api/route` | Google Routes `computeRoutes` WALK with field mask; Overpass; bundled WPRDC JSON | **B** (`server/routes/route.ts`) | you host it |
 | `GET /api/health` | all five upstreams individually | D | see below |
@@ -158,6 +158,25 @@ string from Claude and every `text` on `/api/tts` is checked against the forbidd
 safe, clear, go, cross now, no cars, you can cross — and against the 12-word limit. A
 violation blanks `speech` (Claude) or returns 422 (`/api/tts`) and is logged. The client
 lints too; the proxy is the second lock.
+
+**The one exemption (do not widen it here).** The check targets those words in imperative or
+advisory position — the app telling the user something about crossing — not every occurrence
+of the letters. Two carve-outs, and only two: identifiers are not text (02's lint rule already
+excludes `clearQueue` and friends), and **one string is allow-listed by exact hash** — Google's
+mandatory walking-beta warning, which contains "clear sidewalks" and runs well past 12 words,
+so the unexempted rule would 422 it and fail A's pre-commit grep. The allow-list entry is a
+SHA-256 over the exact bytes, matched byte-for-byte: a paraphrase, a truncation, a re-cased
+copy or any other sentence hashes differently and is still rejected, and the hash exempts that
+sentence from the forbidden list **and** from the 12-word cap. It covers display and TTS of
+that one sentence only — never a Claude `speech` string, never any other `/api/tts` text,
+never reuse of the words elsewhere. `01-SHARED-CONTRACTS.md` §3 is the single place the
+forbidden list and this allow-list are defined; the byte string itself is B's
+(`03-AGENT-B-outdoor-crossing.md` Task 1 reads it from `RouteResponse.warnings`, Task 4
+pre-synthesizes it through your `/api/tts` at route load, and `06-INTEGRATION-AND-DEMO.md`
+checks it is visible on the route screen). Your check and A's `scripts/lint-phrases.ts` read
+the same committed constant — agree the path with A, do not keep a second copy. If §3 does not
+yet carry the sentence and its hash, flag it to A and B in the shared channel; a contract gap
+is not a licence to loosen the regex locally.
 
 ### `/api/vision`
 
@@ -256,8 +275,9 @@ if the phone ever awaits it inside AT_CURB or CROSSING, that is a bug in the cal
   `--tunnel` second (slow reloads), an EAS Update from the team account third. The demo
   phone never reloads its bundle during the run.
 - Logs: one line per request with `seq`, question/job, model, ms to first token, ms
-  total, `fallback`, and the language-rule verdict. Keep 24 h; the Nemotron eval artifact
-  (B, phase 3) is built from these lines.
+  total, `fallback`, and the language-rule verdict (`pass`, `blanked`, `rejected_422`, or
+  `allowlisted` for the hashed walking-beta sentence, so the exempt lane stays visible).
+  Keep 24 h; the Nemotron eval artifact (B, phase 3) is built from these lines.
 
 ---
 
@@ -434,7 +454,7 @@ and the disclaimer are never cut.
 - [ ] Jump-to-mode works for every mode; the eight perception packs and the hard cases exist and are used by B and C's tests
 - [ ] Proxy hosted in us-east with all six routes; `/api/health` reports five upstreams and `schemasWarm`; keys only server-side; `.env.example` committed
 - [ ] WebSocket vision → ElevenLabs streaming measured on the demo phone: first audio ≤ 1.5 s p50 for `storefront`; stale `seq` never spoken
-- [ ] Server-side forbidden-word and 12-word rule blanks or rejects; covered by a test
+- [ ] Server-side forbidden-word and 12-word rule blanks or rejects; tests cover the exemption both ways — the hashed walking-beta sentence pre-synthesizes through `/api/tts` and logs `allowlisted`, a paraphrase of it and every other "clear"/"safe" sentence still 422
 - [ ] Transition fires once on the replay track between 5 and 15 s after the door; debounce holds against a racing `forceEnter`; `STORE_ENTERED` is the only thing emitted
 - [ ] `forceEnter` and the manual signal-state override wired and used in a live rehearsal
 - [ ] Signal model v1 `.mlpackage` delivered to C with metrics and licences before integration start; held-out split kept apart; gate result reported at +14 h

@@ -23,7 +23,8 @@ builds; signal-model training data) did not complete; claims that depend on them
 
 Event window: **SteelHacks XIII runs 2026-09-19 11:00 → 2026-09-20 11:00 ET (~24 h)** [verified
 from the event schedule module]. Docs 06's multi-day hour-by-hour plan is therefore wrong at the
-root; §13 replaces it with a pre-event checklist plus a 24-hour build.
+root; the pre-event work now lives in `11-PHASE-0-CHECKLIST.md` and the phase order and gates
+in `06-INTEGRATION-AND-DEMO.md`, summarized below under "Revised roadmap & go/no-go gates".
 
 Direction from the team (2026-09-16/17), which this doc implements:
 crossings are a headline feature; moving-vehicle warnings are required; Expo Go is no longer a
@@ -36,8 +37,8 @@ Flow confirmed 2026-09-17 (second pass), which this doc now also implements: the
 the user to move the camera or themselves ("tilt up so I can see aisle names"); item pick-up
 guidance is a stretch beat; unsignalized (stop-sign) crossings get a scan-left/scan-right flow;
 haptics follow one rule everywhere — silence when on course, buzz growing with error; turns are
-spoken then haptically confirmed; the team starts well before the event, so the timeline in §13
-is a phase plan, not a 24-hour clock.
+spoken then haptically confirmed; the team starts well before the event, so the timeline under
+"Revised roadmap & go/no-go gates" is a phase plan, not a 24-hour clock.
 
 ---
 
@@ -76,8 +77,9 @@ is a phase plan, not a 24-hour clock.
    Claude only for ambiguity; pedometer as a prior; transition detection fused from five signals.
 10. **Sequence by risk, not by calendar.** The team starts before the event, so phase 0
     (dev-build toolchain proven on the demo phone, accounts, crossing photos, store walk, datasets,
-    signal model v1) is done before integration begins. Gates in §13 are relative to integration
-    start; the crossing beat has a fallback ladder so it demos at every rung.
+    signal model v1) is done before integration begins. The gates under "Revised roadmap &
+    go/no-go gates" — measured versions in `06-INTEGRATION-AND-DEMO.md` — are relative to
+    integration start; the crossing beat has a fallback ladder so it demos at every rung.
 
 ---
 
@@ -86,7 +88,7 @@ is a phase plan, not a 24-hour clock.
 | Topic | Docs 00–07 said | Decision now | Why |
 |---|---|---|---|
 | Street crossings | Explicit non-goal; disclaimer says "does not help with street crossings" | Headline feature: crossing-ahead awareness, alignment/veer, on-device signal state, vehicle-in-view alerts | Team decision. APS exists at ~5% of NYC and <2% of Chicago signalized intersections, so signal reading is real value; OKO proves the envelope is shippable |
-| Platform | React Native + Expo, Expo Go implied; `expo-av` | Expo **development build**; `expo-audio`; `react-native-vision-camera` + on-device inference | Expo Go: no frame API, single-flight capture, `expo-av` removed in SDK 55, login required since 2026-09-03, dev-menu gesture collides with the DebugPanel gesture |
+| Platform | React Native + Expo, Expo Go implied; `expo-av` | Expo **development build**; `expo-audio`; one native Swift `PerceptionModule` (ARKit + CoreML + Apple Vision) owns the camera | Expo Go: no frame API, single-flight capture, `expo-av` removed in SDK 55, login required since 2026-09-03, dev-menu gesture collides with the DebugPanel gesture |
 | Vision model | Nemotron Nano 2 VL for all vision, 1 frame / 2 s | Tier 0 on-device; Tier 1 Claude Haiku 4.5 (Sonnet 5 for the curb crop fallback); Nemotron out of the image path | Nemotron VL hosted latency is unpublished; the one independent measure is 4.66 s median TTFT (reasoning variant); `nvidia/nemotron-nano-12b-v2-vl` is absent from the public `/v1/models` list [verified 2026-09-17] |
 | Nemotron role | OCR of aisle signs | Navigation reasoning / intent / ambiguity / judging (text) | Track brief; free-tier latency tail (multi-second, occasional 429/503) is acceptable only off the real-time path |
 | Haptics / "beep faster" | Pulse-rate ramp = heading only; 4 patterns | Keep 4 haptic patterns; add audio beacon for direction; tempo-coded audio for signal state | Soundscape encodes direction, not distance; OKO encodes state as tempo; two haptic ramps would be ambiguous |
@@ -95,8 +97,10 @@ is a phase plan, not a 24-hour clock.
 | Backup demo | "Airplane-mode build" | A real installed dev build with a fixture-replay mode | Now possible; it was impossible in Expo Go |
 | Timeline | Multi-day hour-by-hour | 2-day pre-event prep + 24-h build with gates | Event is ~24 h |
 
-Doc-level consequences are itemized in §14. The two hour-one deliverables that other agents import
-— `contracts.ts` and the stubs — must reflect this doc, not 01/02, before anyone else starts.
+Doc-level consequences are itemized below under "Required doc changes & errata for 00–07". The two
+hour-one deliverables that other agents import — `contracts.ts` and the stubs — come verbatim from
+`01-SHARED-CONTRACTS.md`, which already carries every decision in this doc, before anyone else
+starts.
 
 ---
 
@@ -119,14 +123,17 @@ Doc-level consequences are itemized in §14. The two hour-one deliverables that 
 | Hand relative to target product (pick-up, stretch) | ~1 s | ~2 s per step | Low (retry) | 1 | Claude on successive frames |
 | Next spoken instruction wording | Per leg | seconds, precomputed | Low | 2 (route compile) | Nemotron; deterministic template fallback |
 
-### Tier 0 — on-device frame loop (dev build) **[verify: per-stage ms]**
+### Tier 0 — on-device frame loop (Swift `PerceptionModule`) **[verify: per-stage ms]**
 
-Frame (30 fps, 1280×720) → resize plugin to model input (320–640 px) → TFLite/CoreML inference
-→ lightweight tracker (IoU association across frames) → per-question gate and temporal filter →
-haptic/audio. Budget per frame on an iPhone 13–16 class: capture 0, resize 2–5 ms, YOLO-nano
-10–20 ms (ANE), tracking < 2 ms, decision < 1 ms → 15–30 ms. Mid-range Android with GPU/NNAPI
-delegate: 40–80 ms. Run detectors at 15 fps (every other frame) to leave thermal headroom; OCR at
-3–5 fps only in INDOOR mode. Frame-to-haptic latency target: < 150 ms.
+Everything in this tier runs inside the one native module specified in `09-PERCEPTION-MODULE.md`;
+no JS camera package is installed. ARKit frame (30 fps, 1280×720, `ARFrame.capturedImage`) →
+rotate and resize to model input (320–640 px) inside the module → CoreML inference on the Neural
+Engine (Apple Vision for OCR) → lightweight tracker (IoU association across frames) → per-question
+gate and temporal filter → rate-limited event to JS → haptic/audio. Budget per frame on an
+iPhone 13–16 class: capture 0, resize 2–5 ms, YOLO-nano 10–20 ms (ANE), tracking < 2 ms,
+decision < 1 ms → 15–30 ms. Per-mode schedule so four models never run at full rate together:
+detector 15 fps, depth 10, segmentation 5–10 when enabled, OCR 3 (indoor only).
+Frame-to-haptic latency target: < 150 ms.
 
 Temporal filters: signal state changes after ≥5 of the last 8 frames agree; vehicle STOP requires
 box-area growth > 40 % over 0.5 s on a track alive ≥ 0.3 s; OCR match requires the same normalized
@@ -187,30 +194,50 @@ and `nvext` acceptance for each job schema, thinking actually off. All numbers l
 
 ## Platform & deployment
 
-**Decision: Expo development build on iOS as the primary demo device; Android build as backup
-only if a second person owns it.** Camera owner: ARKit-based native `PerceptionModule`, owned by
-one of the three Mac users (recommended); `react-native-vision-camera` + CoreML plugins only if
-nobody will take the Swift module (see the course-keeping section for the trade). Everything in docs 00–07 that is not the camera pipeline
+**Decision: Expo development build on iOS as the primary demo device, Expo SDK 57 pinned.**
+Camera owner, decided and not optional: ONE native Swift `PerceptionModule`, built with the Expo
+Modules API on ARKit world tracking (`gravityAndHeading`) and owned by Agent C on Mac 1. It runs
+Apple Vision OCR, the CoreML detectors and monocular depth (segmentation later, optionally) and
+exposes `snapshotJPEG(maxWidth)` for cloud calls — see `09-PERCEPTION-MODULE.md` for the module
+and `01-SHARED-CONTRACTS.md` for its events. iOS allows one `AVCaptureSession` owner, so no other
+camera client exists anywhere in the app. Everything in docs 00–07 that is not the camera pipeline
 survives: Expo modules (`expo-location`, `expo-haptics`, `expo-sensors`, `expo-speech`,
 `expo-audio`, `expo-keep-awake`, `expo-file-system`), zustand, the contracts, the proxy.
 
 Why iOS: CoreML on the Neural Engine gives the best YOLO-nano latency; Core Haptics-class fidelity;
-`watchHeadingAsync` true heading with a calibration tier; OKO's precedent is iOS. Why not native
-Swift: it would be faster still, but it discards the whole RN plan and the team's contracts; choose
-it only if someone already ships Swift. Why not Flutter: no advantage over the RN dev build here.
+`watchHeadingAsync` true heading with a calibration tier; ARKit pose exists nowhere else; OKO's
+precedent is iOS. The Swift module costs ~300–600 lines on one Mac and a named Swift owner, and
+that cost is accepted: it is the only way to get ARKit pose, Apple Vision and the CoreML detectors
+off a single camera session. Why not a Swift-only app: it discards the RN plan and the team's
+contracts. Why not Flutter: no advantage over the RN dev build here.
 
-Package set **[verify versions against Expo SDK 57 on day 0]**: `react-native-vision-camera`
-(frame processors), `react-native-worklets-core`, `react-native-fast-tflite` (TFLite with CoreML /
-GPU delegates) or a CoreML native module, `vision-camera-resize-plugin`, an OCR plugin
-(`react-native-vision-camera-text-recognition` / ML Kit) or Apple Vision via a tiny native module,
-plus the Expo modules above. Pin `expo@~57`; do not let `create-expo-app` drift to SDK 58.
+Package set **[verify versions against Expo SDK 57 in phase 0 — `11-PHASE-0-CHECKLIST.md` V4]**:
+the Expo modules above plus `expo-dev-client`, `expo-modules-core`, zustand and the on-device STT
+module. The whole perception stack is native Swift inside `modules/perception/`, so no camera,
+frame-processor or on-device-inference package appears in `package.json`. Pin `expo@~57`; do not
+let `create-expo-app` drift to SDK 58.
 
-Deployment path (Mac with Xcode; free Apple ID): `npx expo prebuild` → `npx expo run:ios
---device` over USB → trust the developer profile on the phone (7-day provisioning; re-run before
-the event and again the morning of). Android: `npx expo run:android` → APK sideload. EAS Build is
-the fallback if the local toolchain fights you (queue times on the free tier are variable
-**[verify]**); TestFlight review is not viable in the window. First native build is 20–40 minutes;
-prove the whole path on the demo phone on **Sept 17–18**, not at the event.
+Camera stacks considered and rejected (do not reopen):
+
+| Package / path | Status | Why |
+|---|---|---|
+| `react-native-vision-camera` (+ `react-native-worklets-core`) | **REJECTED** | Cannot share the capture session with ARKit, so it costs the pose, plane detection and true-north world frame the course-keeping design depends on |
+| `react-native-fast-tflite`, `vision-camera-resize-plugin` | **REJECTED** | Useful only as vision-camera frame processors; CoreML on the Neural Engine runs inside the module instead |
+| A JS OCR plugin (`react-native-vision-camera-text-recognition` / ML Kit) | **REJECTED** | Apple Vision runs natively on `capturedImage`; a second camera client is not available anyway |
+| `expo-camera` | **REJECTED** | No frame access and single-flight capture on iOS (~1 capture/s at best) |
+| Android build / GPU-NNAPI inference budget | **REJECTED for this build** | The demo device is a non-Pro iPhone, nobody owns an Android path, and ARKit has no Android equivalent |
+
+CI keeps this honest: Agent A's hour-one task greps `package.json` for `expo-av`, `expo-camera`
+and `react-native-vision-camera` and fails on any of them (`02-AGENT-A-core-shell.md` Task 1).
+
+Deployment path (paid Apple Developer team; every Mac signed in to it in Xcode): `npx expo
+prebuild` → `npx expo run:ios --device` over USB, ~2 minutes after the first build. The Windows
+user's iPhone is registered with `eas device:create` and installs from EAS internal-distribution
+links (`eas build --profile development --platform ios`) while running its own
+`expo start --dev-client`. Batch native changes (Swift module, new CoreML models) and publish them
+through EAS so every phone stays current. TestFlight review is not viable in the window. First
+native build is 20–40 minutes; prove the whole path on the demo phone in phase 0
+(`11-PHASE-0-CHECKLIST.md` T1–T3), not at the event.
 
 Backup: the same installed build carries `EXPO_PUBLIC_MOCK=1` fixture replay (track, recorded
 crossing footage, pre-scored detections). This is the airplane-mode fallback docs 05/06 wanted.
@@ -224,7 +251,9 @@ login requirement bites on demo day.
 ## Crosswalk assistance
 
 ### Sub-flow and modes
-Add `APPROACH_CROSSING → AT_CURB → CROSSING → CROSSED` between outdoor legs (01 §1), events
+The crossing cycle between outdoor legs is `OUTDOOR_NAV → APPROACH_CROSSING → AT_CURB →
+CROSSING → OUTDOOR_NAV` (`01-SHARED-CONTRACTS.md` §1). There is no `CROSSED` mode: the event
+`FAR_CURB_REACHED`, not a mode, closes the cycle and returns the machine to `OUTDOOR_NAV`. Events:
 `CROSSING_AHEAD {street, signalized, pushButtonLikely, bearing}`, `SIGNAL_STATE {state: WALK |
 DONT_WALK | COUNTDOWN | UNKNOWN, fresh: boolean}`, `VEHICLE_APPROACHING {direction}`, and
 `FAR_CURB_REACHED`.
@@ -260,10 +289,13 @@ DONT_WALK | COUNTDOWN | UNKNOWN, fresh: boolean}`, `VEHICLE_APPROACHING {directi
 
 ### Permitted and forbidden language
 Permitted phrases (all pre-generated in ElevenLabs): "Crossing ahead: <street>. Signalized." /
-"Push button likely." / "Aligned." / "Walk signal on." / "Walk already on — wait for next." /
+"Push button likely." / "Walk signal on." / "Walk already on — wait for next." /
 "Don't walk." / "Countdown." / "Can't see the signal." / "Vehicle left|right|ahead." /
 "Compass uncertain." Forbidden in code, UI, pitch and disclaimer: safe, clear, go, cross now,
 no cars, you can cross.
+
+Alignment is never spoken. Being on course is signalled by the absence of the course buzz, and
+re-alignment after a turn by one `CONFIRM` tap — which is what keeps AT_CURB a near-silent zone.
 
 ### Model plan and gates **[verify dataset specifics]**
 - Data: US-convention public sets (Roboflow Universe pedestrian-signal / crosswalk-signal
@@ -271,7 +303,8 @@ no cars, you can cross.
   100–300 frames extracted from 3–5 minutes of video at each of the 2–3 demo crossings, both
   states, two times of day. Auto-label a first pass with a VLM, correct by hand.
 - Train YOLOv8n/YOLO11n at 640 px, ~50 epochs on a free Colab T4 (< 1 h); export CoreML
-  (`.mlpackage`) and TFLite int8. Owner: one human, start Sept 17.
+  (`.mlpackage`) — the only format this build loads. A TFLite int8 export stays optional and
+  unused, since the Android path is rejected. Owner and procedure: `10-CV-TRAINING-TRACK.md`.
 - Gate (hour ~14 of the event, on held-out local frames): false-WALK precision > 95%, WALK/HAND
   recall > 80% at 10–20 m, parallel-signal confusion < 2% after the geometric gate, on-device
   ≥ 15 fps. Miss the gate → next rung of the ladder.
@@ -353,9 +386,12 @@ accuracy ≤ 20 m or widen the radius to 25 m, otherwise urban-canyon jumps skip
 **Heading.** `expo-location.watchHeadingAsync` (`trueHeading`, `accuracy` 0–3) replaces the
 magnetometer plan in 02 Task 5 [verified]. Best tier = < 20° uncertainty, so a dead zone tighter than ~12° would buzz on
 sensor noise; keep 12° when `accuracy == 3`, widen to 18° at `accuracy == 2`, and suppress the
-course buzz (say "compass uncertain" once) below that. Add GPS cross-track error against the leg
-polyline (> 3 m toward the roadway side → buzz even if heading looks fine) so "drifting into the
-road" is caught by two independent sensors.
+course buzz (say "compass uncertain" once) below that. Add cross-track error against the leg
+polyline so "drifting into the road" is caught by two independent sensors, and use the fused estimate as the
+contract: buzz when `crossTrackM > 0.5` toward the roadway side (`01-SHARED-CONTRACTS.md` §2,
+`02-AGENT-A-core-shell.md` Task 3), heading error being fine or not. Raw GPS alone is 5–30 m, so
+in the degraded case (no pose, no curb line) it can only confirm a gross excursion, never fire the
+buzz on its own.
 
 **Turns.** At ~20 m: "Turn right in twenty feet." At the maneuver point (two consecutive fixes
 inside 15 m): "Turn right now." + `TURN`, then the course-error buzz runs against the next leg's
@@ -365,9 +401,13 @@ anywhere any more; silence is the reward.
 **The direction beacon (replaces "beep faster as you get closer").** Soundscape's beacon encodes
 direction, not distance: a steady spatialized pulse toward the target with an extra tick when the
 target is inside the forward window; it deliberately does not change with distance because a
-constantly changing signal fatigues [verified]. Adopt it: on a dev build, real stereo panning is
-available (Expo Go's `expo-audio` has no pan). Play it during approach to a maneuver point (last
-~40 m), toward the far curb while crossing, and toward the entrance in the final 40 m outdoors.
+constantly changing signal fatigues [verified]. Adopt it. `expo-audio` exposes no pan or balance
+property [verified], so direction comes from two hard-panned loops (`beacon_L.mp3`,
+`beacon_R.mp3`) played on two players whose volumes follow a constant-power law from the relative
+bearing (`02-AGENT-A-core-shell.md` Task 5, `11-PHASE-0-CHECKLIST.md` T5); if that fails, a
+pre-rendered set of five to seven pan positions switched by heading bucket. A native
+`AVAudioPlayer.pan` in the module is an upgrade for after phase 2, not a prerequisite. Play it
+during approach to a maneuver point (last ~40 m), toward the far curb while crossing, and toward the entrance in the final 40 m outdoors.
 Silent whenever speech plays, at AT_CURB except a sparse tick, and indoors. Distance is spoken,
 not beeped ("Twenty feet"). Onboarding teaches it in one 10-second exercise: "turn until the pulse
 is centered".
@@ -568,19 +608,18 @@ GPS is 5–30 m. The design is a fused estimate, all on-device:
   start ("walk straight for five seconds": compare `trueHeading` to GPS course while speed >
   0.5 m/s) and re-check whenever course and heading disagree > 10 s. A chest mount makes this
   stable; a hand-held phone does not.
-- **ARKit option (recommended if one person will write Swift):** iOS allows one camera owner
-  (`AVCaptureSession`); `react-native-vision-camera` and ARKit cannot run together. An ARKit-based
-  native `PerceptionModule` (Expo Modules API) owns the camera, emits 6-DoF pose from visual-
-  inertial odometry (centimetre-level relative drift, works indoors, no LiDAR needed — any A12+
-  iPhone), plane detection (floors, walls, shelf faces), a true-north-aligned world frame steadier
-  than the raw compass, and runs Apple Vision OCR + the CoreML detectors natively on
-  `capturedImage`, exposing a JPEG snapshot for Claude. Without a Pro there is no metric scene
-  depth — Depth Anything (monocular) covers wall/obstacle distance. Check whether ARKit geo
-  tracking supports Pittsburgh **[verify]** (≈1 m absolute outdoors if so). Costs: ~300–600 lines
-  of Swift on the Mac; tracking degrades in low light / blank walls (fall back to IMU); no
-  ultra-wide; ~20–30 %/h battery. Compared with vision-camera + heading fusion + curb
-  segmentation (±0.3–0.5 m, estimated), ARKit measures drift at ±0.05–0.1 m. Decide before any
-  camera code is written.
+- **ARKit pose (decided — this is why the Swift module exists):** iOS allows one camera owner
+  (`AVCaptureSession`), and the ARKit-based native `PerceptionModule` (Expo Modules API) is it.
+  It emits 6-DoF pose from visual-inertial odometry (centimetre-level relative drift, works
+  indoors, no LiDAR needed — any A12+ iPhone), plane detection (floors, walls, shelf faces), a
+  true-north-aligned world frame steadier than the raw compass, and runs Apple Vision OCR + the
+  CoreML detectors natively on `capturedImage`, exposing a JPEG snapshot for Claude. Without a Pro
+  there is no metric scene depth — Depth Anything (monocular) covers wall/obstacle distance. Check
+  whether ARKit geo tracking supports Pittsburgh **[verify]** (≈1 m absolute outdoors if so).
+  Costs: ~300–600 lines of Swift on Mac 1; tracking degrades in low light / blank walls (fall back
+  to IMU); no ultra-wide; ~20–30 %/h battery. ARKit measures drift at ±0.05–0.1 m against
+  ±0.3–0.5 m (estimated) for heading fusion + curb segmentation alone — which is the degraded
+  mode when tracking is lost, not a second camera stack.
 
 ### Picture → analysis → first spoken word in ~1.3–1.5 s (Claude tier)
 1. Stream; put `speech` first in the schema; start TTS when that string closes; pipe Claude's
@@ -603,17 +642,20 @@ The haptic tier answers at < 150 ms regardless.
   installs native builds from EAS internal-distribution links (`eas device:create`, `eas build
   --profile development --platform ios`). Batch native changes (Swift module, new CoreML models)
   and publish them via EAS so every phone stays current.
-- Suggested ownership: Mac 1 = `PerceptionModule` (ARKit, Vision OCR, CoreML, signal model);
+- Ownership (locked; see `00-PROJECT-BRIEF.md`): Mac 1 = `PerceptionModule` (ARKit, Vision OCR,
+  CoreML, signal model), `src/perception/`, `src/indoor/`, `models/`;
   Mac 2 = core app, haptics, speech, sensors, demo-phone builds; Mac 3 = outdoor + crossing flow,
-  Google/OSM/WPRDC, Nemotron jobs; Windows = proxy, harness/fixtures, demo tooling, model training.
-- One camera owner: vision-camera or ARKit, never both.
+  Google/OSM/WPRDC, Nemotron jobs and `server/routes/plan.ts`; Windows = the proxy (`server/`),
+  harness/fixtures, `src/transition/`, demo tooling, model training. The proxy is D's, never C's.
+- One camera owner: the `PerceptionModule` ARKit session. Nothing else opens a capture session
+  and no preview view is mounted.
 - Demo phone: no Pro is available; any A12+ iPhone runs ARKit VIO, and A15+ gives Neural Engine
   headroom for the models. Pick the newest non-Pro on the team; LiDAR is not required.
 - Thermal schedule: detector 15 fps, depth 10, segmentation 5–10, OCR 3 (indoor only), on the
   Neural Engine; disable what the mode does not need.
 - `app.json` permission strings before the first build: camera, precise location, motion,
   microphone, speech recognition, local network.
-- Rotate frames in the resize plugin (sensor orientation ≠ upright).
+- Rotate frames once inside the module (`capturedImage` is sensor orientation, not upright).
 - Bluetooth audio adds 150–250 ms; urgent cues stay haptic.
 - Guided Access on during use (chest-mounted screen gets touched).
 - Buzz fatigue is a safety failure: hysteresis, minimum duration, two-sensor agreement.
@@ -624,17 +666,17 @@ The haptic tier answers at < 150 ms regardless.
 
 | ID | Risk | Sev | Lik | Mitigation | Owner | When |
 |---|---|---|---|---|---|---|
-| R1 | Dev-build toolchain (Xcode, provisioning, pods, vision-camera) not working on the demo phone | Crit | Med | Prove `expo run:ios --device` with vision-camera + one TFLite model on Sept 17–18; keep EAS Build as fallback | human | pre-event |
+| R1 | Dev-build toolchain (Xcode, provisioning, pods, the Swift module) not working on the demo phone | Crit | Med | Phase-0 spike: `expo run:ios --device` with the `PerceptionModule` scaffold, a running ARKit session and one CoreML model on the demo iPhone (`11-PHASE-0-CHECKLIST.md` T1–T3); EAS internal distribution as the second install path | human | phase 0 |
 | R2 | Signal model under-performs on local crossings (domain shift, glare, distance) | Crit | Med | Local frames from the actual crossings; gate at hour 14; fallback ladder; fixed-time signal for the demo | human + C | pre-event → h14 |
 | R3 | Parallel-vs-perpendicular signal misread | Crit | Med | Heading ±20° gate, horizon strip, nearest-center rule, confusion measured < 2 % | C | build |
 | R4 | Stale WALK acted on | Crit | Med | Onset rule (fresh vs already-on), N-of-M, "wait for next" phrase | C | build |
 | R5 | False STOP mid-crossing from parked/cross-flow vehicles | High | Med | Growth + track-age thresholds; false-alarm budget on recorded footage | C | build |
-| R6 | Team plans a 36-h build for a 24-h event | Crit | High | §13 pre-event checklist; hour-14 and hour-18 cut lines | human | now |
+| R6 | Team plans a 36-h build for a 24-h event | Crit | High | `11-PHASE-0-CHECKLIST.md` before the clock starts; +14 h and +18 h cut lines in `06-INTEGRATION-AND-DEMO.md` | human | now |
 | R7 | Expo SDK drift to 58 / Expo Go login / `expo-av` imports break hour-one stubs | High | High | Pin `expo@~57`; `expo-audio`; no Expo Go dependency | A | h0 |
 | R8 | Compass heading worse than 20° near cars/steel → alignment flutter or wrong lock | High | Med | Gate on `accuracy`; say "compass uncertain"; calibrate figure-8 in onboarding | A/B | build |
 | R9 | Entrance geofence on a Places centroid misses by 50–100 m | High | High | Manual entrance pin from the venue walk | human + C | pre-event |
-| R10 | Nemotron free endpoint slow/429 during demo | Med | High | Precompute all route/store jobs; stream + 1.5 s deadline; templated fallback; OpenRouter failover | B/C | build |
-| R11 | Claude structured-output first-use grammar compile adds latency in the demo | Med | High | Warm every schema at proxy start; never vary the schema | C | integration |
+| R10 | Nemotron free endpoint slow/429 during demo | Med | High | Precompute all route/store jobs; stream + 1.5 s deadline; templated fallback; OpenRouter failover | B (`server/routes/plan.ts`) / D (proxy core) | build |
+| R11 | Claude structured-output first-use grammar compile adds latency in the demo | Med | High | Warm every schema at proxy start; never vary the schema | D (`/api/vision` route) / C (schema) | integration |
 | R12 | Transition fires 10–20 s late or double-fires | Med | High | Five-signal fusion; single fire; mock track reproduces the lag | D | build |
 | R13 | Audio masking at the curb hides traffic | High | Med | Near-silence policy; sparse ticker; open-ear headphones recommended | A | build |
 | R14 | Phone posture: cane in one hand, phone must face forward/up | High | High | Lanyard/chest mount; rehearse with a cane | human | pre-event |
@@ -647,12 +689,12 @@ The haptic tier answers at < 150 ms regardless.
 | R21 | Store refuses filming / demo | Med | Low | Ask on Sept 18; backup venue (campus market) mapped | human | pre-event |
 | R22 | VoiceOver double-speaks with app TTS | Low | Med | `duckOthers`, single live region, test once with VoiceOver on | A | integration |
 | R23 | Judges pattern-match to "AI describes the scene" | Med | Med | Lead with the handoff and the crossing envelope; name OKO/ShopTalk yourself | human | pitch |
-| R24 | Provisioning profile expires (7 days) on demo morning | High | Low | Re-run `expo run:ios` the morning of; keep the Mac at the venue | human | demo |
+| R24 | Build will not open after an overnight lock (stale EAS build, revoked certificate) | Med | Low | Paid Apple Developer team, so the 7-day free-ID expiry does not apply; re-run the build the morning of anyway and keep a Mac at the venue | human | demo |
 | R25 | Vehicle/hazard STOP and crossing STOP feel identical → confusion | Med | Med | STOP means stop, always; the spoken two words disambiguate | A | build |
 | R26 | Heading ≠ walking direction (hand-held phone rotated) → course buzz points the wrong way | High | Med | Chest mount; start-up calibration vs GPS course; re-check on disagreement | A/human | build |
 | R27 | Segmentation / depth models fail to export or run too slowly on-device | High | Med | Verify CoreML builds in phase 0; degrade to heading + dead reckoning only | C | phase 0 |
 | R28 | Thermal throttling from running four models concurrently | High | Med | Per-mode model schedule; Neural Engine; measure surface temp during rehearsal | C | integration |
-| R29 | Camera-session conflict (vision-camera vs ARKit) discovered late | High | Low | Decide the camera owner before any camera code | C | phase 0 |
+| R29 | A second camera client is added by accident (preview view, `expo-camera`) and fights the ARKit session | High | Low | `PerceptionModule` is the decided sole camera owner; CI grep keeps `expo-camera` and `react-native-vision-camera` out of `package.json`; no preview view anywhere | C | phase 0 |
 
 ---
 
@@ -665,8 +707,9 @@ cut order still apply; they are about risk, not the calendar.
 
 ### Pre-event (Sept 17–18) — everything with lead time; check hackathon rules on pre-written code
 (planning, accounts, data, environment setup are normally allowed; app code typically is not)
-- [ ] **Human:** Mac with Xcode; `expo run:ios --device` of a scratch dev build containing
-      vision-camera + fast-tflite + a stock YOLO-nano model, running on the demo iPhone (R1).
+- [ ] **Human:** Mac with Xcode; `expo run:ios --device` of a scratch dev build containing the
+      `PerceptionModule` scaffold, a running ARKit session and one CoreML model, on the demo
+      iPhone (R1; `11-PHASE-0-CHECKLIST.md` T1–T3).
 - [ ] **Human:** accounts and keys: Anthropic (confirm Start-tier limits visible), NVIDIA NIM
       (authenticated `/v1/models`, confirm `nemotron-3.5-lightning` id and `nvext` acceptance),
       ElevenLabs (voice chosen, quota), Google Maps billing + Routes enabled, Apple ID on the
@@ -677,16 +720,20 @@ cut order still apply; they are about risk, not the calendar.
       filming.
 - [ ] **Human:** download candidate US pedestrian-signal datasets; check licenses; extract and
       label local frames (VLM first pass, hand-corrected).
-- [ ] Decide team roles: A core/speech/haptics; B outdoor+crossing flow+Nemotron; C Tier 0
-      perception (detectors, OCR, signal model) + proxy; D harness/fixtures/transition/demo. If
-      any "agent" is an AI coding agent, a human owns every checkbox above and every venue task.
+- [ ] Confirm the locked ownership map (`00-PROJECT-BRIEF.md`): A (Mac 2) — `src/core/`,
+      `src/ui/`, `App.tsx`, `assets/audio/`; B (Mac 3) — `src/outdoor/`, `src/crossing/`,
+      `server/routes/plan.ts` and `route.ts`; C (Mac 1, Swift owner) — `modules/perception/`,
+      `src/perception/`, `src/indoor/`, `models/`; D (Windows) — `server/` (proxy core, health,
+      tts, stt, vision), `mocks/`, `fixtures/`, `src/transition/`, demo tooling, `training/`.
+      C never touches `server/`. If any "agent" is an AI coding agent, a human owns every
+      checkbox above and every venue task.
 
 ### Event (24 h, Sept 19 11:00 → Sept 20 11:00 ET)
-| Hour | Track A core | Track B outdoor/Nemotron | Track C perception/proxy | Track D harness/demo |
+| Hour | Track A core | Track B outdoor/Nemotron | Track C perception | Track D harness/proxy |
 |---|---|---|---|---|
-| 0–1 | `contracts.ts` per this doc (new modes/events), stubs pushed | — | Proxy skeleton, `/api/health` | — |
-| 1–4 | Haptics, speech queue, `expo-audio` cache player, sensors via `watchHeadingAsync` | Routes fetch + OSM/WPRDC crossing join; Nemotron route-compiler schema | vision-camera frame processor live; stock COCO detector at 15 fps; OCR plugin | Mock sensors + vision fixtures + jump-to-phase |
-| 4–8 | Onboarding, DebugPanel (long-press trigger), beacon (panned) | Legs, turn haptics, crossing sub-flow states, curb speech policy | Vehicle looming + STOP; OCR → fuzzy match → navigator | Transition fusion on the mock track |
+| 0–1 | `contracts.ts` verbatim from `01-SHARED-CONTRACTS.md`, stubs pushed | — | `PerceptionModule` scaffold builds and emits its heartbeat event | Proxy skeleton, `/api/health` across all five upstreams |
+| 1–4 | Haptics, speech queue, `expo-audio` cache player, sensors via `watchHeadingAsync` | Routes fetch + OSM/WPRDC crossing join; Nemotron route-compiler schema | `PerceptionModule` ARKit session live; stock COCO detector at 15 fps; Apple Vision OCR | Mock sensors + vision fixtures + jump-to-phase |
+| 4–8 | Onboarding, DebugPanel (long-press trigger), beacon (two hard-panned loops) | Legs, turn haptics, crossing sub-flow states, curb speech policy | Vehicle looming + STOP; OCR → fuzzy match → navigator | Transition fusion on the mock track |
 | **6 gate** | | | **Tier 0 frame loop running on the demo phone at ≥ 15 fps with STOP firing on recorded curb footage.** Miss → drop custom haptics polish; put a second person on C | |
 | 8–12 | Voice push-to-talk + STT + Nemotron intent | Nemotron jobs precomputed and cached; ElevenLabs pre-synthesis of variable phrases | Signal model v1 (trained pre-event or in hours 1–6) on-device; geometric gate; onset rule | Fixtures from recorded crossing + store video |
 | 12–14 | Integration on the demo phone, mocks off outdoors | | Signal model measured on held-out local frames | Rehearsal 1 (fixtures) |
@@ -702,10 +749,11 @@ alignment + map awareness + manual) → outdoor leg live (replay it) → transit
 Never cut: indoor aisle guidance, the handoff announcement, the haptic onboarding, the disclaimer.
 
 ### Day-0 checklist ordered by cost of late discovery
-1. Dev build installs and runs vision-camera on the demo phone. 2. Nemotron model id + `nvext`
-accepted; Claude schema warms. 3. Signal-model frames exist and are labeled. 4. Entrance pinned;
-crossing chosen; store mapped. 5. Phone hotspot + laptop + proxy path works. 6. ElevenLabs voice
-and cache generated. 7. `expo@~57` pinned, `expo-av` absent. 8. Lanyard/chest mount in hand.
+1. Dev build installs and runs the `PerceptionModule` ARKit session on the demo phone.
+2. Nemotron model id + `nvext` accepted; Claude schema warms. 3. Signal-model frames exist and are
+labeled. 4. Entrance pinned; crossing chosen; store mapped. 5. Phone hotspot + laptop + proxy path
+works. 6. ElevenLabs voice and cache generated. 7. `expo@~57` pinned; `expo-av`, `expo-camera` and
+`react-native-vision-camera` absent. 8. Lanyard/chest mount in hand.
 
 ---
 
@@ -716,37 +764,37 @@ for where each topic now lives); the table is kept as the record of what changed
 
 | Doc | Current text | Change to | Kind | Source |
 |---|---|---|---|---|
-| 00 Non-goals | "Street-crossing guidance, traffic/curb detection — not building"; "Outdoor obstacle detection from video — not building" | Remove both rows; add "Crossing assistance (signal state, alignment, vehicle-in-view) within the §Safety envelope of doc 08"; keep "shelf-level detection", "queue detection", "payment", "SLAM", "continuous narration" as non-goals | direction | team |
-| 00 Tech stack | "React Native + Expo … `expo-av`"; Nemotron Nano 2 VL for all vision | Expo **development build**; `expo-audio`; `react-native-vision-camera` + on-device inference; Claude Haiku 4.5 Tier 1; Nemotron 3.5 Lightning Tier 2 | direction + errata | Expo SDK 55 removed `expo-av` from Expo Go [verified] |
+| 00 Non-goals | "Street-crossing guidance, traffic/curb detection — not building"; "Outdoor obstacle detection from video — not building" | Remove both rows; add "Crossing assistance (signal state, alignment, vehicle-in-view) within the safety envelope in `08-ROADMAP-AND-CONCERNS.md`"; keep "shelf-level detection", "queue detection", "payment", "SLAM", "continuous narration" as non-goals | direction | team |
+| 00 Tech stack | "React Native + Expo … `expo-av`"; Nemotron Nano 2 VL for all vision | Expo **development build**; `expo-audio`; a native Swift `PerceptionModule` (ARKit + CoreML + Apple Vision) as the only camera owner; Claude Haiku 4.5 Tier 1; Nemotron 3.5 Lightning Tier 2 | direction + errata | Expo SDK 55 removed `expo-av` from Expo Go [verified] |
 | 00 Sponsor stack | "Nemotron Nano 2 VL … leads OCRBench v2" | Nemotron text model as decision layer; drop the OCRBench claim (not verified; the VL id is absent from the public model list) | direction + errata | NIM `/v1/models` 2026-09-17 |
-| 01 §1 AppMode | 8 modes | Add `APPROACH_CROSSING`, `AT_CURB`, `CROSSING`, `CROSSED`; allow `OUTDOOR_NAV ↔ APPROACH_CROSSING` cycles | direction | §5 |
-| 01 §5 Events | no crossing/vehicle events | Add `CROSSING_AHEAD`, `SIGNAL_STATE {state, fresh}`, `VEHICLE_APPROACHING {direction}`, `FAR_CURB_REACHED` | direction | §5–6 |
+| 01 §1 AppMode | 8 modes | Add `APPROACH_CROSSING`, `AT_CURB`, `CROSSING` — no `CROSSED` mode, `FAR_CURB_REACHED` returns to `OUTDOOR_NAV`; allow `OUTDOOR_NAV ↔ APPROACH_CROSSING` cycles | direction | Crosswalk assistance |
+| 01 §5 Events | no crossing/vehicle events | Add `CROSSING_AHEAD`, `SIGNAL_STATE {state, fresh}`, `VEHICLE_APPROACHING {direction}`, `FAR_CURB_REACHED` | direction | Crosswalk assistance + Moving-vehicle warnings |
 | 01 §4 Sensors | heading from magnetometer, rolling median | `watchHeadingAsync` with `accuracy` tier exposed; gate on it | errata | Expo docs [verified] |
-| 01 §6 Store map | `itemIndex.side` | `sideWhenAscending`, inverted by travel direction; add `entrance` pinned manually | errata | §9 |
-| 01 §7 VisionService | one cloud call per frame | Split: `PerceptionService` (Tier 0 events) + `SemanticVision` (Tier 1) | direction | §3 |
-| 01 §9 Latency table | "Camera frame → Nemotron result < 2.5 s; one frame every 2 s" | Tier 0 frame→haptic < 150 ms; Tier 1 p95 < 3 s adaptive; Tier 2 first token < 1.5 s or fallback | direction | §3 |
+| 01 §6 Store map | `itemIndex.side` | `sideWhenAscending`, inverted by travel direction; add `entrance` pinned manually | errata | Indoor guidance |
+| 01 §7 VisionService | one cloud call per frame | Split: `PerceptionService` (Tier 0 events) + `SemanticVision` (Tier 1) | direction | Perception architecture |
+| 01 §9 Latency table | "Camera frame → Nemotron result < 2.5 s; one frame every 2 s" | Tier 0 frame→haptic < 150 ms; Tier 1 p95 < 3 s adaptive; Tier 2 first token < 1.5 s or fallback | direction | Perception architecture |
 | 02 Task 1 | `npx expo install … expo-av`; Expo Go | dev-build package set; `expo-audio` | errata | [verified] |
 | 02 Task 5 | magnetometer heading | `watchHeadingAsync` | errata | [verified] |
 | 02 Task 7 | DebugPanel "three-finger tap" | long-press on the mode label (three-finger tap opens Expo's dev menu; shake too) | errata | Expo docs [verified] |
-| 02 Task 8 | "Aisle does not help with street crossings" | disclaimer text in §11 | direction | §11 |
-| 03 Scope | "no camera outdoors; refuse crossing work" | crossing sub-flow owned by B (flow) and C (perception) | direction | §5 |
+| 02 Task 8 | "Aisle does not help with street crossings" | disclaimer text under "Safety, privacy, trust" | direction | Safety, privacy, trust |
+| 03 Scope | "no camera outdoors; refuse crossing work" | crossing sub-flow owned by B (flow) and C (perception) | direction | Crosswalk assistance |
 | 03 Task 1 | "$200/month free credit"; Directions API | per-SKU free caps since March 2025; Routes API with field mask; walking-beta warning displayed | errata | Google pricing/Routes docs [verified] |
-| 04 all | Nemotron VL prompt, 2 s cadence, ≤1024 px JPEG q60 | Tier 0 OCR + fuzzy match; Claude ambiguity calls; 640×480 frames for Tier 1 (414 tokens) | direction | §3, §9 |
-| 05 Part 2 | GPS-degraded ×2 fixes, 0.6/0.4 fusion | five-signal fusion in §8; expect 5–15 s lag | errata | iOS/Android accuracy behaviour [verified] |
-| 05 Part 3 / 06 checklist | "airplane-mode backup build" | fixture-replay mode inside the installed dev build | direction | §4 |
-| 06 Dependency order | "Hour 0–1 … Hour 24+" multi-day | 24-hour plan in §13 with pre-event checklist | errata | event schedule [verified] |
-| 06 Judge Q&A | "we deliberately excluded street crossings" | envelope statement: reads signals like OKO, keeps the user aligned, warns of vehicles it can see, never decides | direction | §5, §11 |
+| 04 all | Nemotron VL prompt, 2 s cadence, ≤1024 px JPEG q60 | Tier 0 OCR + fuzzy match; Claude ambiguity calls; 640×480 frames for Tier 1 (414 tokens) | direction | Perception architecture + Indoor guidance |
+| 05 Part 2 | GPS-degraded ×2 fixes, 0.6/0.4 fusion | five-signal fusion under "Transition detection"; expect 5–15 s lag | errata | iOS/Android accuracy behaviour [verified] |
+| 05 Part 3 / 06 checklist | "airplane-mode backup build" | fixture-replay mode inside the installed dev build | direction | Platform & deployment |
+| 06 Dependency order | "Hour 0–1 … Hour 24+" multi-day | phase plan in `06-INTEGRATION-AND-DEMO.md`, with `11-PHASE-0-CHECKLIST.md` before it | errata | event schedule [verified] |
+| 06 Judge Q&A | "we deliberately excluded street crossings" | envelope statement: reads signals like OKO, keeps the user aligned, warns of vehicles it can see, never decides | direction | Crosswalk assistance + Safety, privacy, trust |
 | 07 §1 | Nano 2 VL details, "leads OCRBench v2", credits system | Nemotron 3.5 Lightning, `enable_thinking:false`, `nvext.guided_json`; NIM free tier has no credits, unpublished per-model rate limits | errata | NVIDIA forum/staff statements [verified] |
 | 07 §2 | Flash v2.5 (correct); `expo-av` preload | keep Flash v2.5; `expo-audio`; write numbers as words (Flash does no normalization); free-plan concurrency 4 | errata | ElevenLabs docs [verified] |
-| 07 §3 | keys for 3 providers | add `ANTHROPIC_API_KEY`; `/api/vision` (Claude), `/api/plan` (Nemotron), `/api/tts`, `/api/stt`, `/api/route`, `/api/health` all five upstreams | direction | §3 |
+| 07 §3 | keys for 3 providers | add `ANTHROPIC_API_KEY`; `/api/vision` (Claude), `/api/plan` (Nemotron), `/api/tts`, `/api/stt`, `/api/route`, `/api/health` all five upstreams | direction | Perception architecture |
 
 ---
 
 ## Open questions for the team
 
 1. Hackathon rules: what may be prepared before 11:00 on Sept 19 (environment, datasets, labeled
-   frames, accounts are usually fine; app code usually is not)? This decides how much of §13's
-   pre-event list is allowed.
+   frames, accounts are usually fine; app code usually is not)? This decides how much of
+   `11-PHASE-0-CHECKLIST.md` is allowed; it is that doc's item R0.
 2. Which of the three Mac users owns the Swift `PerceptionModule`, and which non-Pro iPhone is
    the demo phone? (Decides the camera owner, R1 and the Neural Engine numbers.)
 3. Are Agents A–D four humans, or AI coding agents with fewer humans? Every venue, photo, phone-
@@ -757,8 +805,8 @@ for where each topic now lives); the table is kept as the record of what changed
    model starts on Sept 17 with the fallback ladder as the plan of record, not the exception.
 6. Is there access to a blind or low-vision tester for a 10-minute indoor session, with an O&M
    professional or sighted guide?
-7. Which two things get cut first if hour 18 arrives with a broken live path — the order in §13
-   is the recommendation; confirm it now, not at 3 a.m.
+7. Which two things get cut first if the +18 h cut line arrives with a broken live path — the
+   order under "Cut priority if behind" is the recommendation; confirm it now, not at 3 a.m.
 
 Two items in this doc remain **[verify]**: exact dev-build package versions/lead times and the
 specific US-convention signal datasets. Both are cheap to check on Sept 17 and are listed first in

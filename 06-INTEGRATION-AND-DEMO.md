@@ -2,7 +2,7 @@
 
 Who this is for: whoever is running integration, the narrator, and the operator. It says in
 what order things must land, what is measured at each gate, what gets cut, and exactly what
-happens for three minutes in front of judges. Rationale lives in `08-ROADMAP-AND-CONCERNS.md`;
+happens in the 180 seconds in front of judges. Rationale lives in `08-ROADMAP-AND-CONCERNS.md`;
 names of modes, events and services are the ones in `01-SHARED-CONTRACTS.md`.
 
 Fixed anchors [verified]: hacking opens Sat 2026-09-19 11:00 ET; submission closes Sun 11:00;
@@ -133,7 +133,11 @@ can tell is a demo that stalls.
 
 ---
 
-## Demo run-of-show (target 2.5–3 minutes)
+## Demo run-of-show (target 180 s)
+
+180 s is the number, not a range: the beat table below runs 0:00 to 3:00 with the limits script
+closing it, and rehearsals R2 and R3 in `05-AGENT-D-harness-transition-demo.md` are timed against
+the same 180 s. A run over it loses the walk-up to fixtures first, never the crossing or the aisle.
 
 Reality of the floor: judging is indoors at a table. The outdoor leg, the crossing and the
 transition **are replayed from fixtures on the installed build** — real haptics, real speech, real
@@ -154,7 +158,7 @@ live will discount everything else.
 | 1:55 | Aisle | live | Operator raises the printed "1 PRODUCE" sign, then "3 DAIRY": AISLE_IDENTIFIED after 2 of 3 reads → "Aisle three. Eggs on your right." DebugPanel on screen for five seconds: OCR reads, detector fps, frame → event ms. Proves it is live |
 | 2:20 | Item (stretch) | live | Carton on the table: "Reach out." → "Higher." → "Touching." + CONFIRM. If ITEM_PICKUP was cut, skip straight to checkout; "Eggs on your right" is the guaranteed payoff |
 | 2:35 | Checkout → DONE | jump-to-mode | "Checkout ahead." Completes the arc; five seconds |
-| 2:40 | Honest limits | — | Script below, twenty seconds, verbatim |
+| 2:40 | Honest limits | — | Script below, twenty seconds, verbatim; the run ends at 3:00 |
 
 Limits script: "What it cannot do: judge speed or distance of a vehicle; see cross traffic or
 anything behind the ~70° forward view; know whether a driver will stop; read a signal at night;
@@ -333,7 +337,7 @@ In priority order:
 - [ ] +6 h, +14 h and +18 h gates measured and written down with numbers, not adjectives
 - [ ] Two live venue runs recorded (jsonl, DebugPanel stats, spotter video); fixtures regenerated
       from the second
-- [ ] Run-of-show under three minutes in rehearsal 3, with the replay and live beats labelled
+- [ ] Run-of-show timed at 180 s or less in rehearsal 3, with the replay and live beats labelled
 - [ ] Backup phone carries the same build and fixture set in mock mode
 - [ ] Eval artifact, licences, attribution and the limits script in the repo
 - [ ] Failure-mode checklist run once in rehearsal and once on the morning

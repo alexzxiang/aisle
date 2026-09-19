@@ -240,7 +240,13 @@ the curb, mid-crossing and down an aisle, so it is learned once.
   fire one `CONFIRM`, then silence. No other automatic CONFIRM.
 - **Side:** a single motor carries magnitude only. Direction comes from the beacon when it
   is active (Task 5); when it is not, and the error has persisted > 5 s, say
-  `turn_left_a_little` / `turn_right_a_little` once (`NAV`, dedupe 8 s).
+  `course_hint_left` / `course_hint_right` once (`NAV`, dedupe 8 s). These are A-side keys,
+  deliberately **not** the Tier-1 prompts `turn_left_a_little` / `turn_right_a_little` that
+  01 §3 lists and `04-AGENT-C-perception-indoor.md` emits: that pair is gated "never while
+  the COURSE buzz is active" (01 §8, streaming contract item 4), which is exactly when this
+  hint is needed. Two mechanisms, two keys, one gate keyed by `cacheKey` (Task 4), so
+  neither silences the other. The two new keys are an A-side addition to 01 §3's cache-key
+  list; flag them there before any other agent uses them.
 - Emit `COURSE_DEVIATION {meters, side}` on the bus when the roadward rule trips (once per
   episode), so the DebugPanel and B's controller can see it.
 
@@ -259,7 +265,9 @@ and re-checked here (a digit in `text` is rejected in dev).
 ### Cached tier (build first)
 
 - `src/core/phrases.ts`: the ~40 canonical phrases keyed exactly as 01 §3 lists them
-  (`disclaimer`, `compass_uncertain`, `crossing_ahead_signalized`, ..., `offline_notice`).
+  (`disclaimer`, `compass_uncertain`, `crossing_ahead_signalized`, ..., `offline_notice`),
+  plus the two A-side COURSE side-hint keys `course_hint_left` / `course_hint_right`
+  (Task 3) — an addition to 01 §3, flagged there before anyone else calls them.
   The text in this file is the only permitted wording; other agents pass `cacheKey`s.
 - `scripts/generate-audio.ts`: one ElevenLabs call per phrase, ≤ 4 in flight (free-plan
   concurrency), writes `assets/audio/<cacheKey>.mp3`. Commit the files; regenerate only
@@ -305,7 +313,12 @@ and re-checked here (a digit in `text` is rejected in dev).
   camera/user prompts; any mode — disclaimer, `offline_notice`, abort. A request outside the
   policy is dropped and counted in the DebugPanel, not spoken.
 - `cameraRequest` / `userAction` prompts (C emits `CAMERA_REQUEST` / `USER_ACTION`; you
-  speak them): ≤ 6 words, ≤ 1 per 3 s, never while COURSE is buzzing.
+  speak them as `tilt_camera_up`, `turn_left_a_little`, `turn_right_a_little`): ≤ 6 words,
+  ≤ 1 per 3 s, never while COURSE is buzzing (01 §8 item 4, restated in 04). The gate is on
+  **that key class**, not on the words: A's own `course_hint_left` / `course_hint_right`
+  (Task 3) are exempt, the one `NAV` utterance the gate lets through while the buzz runs
+  (`CRITICAL` was never gated). At AT_CURB and CROSSING the mode policy above drops the
+  side hint anyway, which is the intended near-silence at the curb.
 - `setRate(rate)`: `expo-audio` `setPlaybackRate` with pitch correction, 0.8–1.6, applied
   to every player. One file set serves all rates.
 - Utterances per minute is counted here and shown in the DebugPanel. Above ~8 the app is
@@ -488,6 +501,7 @@ VoiceOver pass. Do the demo-phone `expo run:ios --device` of an empty dev build 
 - [ ] TURN / STOP / CONFIRM distinguishable through a lanyard-mounted phone; STOP pre-empts COURSE
 - [ ] COURSE: silent inside the dead zone at rest (no flutter), dead zone follows the compass tier, `compass_uncertain` once below tier 2, roadward rule needs two agreeing signals, 0.5 s hysteresis both ways, one CONFIRM on re-alignment after TURN, buzz change < 200 ms
 - [ ] Speech queue provably drops repeats, enforces the 4 s gap, rejects > 12 words and digits in dev, CRITICAL interrupts every backend through one handle, mode policy silences everything at AT_CURB except signal, vehicle and scan speech
+- [ ] The "never while COURSE is buzzing" gate keys off the Tier-1 prompt keys only (`tilt_camera_up`, `turn_left_a_little`, `turn_right_a_little`); `course_hint_left` / `course_hint_right` still speak during the buzz, and both keys are flagged for 01 §3
 - [ ] Forbidden-word lint runs on pre-commit and at runtime; zero hits in `src/`, `server/`, `fixtures/`, phrases and pitch script
 - [ ] All ~40 phrases generated with one voice, bundled, playing in airplane mode; `prefetch` caches variable phrases at route/store load; `playStream` first audio measured on-device [verify chunked playback]
 - [ ] `expo-speech` fallback fires on network failure; ring-switch behaviour documented in onboarding
