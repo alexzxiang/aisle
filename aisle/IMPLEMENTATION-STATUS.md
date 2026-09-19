@@ -46,9 +46,11 @@ device" — see §5.
 | 16 | DebugPanel, mocks, fixtures, jump-to-mode, manual overrides | Partial | `src/ui/DebugPanel.tsx`, `IntegrationControls.tsx`, `mocks/**`, `fixtures/**` | Mocks and panel are complete; since the review the perception packs are keyed by `AppMode` (curb pack arms on the AT_CURB edge), `curb-walk-onset` carries 10 Hz poses and a vehicle beat, steps emit on change, and `mocks/endToEnd.test.ts` drives OUTDOOR_NAV → CROSSING through `composeApp`. **Every fixture is synthetic** (`fixtures/README.md`: "State today: everything is SYNTHETIC"); `stores/demo-store-01.json` and `crossings/demo.json` are hand-written placeholders; frames are three identical placeholder JPEGs; `indoor-aisle-walk` has no CHECKOUT sign (G37). Missing on the panel: battery (needs `expo-battery`), `/api/health` dots, proxy-URL override / LAN toggle, socket state, runtime replay toggle. A DebugPanel jump to `APPROACH_CROSSING` flickers through `OUTDOOR_NAV` once. |
 | 17 | Proxy (`/api/vision`, `/ws`, `/api/plan`, `/api/tts`, `/api/stt`, `/api/route`, `/api/health`) | Implemented | `server/**` | Code complete, 140 tests against faked upstreams (the speech lane now blanks any string with a digit, mirroring the client lock), `.env.example` for the five keys. **Not deployed anywhere**, no keys, no real upstream call ever made, WS vision → first audio ≤ 1.5 s p50 unmeasured. No `GET /api/tts/stream/:id` (see #10). OpenRouter failover key not in the locked key list. |
 | 18 | CV training track (data, labelling, YOLO training, CoreML export, gate scoring, report) | Stub | `training/**` | Five scripts compile and print `--help`; `score_gate.py` verified on synthetic data. **No video, no frames, no labels, no dataset survey, no run, no export**; `eval/ped-signal-v1-report.md` is all `TBD`; `LICENSES.md` dataset rows unfilled. |
+| 20 | "Take me to \<place\>" (round 4): look → plan → OSM places → destination-only trip → "You have arrived." | Implemented | `src/core/destinations.ts`, `trip.ts` (DESTINATION_REQUESTED), `server/routes/places.ts`, `src/core/voice.ts`, `src/outdoor/plannerJobs.ts` | Live: `/api/places?q=CVS` near CMU returns three CVS Pharmacies (1.2–1.5 km); parseIntent classifies both phrasings (Nemotron or the local template). The walk to the place still needs `/api/route` (Google Routes disabled → degraded straight-line leg). |
+| 21 | Guided tasks (round 4): "take me to the eggs in my fridge" → context-specific steps, camera-confirmed | Implemented | `src/core/guidedTask.ts`, `store.ts` (GUIDED_TASK), `plannerJobs.ts` (taskPlan), `server/prompts/vision.ts` (task_step), `fixtures/plan/taskPlan.json` | Live: Nemotron `taskPlan` for home returned five fridge steps in 5.1 s (8 s deadline; template on a miss); Haiku `task_step` answered a facts-only ask in 1.7 s with `task.done` + a micro-hint. Not yet walked with the phone camera. |
 | 19 | Builds (dev build on the demo phone, EAS internal distribution) | Partial | `app.json`, `eas.json`, `ios/` (generated) | `expo prebuild --clean` + `pod install` succeed with Perception linked. `xcodebuild` **fails on this Mac** (no iOS platform component installed). No `expo run:ios --device` has ever completed. No EAS build has been requested; no device UDIDs registered. |
 
-Tally: 8 Implemented, 9 Partial, 1 Stub, 1 Not started.
+Tally: 10 Implemented, 9 Partial, 1 Stub, 1 Not started.
 
 ---
 
@@ -379,3 +381,37 @@ hold-to-talk → on-device STT, the DebugPanel readouts. Proxy route counters we
 20:48, i.e. the phone has not connected live yet.
 
 **Degraded route mode (2026-09-18, `241492c`).** When `/api/route` fails with an http/shape error (Google Routes disabled — the current state until the API is enabled on project 188682982044 — or a 5xx), the trip speaks "No route data. Heading straight to the store." and installs a one-leg ARRIVE route on the bearing to the pinned entrance, so perception, the transition and the indoor flow still run; crossings are not announced on that leg (nothing is known about them). Network/timeout errors keep the offline notice. The Home-screen banner "Couldn't plan the route. Check the connection…" seen on the first live attempt was this server-side failure wearing the connection wording; the degraded scope now reads neutrally.
+
+## Round 4 — 2026-09-18/19: destinations and guided tasks
+
+**"Take me to CVS."** The parsed intent `navigate_to` echoes ("CVS. Got it."), then the trip
+speaks "Let me see your surroundings.", runs the describer's look, speaks "Planning your
+route." and resolves the name: the loaded store map when its display name matches (keeps the
+aisle flow), else `GET /api/places` (Overpass category fetch, name/brand ranking, nearest
+first) synthesized into a no-aisle map (`poi-<id>`, 35 m entrance). The trip then runs
+destination-only: outdoor guidance → store-entry handoff → DONE with "You have arrived."
+No fix → "I need your location. Step outside."; no match / proxy down → "I could not find
+that place nearby." A later request while resolving supersedes the earlier one.
+
+**"Take me to the eggs in my fridge."** `guided_task` (home words, or Nemotron's call) →
+`GUIDED_TASK`. The controller speaks "Let me see your surroundings.", looks, asks Tier 2
+`taskPlan` with the goal, the context (home / store / street, from the mode) and the
+camera's current detections + OCR, and speaks step one ("Walk to the kitchen door frame.").
+Every 3 s it asks Tier 1 `task_step` with the goal, the step and what to look for; Claude's
+micro-hint ("Fridge door, pull handle down.") and camera / hand prompts are spoken by the
+vision service, and two confident `task.done` readings close the step (CONFIRM tap, "Step
+done.", next step). "Next" / "done" / "skip" advance by hand, "repeat" re-speaks, the step
+is re-spoken every 20 s, "stop" aborts. Last step → "Done. Task complete." Store context
+plans aisles and shelves; street context plans doors and standing places only (never when
+to cross).
+
+Gates on this checkout: app typecheck, 1009 Jest tests (68 suites), `lint:phrases`,
+`lint:deps`; server tsc + 157 vitest. Seven new cached phrases (78 total).
+
+Live from the Mac (proxy restarted with the new code): `parseIntent` → `navigate_to CVS`
+and `guided_task "eggs that are in my fridge"` (Nemotron missed the 4.5 s first-token
+deadline both times; the template classified them); `taskPlan` home → five fridge steps from
+Nemotron in 5.1 s; `taskPlan` store → 8 s deadline miss → template; `task_step` → Haiku 1.7 s
+(`/api/vision` needed `GUIDED_TASK` added to its mode enum — fixed); `/api/places?q=CVS`
+near CMU → three CVS Pharmacies. Not yet run on the phone (it was unplugged); the round-3
+native changes (camera preview view, expo-blur) still need the signed rebuild.
