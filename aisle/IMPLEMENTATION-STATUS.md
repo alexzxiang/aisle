@@ -684,3 +684,25 @@ forward."). New trace channel: `POST /api/trace` → `server/data/cache/trace.js
 per guide decision, task_step answer, detector summary, spoken/heard line and task event, so
 the next "it is confused" can be read instead of guessed. Not yet re-tested in the living
 room with the fixed proxy.
+
+## C — 2026-09-19 (v2): the vision eval can run the moment there are frames
+
+TEAM-PLAN v2 C2 was waiting on Stream A's session export for real frames. It no longer has
+to: the phone already sends every still with its facts to the proxy, so `CAPTURE_FRAMES=1`
+now records each vision call — JPEG, facts, question, Claude's answer — at the one
+`deps.vision` seam that both the HTTP route and the WebSocket use. **This is an opt-in
+exception to "the proxy keeps none" above:** off by default, a startup warning when on,
+written only to the git-ignored `server/data/cache/frames/`, because a captured frame is a
+photo of someone's home.
+
+`server/routes/vision.eval.ts` turns a capture into numbers: `--label` writes a skeleton
+that deliberately leaves out Claude's answer, so the labeller is not anchored to it, and never
+overwrites a filled-in entry; the default run scores the answers the phone actually got at no
+API cost; `--rerun` re-asks Haiku and Sonnet on the same frames through a new model
+override. A target box is a hit when its centre is within 0.1 of the label on both axes, and
+"not in view" has to match too — a timeout is never credited as correctly seeing nothing.
+
+Verified end to end against the live API with a placeholder fixture frame (captured, labelled,
+scored recorded / Haiku 2.4 s / Sonnet 3.1 s). That proves the machinery, not accuracy: no
+real living-room frames are labelled yet, so v2's ≥ 80 % target-box acceptance is unmeasured.
+Next step for whoever runs the living-room test: start the proxy with `CAPTURE_FRAMES=1`.

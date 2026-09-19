@@ -19,11 +19,12 @@ import {
 } from './lib/elevenlabs';
 import { type HealthService, createHealthService, defaultHealthChecks, http429, type RateLimitCounters } from './lib/health';
 import { type LatencyTracker, latency } from './lib/latency';
-import { type RequestLog, requestLog } from './lib/log';
+import { type RequestLog, requestLog, warn } from './lib/log';
 import { type NimDeps, nimChat } from './lib/nim';
 import { type Semaphore, elevenLabsSlots } from './lib/semaphore';
 import { type WarmupRegistry, createWarmupRegistry, loadJobSchemas } from './lib/warmup';
 import { withFirstTokenDeadline } from './lib/deadline';
+import { withFrameCapture } from './lib/frameCapture';
 
 /** Warm-up only: the schema grammar compiles on first use and can exceed the 4 s hot-path cap. */
 export const WARM_VISION_TIMEOUT_MS = 25_000;
@@ -87,6 +88,9 @@ export async function createDefaultDeps(opts: CreateDepsOptions = {}): Promise<A
     },
   });
 
+  const vision: AppDeps['vision'] = (req, hooks) => runVision(req, hooks, { ...anthropicDeps, timeoutMs: visionTimeoutFor(req.question) });
+  if (config.captureFrames) warn('CAPTURE_FRAMES=1: every vision still is being saved to server/data/cache/frames');
+
   const health = createHealthService({
     config,
     checks: defaultHealthChecks(config, opts.fetchFn ?? fetch),
@@ -102,7 +106,8 @@ export async function createDefaultDeps(opts: CreateDepsOptions = {}): Promise<A
     latency,
     slots: elevenLabsSlots,
     counters: http429,
-    vision: (req, hooks) => runVision(req, hooks, { ...anthropicDeps, timeoutMs: visionTimeoutFor(req.question) }),
+    // HTTP and the WebSocket both call this, so one wrap records every frame from either.
+    vision: config.captureFrames ? withFrameCapture(vision).vision : vision,
     tts: {
       flash: (text, o) => ttsFlash(text, eleven, o),
       stream: (text, o) => ttsFlashStream(text, eleven, o),

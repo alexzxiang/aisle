@@ -26,6 +26,8 @@ export interface ProxyConfig {
   elevenLabsBaseUrl: string;
   elevenLabsWsBaseUrl: string;
   warmupOnStart: boolean;
+  /** CAPTURE_FRAMES=1: keep every vision still + facts + answer for the eval. Off by default — see lib/frameCapture.ts. */
+  captureFrames: boolean;
 }
 
 export const MODELS = Object.freeze({
@@ -62,6 +64,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProxyConfig {
     elevenLabsBaseUrl: str(env, 'ELEVENLABS_BASE_URL') ?? 'https://api.us.elevenlabs.io',
     elevenLabsWsBaseUrl: str(env, 'ELEVENLABS_WS_BASE_URL') ?? 'wss://api.us.elevenlabs.io',
     warmupOnStart: (str(env, 'WARMUP_ON_START') ?? '1') !== '0',
+    captureFrames: str(env, 'CAPTURE_FRAMES') === '1',
   };
 }
 
