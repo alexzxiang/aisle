@@ -21,7 +21,8 @@
         "UIRequiredDeviceCapabilities": [
           "arkit"
         ]
-      }
+      },
+      "appleTeamId": "S88T76V4WJ"
     },
     "android": {
       "adaptiveIcon": {
