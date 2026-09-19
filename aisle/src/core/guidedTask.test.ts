@@ -470,6 +470,73 @@ describe('createGuidedTask', () => {
     task.dispose();
   });
 
+  it('bananas on the table, bananas in view: guides at once from geometry (no planner, no description), reaches, confirms', async () => {
+    const h = harness();
+    let dets: Detection[] = [
+      { cls: 'banana', box: [0.7, 0.4, 0.1, 0.1], score: 0.9, trackId: 1 },
+      { cls: 'table', box: [0.1, 0.3, 0.4, 0.4], score: 0.9, trackId: 2 },
+    ];
+    const guide = createGuide({ detections: () => dets, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => Date.now() });
+    const task = createGuidedTask({ ...h.deps, guide });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas on the table', context: 'home', source: 'voice' });
+    expect(h.planner).not.toHaveBeenCalled();
+    expect(h.describe).not.toHaveBeenCalled();
+    expect(h.said[0].text).toMatch(/^Bananas just to your right\. Turn right a little, then walk/);
+    expect(h.haptic).toContain('TURN');
+    expect(task.getDebugState()).toMatchObject({ stage: 'approach_item', goal: 'bananas on the table', total: 3, step: 0 });
+    // The model is asked silently for the item's box; its words stay muted while geometry speaks.
+    await flush(TASK_TICK_MS);
+    expect(h.asks.mock.calls.some(([q, o]: [string, { userText?: string; silent?: boolean }]) => q === 'task_step' && /Look for: bananas/.test(o.userText ?? '') && o.silent)).toBe(true);
+    // Walk up: within reach → the hand loop → touching → the pickup question → "yes" → done.
+    dets = [{ cls: 'banana', box: [0.3, 0.2, 0.4, 0.7], score: 0.9, trackId: 1 }];
+    await flush(2500);
+    expect(h.said.map((s) => s.text)).toContain('Bananas right in front of you. Reach out.');
+    expect(task.getDebugState().step).toBeGreaterThanOrEqual(1);
+    await flush(4000);
+    expect(task.getDebugState()).toMatchObject({ stage: 'confirm', step: 2 });
+    expect(h.said.map((s) => s.text)).toContain('Have you picked it up? Say yes when you have it.');
+    expect(task.intercept('yes I have them')).toBe(true);
+    expect(h.said[h.said.length - 1].text).toBe(PHRASES.task_done);
+    task.dispose();
+  });
+
+  it('bananas on the table, only the table in view: walks to the table, then scans it; "where are they" repeats', async () => {
+    const h = harness();
+    let dets: Detection[] = [{ cls: 'table', box: [0.05, 0.3, 0.3, 0.3], score: 0.9, trackId: 2 }];
+    const guide = createGuide({ detections: () => dets, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => Date.now() });
+    const task = createGuidedTask({ ...h.deps, guide });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas on the table', context: 'home', source: 'voice' });
+    expect(h.said[0].text).toMatch(/^No bananas yet\. Table at (?:eleven|ten) o'clock\. Turn left/);
+    expect(task.getDebugState().stage).toBe('approach_place');
+    dets = [{ cls: 'table', box: [0.1, 0.1, 0.8, 0.9], score: 0.9, trackId: 2 }];
+    await flush(2500);
+    expect(h.said.map((s) => s.text)).toContain('At the table. Tilt the camera down and pan slowly.');
+    expect(task.getDebugState().stage).toBe('scan_place');
+    expect(task.intercept('where are the bananas')).toBe(true);
+    expect(h.said[h.said.length - 1].text).toMatch(/Still looking for the bananas|At the table/);
+    task.dispose();
+  });
+
+  it('bananas on the table, nothing in view: asks whether the table is elsewhere, keeps the mission, then hunts a doorway from the model\'s box', async () => {
+    const h = harness({ askImpl: async (userText) => {
+      const r = applied({ done: false, confidence: 0.1 });
+      if (/Look for: the doorway/.test(userText)) r.response!.target = { box: [0.62, 0.3, 0.12, 0.4], confidence: 0.9 };
+      return r;
+    } });
+    const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => Date.now() });
+    const task = createGuidedTask({ ...h.deps, guide, scene: () => 'in a bedroom' });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas on the table', context: 'home', source: 'voice' });
+    expect(h.said[0].text).toBe('I think the table is in the kitchen. Is that right?');
+    expect(task.intercept('yes')).toBe(true);
+    expect(h.said[h.said.length - 1].text).toBe('Turn slowly until I see a doorway.');
+    expect(task.getDebugState()).toMatchObject({ active: true, stage: 'find_door', goal: 'bananas on the table' });
+    await flush(TASK_TICK_MS + 3000);
+    expect(h.asks.mock.calls.some(([, o]: [string, { userText?: string }]) => /Look for: the doorway/.test(o.userText ?? ''))).toBe(true);
+    expect(h.said.map((s) => s.text).some((x) => /^Doorway just to your right\. Turn right a little, then walk (?:four|five|six) steps\.$/.test(x))).toBe(true);
+    expect(h.said.filter((r) => r.text === 'I think the table is in the kitchen. Is that right?')).toHaveLength(1);
+    task.dispose();
+  });
+
   it('keeps eggs through opening, item localization, hand steering and explicit pickup confirmation', async () => {
     const eggBox: [number, number, number, number] = [0.2, 0.3, 0.15, 0.1];
     const h = harness({ askImpl: async (text) => {

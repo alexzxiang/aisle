@@ -183,7 +183,7 @@ describe('createVoiceInput', () => {
     expect(v.isListening()).toBe(true);
     // Apple's server recogniser by default (more accurate); the store's items ride along with the fixed vocabulary.
     // The fixed vocabulary leads, then the store's items — deduped (some KNOWN items are now staples in the vocabulary).
-    expect(r.listenOpts()).toMatchObject({ lang: 'en-US', onDevice: false, contextualStrings: keytermsFrom(KNOWN) });
+    expect(r.listenOpts()).toMatchObject({ lang: 'en-US', onDevice: true, contextualStrings: keytermsFrom(KNOWN) });
 
     r.partial('I need');
     r.final('I need eggs');
@@ -341,6 +341,53 @@ describe('createVoiceInput', () => {
     const spoken = said.length;
     await v.end();
     expect(said.length).toBe(spoken);
+  });
+
+  it('the next press waits only for the previous capture to end, not for its planning (the lost first second)', async () => {
+    let release: (() => void) | null = null;
+    fetchImpl = (async () => {
+      if (!release) await new Promise<void>((resolve) => { release = resolve; });   // only the first plan hangs
+      return { ok: true, status: 200, json: async () => fetchBody } as Response;
+    }) as typeof fetch;
+    const r = fakeRecognizer();
+    const v = make(r.rec);
+    await v.begin();
+    r.final('I need eggs');
+    const first = v.end();               // planning now hangs on the proxy
+    await Promise.resolve();
+    let opened = false;
+    const second = v.begin().then(() => { opened = true; });
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(opened).toBe(true);           // the mic reopened while the proxy was still thinking
+    expect(r.calls).toEqual(['listen', 'stop', 'listen']);
+    release!();
+    await first;
+    r.final('yes');
+    await second;
+    await v.end();
+    expect(events).toEqual(['eggs@voice', 'eggs@voice']);   // both understood, in order
+  });
+
+  it('a one-word hold keeps the mic open for a short tail before stopping (clipped "yes")', async () => {
+    const slept: number[] = [];
+    let t = 1000;
+    const ready = Promise.resolve();
+    const r = fakeRecognizer();
+    const listen = r.rec.listen;
+    r.rec.listen = (o, h) => ({ ...listen(o, h), ready });
+    const v = make(r.rec, { now: () => t, sleep: async (ms) => { slept.push(ms); } });
+    await v.begin();
+    t += 300;                            // released 300 ms after the recogniser went live
+    r.final('yes');
+    await v.end();
+    expect(slept).toEqual([600]);        // SHORT_HOLD_TAIL_MAX_MS
+    expect(r.calls).toEqual(['listen', 'stop']);
+
+    await v.begin();
+    t += 3000;                           // a normal sentence: no tail
+    r.final('I need eggs');
+    await v.end();
+    expect(slept).toEqual([600]);
   });
 
   it('waits for native end and the audio file before Scribe fallback', async () => {
@@ -704,7 +751,7 @@ describe('goal confirmation when a spoken item is uncertain', () => {
   it('an uncertain spoken item in a store scene is confirmed first; "yes" then starts the search', async () => {
     const { v, rec, said, events } = setup('store');
     await v.begin();
-    rec.final('find the pasta');
+    rec.final('find the pasta', 0.3);
     await v.end();
     expect(said.some((s) => s.text === 'Pasta. Did I get that right?')).toBe(true);
     expect(events.find((e) => e.type === 'TASK_REQUESTED')).toBeUndefined();   // not launched yet
@@ -719,7 +766,7 @@ describe('goal confirmation when a spoken item is uncertain', () => {
   it('"no" asks again and starts nothing', async () => {
     const { v, rec, said, events } = setup('store');
     await v.begin();
-    rec.final('find the pasta');
+    rec.final('find the pasta', 0.3);
     await v.end();
     await v.begin();
     rec.final('no');
@@ -728,10 +775,10 @@ describe('goal confirmation when a spoken item is uncertain', () => {
     expect(events.find((e) => e.type === 'TASK_REQUESTED')).toBeUndefined();
   });
 
-  it.each(['yes', 'That is correct', 'Yes, that’s correct.', 'That’s right!', 'Okay', 'Yes please'])('accepts %s for the kitchen/eggs mission without replanning', async (answer) => {
+  it.each(['yes', 'Yes yes yes', 'Got that right', 'You got it right', 'That is correct', 'Yes, that’s correct.', 'That’s right!', 'Okay', 'Yes please'])('accepts %s for the kitchen/eggs mission without replanning', async (answer) => {
     const { v, rec, events } = setup('home');
     await v.begin();
-    rec.final('find the pasta');
+    rec.final('find the pasta', 0.3);
     await v.end();
     expect(v.isAwaitingConfirmation()).toBe(true);
     await v.begin();
@@ -747,7 +794,7 @@ describe('goal confirmation when a spoken item is uncertain', () => {
   it.each(['', 'hmm', 'yes but no'])('keeps the mission after unclear confirmation %p, then accepts a retry', async (answer) => {
     const { v, rec, events, said } = setup('home');
     await v.begin();
-    rec.final('find the pasta');
+    rec.final('find the pasta', 0.3);
     await v.end();
     await v.submitText(answer);
     expect(v.isAwaitingConfirmation()).toBe(true);
@@ -757,6 +804,33 @@ describe('goal confirmation when a spoken item is uncertain', () => {
     expect(events.filter((e) => e.type === 'TASK_REQUESTED')).toEqual([
       expect.objectContaining({ goal: 'pasta', context: 'home' }),
     ]);
+  });
+
+  it('a confidently heard spoken task starts at once — no read-back — and "no" or "stop" then ends it', async () => {
+    const { v, rec, said, events } = setup('home');
+    await v.begin();
+    rec.final('find the pasta', 0.9);
+    await v.end();
+    expect(v.isAwaitingConfirmation()).toBe(false);
+    expect(said.some((s) => s.text === 'Pasta. Did I get that right?')).toBe(false);
+    expect(events.find((e) => e.type === 'TASK_REQUESTED')).toMatchObject({ goal: 'pasta', context: 'home' });
+  });
+
+  it('restating the request, or a yes buried in it, counts as yes; a second unclear answer is a fresh utterance, never "cancelled"', async () => {
+    const { v, rec, said, events } = setup('home');
+    await v.begin(); rec.final('find the pasta', 0.3); await v.end();
+    expect(v.isAwaitingConfirmation()).toBe(true);
+    await v.submitText('hmm');
+    expect(said[said.length - 1].text).toContain('Say yes to confirm');
+    await v.submitText('correct, please find the pasta');
+    expect(events.filter((e) => e.type === 'TASK_REQUESTED')).toEqual([expect.objectContaining({ goal: 'pasta', context: 'home' })]);
+    expect(v.isAwaitingConfirmation()).toBe(false);
+
+    await v.begin(); rec.final('find the pasta', 0.3); await v.end();
+    await v.submitText('hmm');
+    await v.submitText('hmm');
+    expect(v.isAwaitingConfirmation()).toBe(false);
+    expect(said.some((s) => /cancelled/i.test(s.text))).toBe(false);
   });
 
   it('a keyboard item is certain (typed) → starts immediately, no confirmation', async () => {
@@ -780,7 +854,7 @@ describe('goal confirmation when a spoken item is uncertain', () => {
   it('exits confirmation after two unclear replies rather than trapping the user', async () => {
     const { v, rec, events } = setup('home');
     await v.begin();
-    rec.final('find pasta');
+    rec.final('find pasta', 0.3);
     await v.end();
     await v.submitText('hmm');
     await v.submitText('hmm');
@@ -792,7 +866,7 @@ describe('goal confirmation when a spoken item is uncertain', () => {
 
   it('empty microphone captures neither cancel confirmation nor escalate item prompts', async () => {
     const { v, rec, said, events } = setup('home');
-    await v.begin(); rec.final('find pasta'); await v.end();
+    await v.begin(); rec.final('find pasta', 0.3); await v.end();
     for (let i = 0; i < 3; i += 1) {
       await v.begin(); rec.end(); await v.end();
     }

@@ -145,6 +145,8 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
   // bottom, follow; scrolled up, stay put and let the new lines pile below.
   const scroller = useRef<ScrollView | null>(null);
   const following = useRef(true);
+  const touching = useRef(false);
+  const moving = useRef(false);
   const lastId = visible.length > 0 ? visible[visible.length - 1].id : null;
 
   const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -152,18 +154,23 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
   }, []);
 
   const followIfAtBottom = useCallback((animated: boolean) => {
-    if (!following.current) return;
+    if (!following.current || touching.current || moving.current) return;
     scroller.current?.scrollToEnd({ animated });
   }, []);
 
   useEffect(() => {
     if (lastId === null) return undefined;
-    const id = setTimeout(() => followIfAtBottom(!reduceMotion), 30);
+    const id = setTimeout(() => followIfAtBottom(false), 30);
     return () => clearTimeout(id);
   }, [lastId, reduceMotion, followIfAtBottom]);
 
   return (
     <GlassPanel reduceMotion={reduceMotion} style={[styles.panel, style]} contentStyle={styles.content} testID={testID ?? 'transcript-panel'}>
+      {/* The list owns every touch that lands on it, so a finger resting here while
+          reading never reaches the hold-anywhere-to-talk layer behind the screen (which
+          would open the microphone, freeze the UI for the audio-session switch and then
+          say "No speech recorded"). A drag still hands over to the native scroll. */}
+      <View style={styles.scrollHost} onStartShouldSetResponder={() => true} onResponderTerminationRequest={() => true} testID="transcript-touch-guard">
       <ScrollView
         ref={scroller}
         style={styles.scroll}
@@ -173,6 +180,13 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
         onScroll={onScroll}
+        onTouchStart={() => { touching.current = true; }}
+        onTouchEnd={() => { touching.current = false; }}
+        onTouchCancel={() => { touching.current = false; }}
+        onScrollBeginDrag={() => { moving.current = true; }}
+        onScrollEndDrag={() => { moving.current = false; }}
+        onMomentumScrollBegin={() => { moving.current = true; }}
+        onMomentumScrollEnd={() => { moving.current = false; }}
         scrollEventThrottle={64}
         onContentSizeChange={() => followIfAtBottom(false)}
       >
@@ -184,6 +198,7 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
           visible.map((e) => <Line key={e.id} entry={e} reduceMotion={reduceMotion} />)
         )}
       </ScrollView>
+      </View>
       {pill || quietPill ? (
         <View style={styles.pillRow}>
           {pill ? (
@@ -216,6 +231,10 @@ const styles = StyleSheet.create({
     paddingTop: space.m,
     paddingBottom: space.m,
     gap: space.m,
+  },
+  scrollHost: {
+    flex: 1,
+    minHeight: 0,
   },
   scroll: {
     flex: 1,

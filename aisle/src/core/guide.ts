@@ -55,12 +55,24 @@ export interface TargetBox {
 
 /** Real-world heights (metres) for the step estimate. Missing classes use 0.8. */
 export const CLASS_HEIGHT_M: Readonly<Partial<Record<DetectionClass, number>>> = {
+  banana: 0.18, apple: 0.08, orange: 0.08,
   fridge: 1.7, oven: 0.9, microwave: 0.3, sink: 0.9, toilet: 0.75, table: 0.75, chair: 0.9, couch: 0.85, bed: 0.6,
   tv: 0.6, laptop: 0.25, bottle: 0.25, cup: 0.1, bowl: 0.08, plant: 0.7, book: 0.25, clock: 0.3, dog: 0.5, cat: 0.3,
   backpack: 0.45, handbag: 0.3, suitcase: 0.6, umbrella: 0.9, bench: 0.9, traffic_light: 1.0, stop_sign: 0.75, hydrant: 0.8,
   person: 1.7, car: 1.5, bus: 3.0, truck: 2.5, bicycle: 1.0, motorcycle: 1.1, cart: 1.0,
 };
 export const DEFAULT_HEIGHT_M = 0.8;
+/** Heights for things the detector has no class for but the model can box (round 8). */
+export const WORD_HEIGHT_M: ReadonlyArray<[RegExp, number]> = [
+  [/\b(door|doorway|door frame|entrance|exit)\b/, 2.0], [/\b(counter|countertop|worktop|shelf|shelves|desk)\b/, 0.9],
+  [/\b(keys?|wallet|coins?)\b/, 0.06], [/\b(remote|phone|cellphone|cell phone)\b/, 0.16], [/\b(eggs?|carton)\b/, 0.08],
+  [/\b(milk|juice|jug)\b/, 0.25], [/\b(cabinet|cupboard|drawer)\b/, 0.7], [/\b(window)\b/, 1.2], [/\b(handle|knob)\b/, 0.15],
+];
+export function heightForWords(words: string): number | null {
+  const w = words.toLowerCase();
+  for (const [re, h] of WORD_HEIGHT_M) if (re.test(w)) return h;
+  return null;
+}
 export const STEP_M = 0.7;
 export const MAX_STEPS = 20;
 /** Fresh enough to steer by. */
@@ -68,9 +80,9 @@ export const TARGET_FRESH_MS = 3000;
 /** Depth-grid nearness at which the bottom-centre cell counts as something in the way. */
 export const PATH_BLOCKED = 0.7;
 
-export function stepsFromBox(cls: DetectionClass | null, box: [number, number, number, number], near: number | undefined, ultraWide = false): number {
+export function stepsFromBox(cls: DetectionClass | null, box: [number, number, number, number], near: number | undefined, ultraWide = false, heightOverrideM?: number | null): number {
   const h = Math.max(0.02, box[3]);
-  const heightM = (cls && CLASS_HEIGHT_M[cls]) ?? DEFAULT_HEIGHT_M;
+  const heightM = (cls && CLASS_HEIGHT_M[cls]) ?? heightOverrideM ?? DEFAULT_HEIGHT_M;
   const k = ultraWide ? 1.9 : 1.4;
   let distanceM = heightM / (k * h);
   if (typeof near === 'number') {
@@ -197,7 +209,7 @@ export function createGuide(deps: GuideDeps): Guide {
       }
       if (box) {
         const rel = degreesFromBox(box, hfov);
-        const steps = stepsFromBox(cls, box, near, ultraWide);
+        const steps = stepsFromBox(cls, box, near, ultraWide, cls ? null : heightForWords(targetWords));
         const side = rel < 0 ? 'left' : 'right';
         const a = Math.abs(rel);
         if (a <= hfov * 0.18 && steps <= 1) {

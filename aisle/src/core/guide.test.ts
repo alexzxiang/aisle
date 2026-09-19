@@ -88,7 +88,10 @@ describe('createGuide', () => {
     expect(rig({ where: 'unknown_thing', now }).guide.instructionFor('the widget')).toBeNull();
     // A model box for something the detector cannot name still steers.
     const g = rig({ where: 'unseen', now }).guide;
-    expect(g.instructionFor('eggs', { box: [0.4, 0.4, 0.2, 0.15], at: 500 })).toMatchObject({ kind: 'forward', targetVisible: true });
+    // An egg carton filling fifteen percent of the frame is within reach (WORD_HEIGHT_M, round 8); a small one is steps away.
+    expect(g.instructionFor('eggs', { box: [0.4, 0.4, 0.2, 0.15], at: 500 })).toMatchObject({ kind: 'arrived', targetVisible: true });
+    expect(g.instructionFor('eggs', { box: [0.45, 0.4, 0.1, 0.04], at: 500 })).toMatchObject({ kind: 'forward', targetVisible: true, steps: 2 });
+    expect(g.instructionFor('the doorway', { box: [0.4, 0.2, 0.2, 0.5], at: 500 })).toMatchObject({ kind: 'forward', steps: 4 });
     expect(g.instructionFor('eggs', { box: [0.4, 0.4, 0.2, 0.15], at: -5000 })).toMatchObject({ kind: 'scan_unknown' });   // stale box
   });
 

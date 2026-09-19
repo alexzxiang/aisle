@@ -154,6 +154,7 @@ export interface SignalTicker {
 }
 
 export interface AudioChannels {
+  suspendForRecording(): void;
   beacon: DirectionBeacon;
   ticker: SignalTicker;
   /** `setAudioModeAsync` with the 02 Task 5 defaults; call once at app start. */
@@ -304,6 +305,14 @@ export function createAudioChannels(opts: AudioChannelsOptions): AudioChannels {
       sessionMode = { ...DEFAULT_AUDIO_MODE };
       recording = false;
       await backend.setAudioMode(sessionMode);
+    },
+    suspendForRecording() {
+      // The recognizer configures AVAudioSession itself. Avoid a second native
+      // category switch before it can attach the microphone input tap.
+      recording = true;
+      backend.beaconLeft.stop();
+      backend.beaconRight.stop();
+      backend.tick.stop();
     },
     async setRecordingMode(on) {
       // iOS keeps a separate, quieter output level for the play-and-record category. Leaving it

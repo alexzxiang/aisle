@@ -968,6 +968,37 @@ describe('TranscriptPanel follows the newest line only from the bottom', () => {
     expect(calls).toEqual([]);
   });
 
+  it('owns every touch that lands on it, so a resting finger never reaches the hold-to-talk layer, and yields to a drag', () => {
+    setup('OUTDOOR_NAV');
+    const { r } = renderWithScrollSpy(<TranscriptPanel entries={first} reduceMotion />);
+    const guard = r.root.findByProps({ testID: 'transcript-touch-guard' });
+    expect(guard.props.onStartShouldSetResponder()).toBe(true);
+    expect(guard.props.onResponderTerminationRequest()).toBe(true);
+  });
+
+  it('does not auto-scroll under a resting finger or during momentum', async () => {
+    setup('OUTDOOR_NAV');
+    const { r, calls } = renderWithScrollSpy(<TranscriptPanel entries={first} reduceMotion />);
+    await act(async () => {
+      scrollView(r).props.onTouchStart();
+      r.update(<TranscriptPanel entries={second} reduceMotion />);
+      jest.advanceTimersByTime(200);
+      scrollView(r).props.onContentSizeChange();
+    });
+    expect(calls).toEqual([]);
+    await act(async () => {
+      scrollView(r).props.onTouchEnd();
+      scrollView(r).props.onMomentumScrollBegin();
+      scrollView(r).props.onContentSizeChange();
+    });
+    expect(calls).toEqual([]);
+    await act(async () => {
+      scrollView(r).props.onMomentumScrollEnd();
+      scrollView(r).props.onContentSizeChange();
+    });
+    expect(calls).toEqual([{ animated: false }]);
+  });
+
   it('a reader at the bottom keeps following', async () => {
     setup('OUTDOOR_NAV');
     const { r, calls } = renderWithScrollSpy(<TranscriptPanel entries={first} reduceMotion />);

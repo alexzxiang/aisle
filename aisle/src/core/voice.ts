@@ -25,10 +25,12 @@
 import type { AppMode, ParseIntentInput, ParseIntentOutput, PlannerResult, SpeechService, TaskContext } from './contracts';
 import { classifyGoalPhrase } from '../outdoor/plannerJobs';
 import { explicitHomeGoal } from './indoorIntent';
+import { classForWords } from './sceneMemory';
 import type { AppEventBus } from './bus';
 import type { ConversationLog } from './conversation';
 import type { AppStore } from './store';
 import { MAX_UTTERANCE_WORDS, PHRASES, checkPhrase, countWords, findForbiddenTerm, hasDigit, phraseKeyForText } from './phrases';
+import { isAffirmative, isNegative, leansYes, normalizeAnswer } from './yesNo';
 
 // ---------------------------------------------------------------------------
 // Pure: intent fallback and transcript choice
@@ -39,6 +41,16 @@ export const RECOGNIZER_FINAL_TIMEOUT_MS = 3000;
 export const PLAN_TIMEOUT_MS = 2500;
 export const STT_TIMEOUT_MS = 4000;
 export const MAX_KEYTERMS = 100;
+/**
+ * A hold shorter than this (a one-word "yes") keeps the microphone open a little after
+ * release: people let go as the word ends, which clips its tail, and Apple's recogniser
+ * answers "no speech" to a clip under about a second. Only applies when the recogniser
+ * reported when it actually started listening (`readyAt`).
+ */
+export const SHORT_HOLD_MS = 1200;
+export const SHORT_HOLD_TAIL_MAX_MS = 600;
+/** Below this on-device confidence a spoken goal is read back before it starts. */
+export const UNCERTAIN_CONFIDENCE = 0.45;
 
 const ABORT_RE = /\b(?:stop|cancel|quit|abort|never mind|nevermind|end (?:the )?(?:trip|route))\b/i;
 const REPEAT_RE = /\b(?:repeat|again|what did you say|say that again)\b/i;
@@ -150,8 +162,12 @@ const ON_TRIP: ReadonlySet<AppMode> = new Set<AppMode>([
   'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV',
 ]);
 
-const CONFIRM_YES_RE = /^(?:(?:ok(?:ay)?|yes|yeah|yep|yup)\s+)?(?:yes|yeah|yep|yup|ok|okay|correct|right|(?:that's|thats|that is|it's|it is) (?:right|correct)|exactly|sure|uh huh|mhm|affirmative)(?: please)?$/i;
-const CONFIRM_NO_RE = /^(?:no|nope|nah|wrong|incorrect|not really|that's wrong|thats wrong|not that|negative)[.!]?$/i;
+const STREET_CLASSES = new Set(['traffic_light', 'stop_sign', 'hydrant', 'bench', 'car', 'bus', 'truck', 'bicycle', 'motorcycle', 'person', 'cart']);
+/** Something the detector knows as a household thing (a couch, bananas, a remote): a home task, not a store trip. */
+export function isHouseholdThing(words: string): boolean {
+  const cls = classForWords(words);
+  return cls !== null && !STREET_CLASSES.has(cls);
+}
 
 /** "Pasta. Did I get that right?" — null when the goal cannot be spoken safely (digits, forbidden word, too long). */
 export function goalConfirmQuestion(goal: string): string | null {
@@ -251,7 +267,7 @@ export interface VoiceInputOptions {
   /** Item + aisle vocabulary (store map); used for contextual strings, Scribe keyterms and the fallback parser. */
   knownItems: () => string[];
   recognizer?: Recognizer;
-  audio?: { setRecordingMode(on: boolean): Promise<void> };
+  audio?: { setRecordingMode(on: boolean): Promise<void>; suspendForRecording?(): void };
   haptics?: { setSuspended(suspended: boolean): void };
   /** Upload the persisted clip to `/api/stt`; resolves to the transcript or null. Absent = never persist audio. */
   sttUpload?: (uri: string, keyterms: string[], timeoutMs: number) => Promise<string | null>;
@@ -275,8 +291,10 @@ export interface VoiceInputOptions {
   intercept?: (transcript: string) => boolean;
   /** The awareness loop's view of where the user is (home / store / street), or null. */
   sceneContext?: () => TaskContext | null;
-  /** Force Apple's on-device recogniser (privacy / no network). Default false: the server recogniser is more accurate. */
+  /** Prefer supported on-device recognition to avoid network startup latency. Default true. */
   preferOnDeviceStt?: boolean;
+  /** The short-hold tail's clock (tests). Default setTimeout. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export type VoiceSource = 'voice' | 'keyboard';
@@ -309,6 +327,10 @@ export interface VoiceInput {
 
 interface Session {
   handle: RecognizerSession | null;
+  /** Talk button down (ms). */
+  pressedAt: number;
+  /** The recogniser's own "listening" moment (ms), when it reports one. */
+  readyAt: number | null;
   results: RecognizedResult[];
   finalTranscript: string | null;
   audioUri: string | null;
@@ -326,8 +348,13 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const persistAudio = opts.sttUpload !== undefined;
   const deleteFile = opts.deleteFile ?? createExpoFileDelete();
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let session: Session | null = null;
   let ending: Promise<VoiceOutcome> | null = null;
+  /** The previous utterance's microphone teardown: the next press waits for this, never for its planning. */
+  let capturing: Promise<void> | null = null;
+  /** Utterances are understood in the order they were spoken, even when the mic reopened meanwhile. */
+  let processing: Promise<unknown> = Promise.resolve();
   let lastEmptyNotice = -Infinity;
   let last: VoiceOutcome | null = null;
   let unclearStreak = 0;
@@ -407,15 +434,17 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     return output;
   };
 
-  const act = (output: ParseIntentOutput, source: VoiceSource, confirm = true): void => {
+  const act = (output: ParseIntentOutput, source: VoiceSource, confirm = false): void => {
     const reply = (): void => {
       const cacheKey = phraseKeyForText(output.reply);
       opts.speech.say({ text: output.reply, priority: 'NAV', dedupeKey: `voice-reply`, cooldownMs: 1000, ...(cacheKey ? { cacheKey } : {}) });
       opts.conversation?.pushAisle(output.reply, 'speech');
     };
-    // Confirm-back before a big commitment (v2 B-4): a spoken task or route is read back for a
-    // yes/no first, so a misheard goal does not launch a wrong search or route. "Yes" (consumed
-    // in finishWith) starts it; "no" asks again. Typed input is deliberate, so it starts at once.
+    // Confirm-back before a big commitment (v2 B-4): a spoken *route* is read back for a yes/no
+    // first, so a misheard place does not launch a wrong walk. A spoken *task* starts at once
+    // ("Bananas on the table. Got it.") unless the recogniser itself was unsure of the words:
+    // a wrong task costs one "stop", while every confirmation costs a press, a word and a
+    // recognition — the round that failed three times on 2026-09-19. Typed input starts at once.
     const askConfirm = (q: string, pending: NonNullable<typeof pendingConfirm>): void => {
       pendingConfirm = pending;
       confirmationMisses = 0;
@@ -449,9 +478,16 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // guided task with that context — instead of the map-driven trip. On any trip, or when
       // the scene is a street or unknown, the item still drives the trip (ITEM_REQUESTED),
       // so the outdoor "walk me to a store" path is untouched.
-      const scene = ON_TRIP.has(opts.store.getState().mode) ? null : opts.sceneContext?.() ?? null;
+      const onTrip = ON_TRIP.has(opts.store.getState().mode);
+      const scene = onTrip ? null : opts.sceneContext?.() ?? null;
       if (scene === 'store' || scene === 'home') {
         startTask(output.item, scene);
+        return;
+      }
+      // A household thing named off any trip is a home task whatever the scene guess says
+      // ("bananas" while the awareness loop still believes "street" — 2026-09-19 trace).
+      if (!onTrip && isHouseholdThing(output.item)) {
+        startTask(output.item, 'home');
         return;
       }
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
@@ -474,7 +510,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     reply();
   };
 
-  const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource): Promise<VoiceOutcome> => {
+  const finishWith = async (transcript: string, sttPath: VoiceOutcome['sttPath'], source: VoiceSource, uncertain = false): Promise<VoiceOutcome> => {
     if (!transcript.trim() && source === 'voice') {
       // Capture failure is not an unclear intent or a rejected confirmation.
       const reply = 'No speech recorded. Wait for listening, then speak while holding.';
@@ -494,12 +530,17 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       ? `${previousItem.replace(/\s+(?:in|from|inside)\s+.*$/i, '')} in my fridge`
       : explicitHomeGoal(transcript);
     // A confirm-back is waiting ("Eggs in my fridge. Did I get that right?"): consume yes/no
-    // here, before the planner or any other intercept. Unclear answers retain the
-    // pending goal: never send a failed confirmation to the camera question handler.
+    // here, before the planner or any other intercept. Yes in any of its spoken forms, or the
+    // same request said again, starts it; no asks again; a different request replaces it; one
+    // unclear answer earns "say yes or no" and the pending goal survives; a second unclear
+    // answer is simply treated as a fresh utterance (never a dead end that tells the user
+    // their confirmation was "cancelled").
     if (pendingConfirm) {
-      const t = transcript.trim().replace(/[’‘]/g, "'").replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
       const c = pendingConfirm;
-      if (CONFIRM_YES_RE.test(t)) {
+      const restated = c.kind === 'task'
+        ? sameGoal(homeGoal ?? parseIntentFallback(transcript, opts.knownItems()).goal ?? parseIntentFallback(transcript, opts.knownItems()).item, c.goal)
+        : sameGoal(parseIntentFallback(transcript, opts.knownItems()).destination, c.destination);
+      if (isAffirmative(transcript) || restated || (leansYes(transcript) && c.kind === 'task' && mentions(transcript, c.goal))) {
         pendingConfirm = null;
         unclearStreak = 0;
         if (c.kind === 'task') opts.bus.emit({ type: 'TASK_REQUESTED', goal: c.goal, context: c.context, source });
@@ -510,7 +551,7 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         last = { output, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
         return last;
       }
-      if (CONFIRM_NO_RE.test(t)) {
+      if (isNegative(transcript) && !homeGoal && !['guided_task', 'navigate_to', 'find_item'].includes(parseIntentFallback(transcript, opts.knownItems()).intent)) {
         pendingConfirm = null;
         opts.speech.say({ text: PHRASES.say_item_again, priority: 'NAV', cacheKey: 'say_item_again', dedupeKey: 'voice-reply', cooldownMs: 1000 });
         opts.conversation?.pushAisle(PHRASES.say_item_again, 'speech');
@@ -518,13 +559,10 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
         return last;
       }
       const correction = parseIntentFallback(transcript, opts.knownItems());
-      if (!homeGoal && !ABORT_RE.test(transcript) &&
-          !['guided_task', 'navigate_to', 'find_item'].includes(correction.intent)) {
+      const newRequest = homeGoal !== null || ABORT_RE.test(transcript) || ['guided_task', 'navigate_to', 'find_item'].includes(correction.intent);
+      if (!newRequest && confirmationMisses < 1) {
         confirmationMisses += 1;
-        const question = confirmationMisses < 2
-          ? 'Say yes to confirm, or tell me your request again.'
-          : 'Confirmation cancelled. Tell me what you want to do.';
-        if (confirmationMisses >= 2) pendingConfirm = null;
+        const question = 'Say yes to confirm, or tell me your request again.';
         opts.speech.say({ text: question, priority: 'NAV', dedupeKey: 'confirm-retry', cooldownMs: 1000 });
         opts.conversation?.pushAisle(question, 'prompt');
         last = { output: { intent: 'unknown', item: null, reply: question }, transcript, sttPath, planner: false, plannerLatencyMs: null, localIntent: 'intercepted' };
@@ -590,9 +628,24 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       last = { output: { intent: 'unknown', item: null, reply: PHRASES.not_caught }, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs, localIntent: 'intercepted' };
       return last;
     }
-    act(output, source);
+    act(output, source, uncertain);
     last = { output, transcript, sttPath, planner: r.planner, plannerLatencyMs: r.latencyMs };
     return last;
+  };
+
+  /** "bananas on the table" ≈ "the bananas on the table": the same request in other words. */
+  const sameGoal = (a: string | null | undefined, b: string | null | undefined): boolean => {
+    if (!a || !b) return false;
+    const norm = (s: string): string => normalizeAnswer(s).replace(/\b(?:the|a|an|my|some|please|find|get|me)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    const x = norm(a);
+    const y = norm(b);
+    return x.length > 0 && (x === y || x.includes(y) || y.includes(x));
+  };
+  /** The request's own words appear in the answer ("correct, the bananas on the table"). */
+  const mentions = (answer: string, goal: string): boolean => {
+    const a = normalizeAnswer(answer);
+    const words = normalizeAnswer(goal).split(' ').filter((w) => w.length > 3 && !['from', 'with', 'into', 'that', 'this', 'please'].includes(w));
+    return words.length > 0 && words.some((w) => a.includes(w));
   };
 
   const teardown = async (s: Session | null): Promise<void> => {
@@ -613,9 +666,12 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
 
   return {
     async begin() {
-      if (ending) await ending;
+      // The previous utterance may still be planning (a proxy round trip, a camera question);
+      // the microphone only needs its *capture* to be over. Waiting for the planning was
+      // the first second of the next answer going unheard.
+      if (capturing) await capturing;
       if (session) return;
-      const s: Session = { handle: null, results: [], finalTranscript: null, audioUri: null, ended: false, error: null, done: false, waiters: [] };
+      const s: Session = { handle: null, pressedAt: now(), readyAt: null, results: [], finalTranscript: null, audioUri: null, ended: false, error: null, done: false, waiters: [] };
       session = s;
       // Stop the app talking into its own microphone (B-1): clear the queue and cut the
       // current utterance the instant the talk button opens the mic. Half the bad transcripts
@@ -624,7 +680,8 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       opts.speech.setSuspended?.(true);
       opts.haptics?.setSuspended(true);
       try {
-        await opts.audio?.setRecordingMode(true);
+        if (opts.audio?.suspendForRecording) opts.audio.suspendForRecording();
+        else await opts.audio?.setRecordingMode(true);
       } catch {
         // continue: the recognizer configures its own category on iOS
       }
@@ -642,9 +699,8 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       }
       if (session !== s) return; // cancelled while asking
       s.handle = rec.listen(
-        // Apple's server recogniser is markedly more accurate than the on-device one; the
-        // on-device path is for no network, where Scribe would be unreachable too.
-        { lang: 'en-US', onDevice: opts.preferOnDeviceStt === true && rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()), persistAudio },
+        // Start locally when supported; saved audio still permits the existing STT fallback.
+        { lang: 'en-US', onDevice: opts.preferOnDeviceStt !== false && rec.supportsOnDevice(), contextualStrings: keytermsFrom(opts.knownItems()), persistAudio },
         {
           onResult(e) {
             if (!bestTranscript(e.results)) return; // an empty final must not erase useful partials
@@ -670,44 +726,72 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
           },
         },
       );
-      await s.handle.ready;
+      if (s.handle.ready) {
+        await s.handle.ready;
+        s.readyAt = now();
+      }
     },
 
     end() {
       if (ending) return ending;
-      ending = (async () => {
       const s = session;
-      if (!s) return { output: { intent: 'unknown' as const, item: null, reply: '' }, transcript: '', sttPath: 'none' as const, planner: false, plannerLatencyMs: null };
-      try {
-        s.handle?.stop();
-        await waitForFinal(s);
-        if (s.handle?.ended && !s.ended) {
-          let timer: ReturnType<typeof setTimeout> | undefined;
-          await Promise.race([s.handle.ended, new Promise<void>((resolve) => { timer = setTimeout(resolve, 2000); })]);
-          if (timer) clearTimeout(timer);
-        }
-        let transcript = s.finalTranscript || bestTranscript(s.results);
-        let sttPath: VoiceOutcome['sttPath'] = transcript ? 'on-device' : 'none';
-        const confidence = Math.max(...s.results.map((r) => r.confidence ?? -1));
-        const uncertain = confidence >= 0 && confidence < 0.45;
-        if ((!transcript || uncertain) && s.audioUri && opts.sttUpload) {
-          const scribe = await opts.sttUpload(s.audioUri, keytermsFrom(opts.knownItems()), STT_TIMEOUT_MS);
-          if (scribe && scribe.trim()) {
-            transcript = scribe.trim();
-            sttPath = 'scribe';
-          }
-        }
-        opts.onDiagnostic?.({ error: s.error, ended: s.ended, hasClip: !!s.audioUri, resultCount: s.results.length, transcriptLength: transcript.length, sttPath });
-        session = null;
-        await teardown(s);
-        return await finishWith(transcript, sttPath, 'voice');
-      } catch {
-        session = null;
-        await teardown(s);
-        return finishWith('', 'none', 'voice');
+      if (!s) {
+        return Promise.resolve({ output: { intent: 'unknown' as const, item: null, reply: '' }, transcript: '', sttPath: 'none' as const, planner: false, plannerLatencyMs: null });
       }
+      const releasedAt = now();
+      // 1. Capture: keep a short tail for a short hold, stop, wait for the final result, tear
+      //    the session down. The next press can start as soon as this settles.
+      const capture = (async (): Promise<{ transcript: string; sttPath: VoiceOutcome['sttPath']; uncertain: boolean }> => {
+        let tailMs = 0;
+        try {
+          if (s.readyAt !== null) {
+            const heard = releasedAt - s.readyAt;
+            if (heard < SHORT_HOLD_MS) {
+              tailMs = Math.min(SHORT_HOLD_TAIL_MAX_MS, SHORT_HOLD_MS - heard);
+              await sleep(tailMs);
+            }
+          }
+          s.handle?.stop();
+          await waitForFinal(s);
+          if (s.handle?.ended && !s.ended) {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            await Promise.race([s.handle.ended, new Promise<void>((resolve) => { timer = setTimeout(resolve, 2000); })]);
+            if (timer) clearTimeout(timer);
+          }
+          let transcript = s.finalTranscript || bestTranscript(s.results);
+          let sttPath: VoiceOutcome['sttPath'] = transcript ? 'on-device' : 'none';
+          const confidence = Math.max(...s.results.map((r) => r.confidence ?? -1));
+          let uncertain = confidence >= 0 && confidence < UNCERTAIN_CONFIDENCE;
+          if ((!transcript || uncertain) && s.audioUri && opts.sttUpload) {
+            const scribe = await opts.sttUpload(s.audioUri, keytermsFrom(opts.knownItems()), STT_TIMEOUT_MS);
+            if (scribe && scribe.trim()) {
+              transcript = scribe.trim();
+              sttPath = 'scribe';
+              uncertain = false;
+            }
+          }
+          opts.onDiagnostic?.({
+            error: s.error, ended: s.ended, hasClip: !!s.audioUri, resultCount: s.results.length, transcriptLength: transcript.length, sttPath,
+            startMs: s.readyAt === null ? null : s.readyAt - s.pressedAt, heldMs: releasedAt - s.pressedAt, tailMs, finalMs: now() - releasedAt - tailMs,
+            confidence: confidence >= 0 ? Math.round(confidence * 100) / 100 : null,
+          });
+          return { transcript, sttPath, uncertain };
+        } catch {
+          return { transcript: '', sttPath: 'none', uncertain: false };
+        } finally {
+          if (session === s) session = null;
+          await teardown(s);
+        }
       })();
-      const result = ending;
+      capturing = capture.then(() => undefined, () => undefined);
+      void capturing.then(() => { capturing = null; });
+      // 2. Understanding, in spoken order, off the microphone's critical path.
+      const result = processing.then(async () => {
+        const c = await capture;
+        return finishWith(c.transcript, c.sttPath, 'voice', c.uncertain);
+      });
+      processing = result.then(() => undefined, () => undefined);
+      ending = result;
       void result.then(() => { ending = null; }, () => { ending = null; });
       return result;
     },
