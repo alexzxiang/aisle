@@ -73,7 +73,8 @@
           }
         }
       ],
-      "./plugins/withCoreMLModels.js"
+      "./plugins/withCoreMLModels.js",
+      "./plugins/withAutomaticSigning.js"
     ]
   }
 }
