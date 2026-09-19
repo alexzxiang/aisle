@@ -30,14 +30,15 @@ export const PLANNER_JOBS: readonly PlannerJob[] = ['routeCompile', 'parseIntent
 export const MAX_PHRASE_WORDS = 12;
 
 /** Per-job deadlines (01 §9 table). */
-/** NIM answers non-streaming (~1–1.5 s for the whole object, measured 2026-09-18), so
- * 'first token' is the full response: 3 s first, 4.5 s total, template fallback after. */
 export const JOB_DEADLINES_MS: Readonly<Record<PlannerJob, { firstToken: number; total: number }>> = {
-  routeCompile: { firstToken: 3000, total: 8000 },
-  crossingAnnounce: { firstToken: 3000, total: 8000 },
-  parseIntent: { firstToken: 3000, total: 4500 },
-  disambiguate: { firstToken: 3000, total: 4500 },
-  answer: { firstToken: 3000, total: 4500 },
+  // NIM is non-streaming (see server/lib/nim.ts): the whole answer arrives at once, so the
+  // first-token and total deadlines are equal. routeCompile / crossingAnnounce run at route
+  // fetch (not user-facing latency); the three interactive jobs cap at 4.5 s then template.
+  routeCompile: { firstToken: 8000, total: 8000 },
+  crossingAnnounce: { firstToken: 8000, total: 8000 },
+  parseIntent: { firstToken: 4500, total: 4500 },
+  disambiguate: { firstToken: 4500, total: 4500 },
+  answer: { firstToken: 4500, total: 4500 },
 };
 
 export type JobInput<J extends PlannerJob> =
