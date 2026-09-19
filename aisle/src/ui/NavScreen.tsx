@@ -47,16 +47,19 @@ export const FINISH_LABEL = 'Finish';
 /** Transcript lines on the trip screen. */
 /** The whole log, scrollable (record keeping): the conversation keeps fifty lines. */
 export const NAV_TRANSCRIPT_MAX = 50;
-/** The camera panel never takes more than this share of the window. */
-/** The camera is portrait now (theme.cameraAspect); it may take up to this share of the window. */
-export const CAMERA_MAX_HEIGHT_SHARE = 0.46;
+/**
+ * The camera panel never takes more than this share of the window. Portrait since round 5;
+ * 0.46 squeezed the transcript to its minimum during guided tasks ("can't see the chat"), so
+ * the camera now stops at a third and the transcript keeps at least eight lines (round 6c).
+ */
+export const CAMERA_MAX_HEIGHT_SHARE = 0.34;
 /**
  * Points the trip screen needs below the camera whatever the phone: the band,
  * the transcript at its minimum, the talk button and the two secondary
  * targets. On a short window the camera gives this back rather than pushing
  * the talk button off the bottom.
  */
-export const CAMERA_RESERVE_PT = 430;
+export const CAMERA_RESERVE_PT = 500;
 
 export interface NavScreenProps {
   onOpenDebug?: () => void;
@@ -214,7 +217,7 @@ const styles = StyleSheet.create({
   transcript: {
     flexGrow: 1,
     flexShrink: 1,
-    minHeight: 96,
+    minHeight: 200,
   },
   controls: {
     paddingHorizontal: sizes.gutter,

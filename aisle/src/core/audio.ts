@@ -306,10 +306,32 @@ export function createAudioChannels(opts: AudioChannelsOptions): AudioChannels {
       await backend.setAudioMode(sessionMode);
     },
     async setRecordingMode(on) {
-      if (recording === on) return;
-      recording = on;
+      // iOS keeps a separate, quieter output level for the play-and-record category. Leaving it
+      // on after an utterance is "the voice got quiet" (round 6c: heard in guided tasks, where the
+      // user answers often). So: the flag flips only when the mode really applied, turning it OFF
+      // is retried a few times (the recogniser's audio engine can still hold the session for a
+      // moment), and turning it off is never skipped just because we believed it was off.
       sessionMode = { ...sessionMode, allowsRecording: on };
-      await backend.setAudioMode(sessionMode);
+      if (on) {
+        if (recording) return;
+        await backend.setAudioMode(sessionMode);
+        recording = true;
+        return;
+      }
+      const delays = [0, 400, 1200];
+      let lastError: unknown = null;
+      for (const ms of delays) {
+        if (ms > 0) await new Promise<void>((r) => setTimeout(r, ms));
+        try {
+          await backend.setAudioMode(sessionMode);
+          recording = false;
+          return;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      recording = false;
+      throw lastError instanceof Error ? lastError : new Error('setAudioMode(playback) failed');
     },
     isRecordingMode: () => recording,
     getDebugState: () => ({

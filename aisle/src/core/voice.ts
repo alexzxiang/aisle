@@ -454,6 +454,11 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
     } catch {
       // the session comes back on the next configureSession()
     }
+    // Belt and braces: once the recogniser has surely let go of the audio engine, apply
+    // playback again so the speaker level never stays at the record category's (round 6c).
+    setTimeout(() => {
+      opts.audio?.setRecordingMode(false).catch(() => undefined);
+    }, 1500);
   };
 
   return {
