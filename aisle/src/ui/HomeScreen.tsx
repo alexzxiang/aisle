@@ -15,7 +15,7 @@ import { TalkButton } from './TalkButton';
 import { TranscriptPanel } from './TranscriptPanel';
 import { Button } from './Button';
 import { Backdrop, GlassPanel } from './Glass';
-import { awarenessSlots, heroText, visibleError } from './derive';
+import { awarenessSlots, heroText, needsClock, visibleError } from './derive';
 import { useBus, useConversationEntries, useDetections, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
 import {
   DISCLAIMER_TEXT,
@@ -75,7 +75,9 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const haptics = useOptionalService('haptics');
   const speech = useOptionalService('speech');
   const facts = useUiFacts();
-  const now = useNow(1000, nowOverride);
+  // Home shows the awareness strip, which prints no ages: the clock is needed
+  // only to retire an error line or a transient hero.
+  const now = useNow(1000, nowOverride, (t) => needsClock(mode, facts, t, false));
   const entries = useConversationEntries(conversation);
   const [draft, setDraft] = useState('');
 

@@ -36,12 +36,27 @@ export function useOptionalService<K extends ServiceName>(name: K): ServiceMap[K
   return services.tryGet(name);
 }
 
-/** The detector's current tracks (≤ 5 Hz), or [] without a perception service. Throttled to `minIntervalMs`. */
-export function useDetections(minIntervalMs = 500): Detection[] {
+const NO_DETECTIONS: Detection[] = Object.freeze([]) as unknown as Detection[];
+
+/**
+ * The detector's current tracks (≤ 5 Hz), or [] without a perception service.
+ * Throttled to `minIntervalMs`.
+ *
+ * `enabled` is not an optimisation detail: a screen that does not render
+ * detections must not subscribe to them. Every delivery sets state, and state
+ * re-renders the whole screen — band, camera panel, transcript, controls — so
+ * an unused subscription re-rendered the trip screen twice a second for the
+ * entire walk while the phone was also running ARKit, a detector and depth.
+ */
+export function useDetections(minIntervalMs = 500, enabled = true): Detection[] {
   const perception = services.tryGet('perception');
-  const [dets, setDets] = useState<Detection[]>([]);
+  const [dets, setDets] = useState<Detection[]>(NO_DETECTIONS);
   useEffect(() => {
-    if (!perception) return undefined;
+    if (!perception || !enabled) {
+      // Drop what is held so a screen that stops showing them does not keep them alive.
+      setDets((prev) => (prev.length === 0 ? prev : NO_DETECTIONS));
+      return undefined;
+    }
     let last = 0;
     let stale: ReturnType<typeof setTimeout> | null = null;
     const unsub = perception.onDetections((d) => {
@@ -57,7 +72,7 @@ export function useDetections(minIntervalMs = 500): Detection[] {
       unsub();
       if (stale !== null) clearTimeout(stale);
     };
-  }, [perception, minIntervalMs]);
+  }, [perception, minIntervalMs, enabled]);
   return dets;
 }
 
@@ -96,17 +111,31 @@ export function useUiFacts(): UiFacts {
 
 /**
  * A clock that ticks only while something on screen depends on it (the "seen
- * 1 s ago" ages). `nowOverride` makes a render deterministic in tests.
+ * 1 s ago" ages, a transient hero waiting to expire). `nowOverride` makes a
+ * render deterministic in tests.
+ *
+ * `needed` is evaluated during render against the clock's own current value —
+ * "given what I am rendering, would anything change if time advanced?" — so
+ * the interval exists only while the answer is yes. It used to tick forever:
+ * every screen re-rendered its whole tree once a second whether or not a
+ * single character on it was time-dependent, which for a leg instruction and
+ * the awareness strip is never. Each condition in `derive.needsClock` goes
+ * false on its own as time passes, so the clock stops itself; a new event
+ * makes it true again on the next render, and the effect catches the value up
+ * before the first tick.
  */
-export function useNow(intervalMs = 1000, nowOverride?: number): number {
+export function useNow(intervalMs = 1000, nowOverride?: number, needed?: (now: number) => boolean): number {
   const [now, setNow] = useState(() => nowOverride ?? Date.now());
   const frozen = nowOverride !== undefined;
+  const value = frozen ? (nowOverride as number) : now;
+  const ticking = !frozen && (needed === undefined || needed(value));
   useEffect(() => {
-    if (frozen) return undefined;
+    if (!ticking) return undefined;
+    setNow(Date.now());   // the clock may be stale after an idle spell
     const id = setInterval(() => setNow(Date.now()), intervalMs);
     return () => clearInterval(id);
-  }, [frozen, intervalMs]);
-  return frozen ? (nowOverride as number) : now;
+  }, [ticking, intervalMs]);
+  return value;
 }
 
 /** Respected by every animation in the app (DESIGN.md, Motion). */
