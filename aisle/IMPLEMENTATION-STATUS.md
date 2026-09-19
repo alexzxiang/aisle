@@ -635,3 +635,15 @@ command — is 394 tests in 26 suites.
 - **Hold anywhere to talk** (`src/ui/HoldToTalk.tsx`, mounted in Root): 350 ms hold on any
   non-control spot, pulsing ring, "Listening — release to send".
 No native change since the 12:10 build + the AWARE install; Metro reload is enough.
+
+### Round 7 (Stream A, TEAM-PLAN v2 items 1–2) — 2026-09-19 evening
+Guidance now comes from geometry first (`src/core/guide.ts`): a visible target's box gives the
+side and a step count (box height × class height, capped by the depth grid), scene memory gives
+the bearing when it is out of view — "Fridge ahead, about five steps. Walk forward." / "Turn
+slowly to the left so I can see the fridge." — several phrasings per kind, never twice in a
+row, repeated only after six seconds; the model's prose is muted while geometry speaks. The
+phone's own hand comes from Apple's hand pose (`HandTracker.swift`, stage `hand`) and steers
+the reach step word by word against the target box (detector, or Claude's new `target.box`);
+the user's own arm is relabelled `hand`, never "a person ahead". Built and installed at
+~14:35; the engine reports `models=[depth, detector, hand, ocr, scene]`. Not yet measured on
+the device: the step-count calibration (tape measure) and the hand-word cadence in a real fridge.

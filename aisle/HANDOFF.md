@@ -141,6 +141,13 @@ to talk), `scripts/normalize-audio.sh` (cached phrases at −16 LUFS; `gen:audio
 start, `server/data/cache/`, git-ignored) and the proxy's `plannerRace` (Stream C's). The
 route path is 6–8 s; if "Offline" ever comes back, read the proxy log's `route` lines first.
 
+## Round 7 (Stream A): geometry speaks
+`src/core/guide.ts` turns detector boxes / memory bearings into the walking instruction
+(steps from `CLASS_HEIGHT_M` and the depth grid); `src/core/handGuide.ts` steers the hand from
+`onHandPose` (Vision hand pose, `HandTracker.swift`) against a target box; `guidedTask.ts`
+speaks geometry first and mutes the model's sentence. The own arm is class `hand`. The step
+count is a formula (distance ≈ height / (1.4 × box height)), not yet calibrated on the phone.
+
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV
   item (newest wins), INFO dropped if anything is queued, 4 s minimum gap, CRITICAL
