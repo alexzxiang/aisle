@@ -129,7 +129,7 @@ export type ASideKey =
   | 'onboarding_ring_switch' | 'onboarding_walk_straight' | 'onboarding_done'
   | 'route_unavailable' | 'no_route_data'
   | 'need_location' | 'no_store_nearby' | 'say_item_one_word' | 'describe_nothing'
-  | 'let_me_see' | 'planning_route' | 'no_place_found' | 'arrived_destination' | 'task_done' | 'task_next' | 'task_step_done'
+  | 'let_me_see' | 'planning_route' | 'no_place_found' | 'arrived_destination' | 'task_done' | 'task_next' | 'task_step_done' | 'task_still_looking'
   | 'show_surroundings' | 'tell_me_where' | 'noted';
 
 export type PhraseKey = CacheKey | ASideKey;
@@ -225,6 +225,9 @@ export const PHRASE_LIST: readonly Phrase[] = [
   P('task_done', 'Done. Task complete.', 'indoor', true),
   P('task_next', 'Next step.', 'indoor', true),
   P('task_step_done', 'Step done.', 'indoor', true),
+  // A guided task can go quiet between the 20 s step reminders (the describer and situate
+  // stay silent in GUIDED_TASK); this fills the gap so it feels like a guide, at INFO.
+  P('task_still_looking', 'Still with you. Keep turning slowly.', 'indoor', true),
   // Awareness loop (situate.ts): the standing ask, the follow-up after a "no", the acknowledgement.
   P('show_surroundings', 'Turn slowly. Show me your surroundings.', 'reply', true),
   P('tell_me_where', 'Tell me where you are.', 'reply', true),

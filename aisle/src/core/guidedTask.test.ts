@@ -22,6 +22,16 @@ const OBSERVE_PLAN: TaskPlanOutput = {
     ...PLAN.steps,
   ],
 };
+// The grocery demo: locate an item at the store. A look-around aisle-sign step, then walk
+// to the aisle, then the shelf — the shape templateTaskPlan('store') and Nemotron return.
+const STORE_PLAN: TaskPlanOutput = {
+  askFirst: 'Let me see your surroundings.',
+  steps: [
+    { instruction: 'Turn slowly so I can see the aisle signs.', lookFor: 'an aisle sign' },
+    { instruction: 'Walk to the pasta aisle.', lookFor: 'the pasta aisle sign' },
+    { instruction: 'Face the shelf and reach for the pasta.', lookFor: 'the pasta within reach' },
+  ],
+};
 
 function visionResponse(task: VisionResponse['task'], speech = ''): VisionResponse {
   return {
@@ -75,6 +85,9 @@ function harness(opts: { plan?: TaskPlanOutput; askImpl?: (userText: string) => 
     describe,
     conversation: { pushAisle: (t) => { log.push(t); } },
     now: () => Date.now(),
+    // Push the reassurance nudge past every timed assertion below; the one test that
+    // exercises it passes its own small reassureMs.
+    reassureMs: 120_000,
   };
   return { deps, bus, said, haptic, asks, planner, describe, log };
 }
@@ -288,6 +301,48 @@ describe('createGuidedTask', () => {
     expect(task.isActive()).toBe(true);
     task.dispose();
     expect(task.isActive()).toBe(false);
+  });
+
+  it('store context: "find the pasta" → look → aisle-sign step → walk to the aisle → shelf → complete', async () => {
+    const seen: string[] = [];
+    const h = harness({ plan: STORE_PLAN, askImpl: async (userText) => { seen.push(userText); return applied({ done: true, confidence: 0.9 }); } });
+    const task = createGuidedTask({ ...h.deps, scene: () => 'in a store aisle' });
+    h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'pasta', context: 'store', source: 'voice' });
+    expect(h.deps.store.getState().mode).toBe('GUIDED_TASK');
+    expect(h.deps.store.getState().taskGoal).toBe('pasta');
+    await flush();
+    // The look feeds the planner the store context and what the camera saw.
+    expect(h.planner).toHaveBeenCalledWith('taskPlan', expect.objectContaining({ goal: 'pasta', context: 'store' }));
+    expect(h.said.map((r) => r.text)).toEqual([PHRASES.let_me_see, STORE_PLAN.steps[0].instruction]);
+    // Step one is a look-around ("Turn slowly so I can see the aisle signs."): it closes on the first camera reading.
+    await flush(TASK_TICK_MS);
+    expect(task.getDebugState().step).toBe(1);
+    expect(h.said.slice(-2).map((r) => r.text)).toEqual([PHRASES.task_step_done, STORE_PLAN.steps[1].instruction]);
+    // The store aisle rides along in the ask so Claude grounds its hint on where the shopper is.
+    await flush(TASK_TICK_MS);
+    expect(seen.some((u) => u.includes('Place: in a store aisle.') && u.includes('Step 2 of 3: Walk to the pasta aisle.'))).toBe(true);
+    expect(task.getDebugState().step).toBe(1);
+    // Walk-to-aisle then the shelf each close on two confident readings.
+    await flush(TASK_TICK_MS);
+    expect(task.getDebugState().step).toBe(2);
+    await flush(TASK_TICK_MS * 2);
+    expect(h.deps.store.getState().mode).toBe('DONE');
+    expect(h.bus.history().filter((r) => r.event.type === 'TASK_COMPLETED')).toHaveLength(1);
+    expect(h.said[h.said.length - 1].text).toBe(PHRASES.task_done);
+    task.dispose();
+  });
+
+  it('fills the quiet between step reminders with a reassurance nudge at INFO', async () => {
+    const h = harness({ askImpl: async () => applied({ done: false, confidence: 0.2 }) });
+    const task = createGuidedTask({ ...h.deps, reassureMs: 5000 });
+    h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush();   // step one spoken; the step does not auto-close (readings are never done)
+    await flush(5000);
+    const nudge = h.said[h.said.length - 1];
+    expect(nudge.text).toBe(PHRASES.task_still_looking);
+    expect(nudge.priority).toBe('INFO');
+    expect(h.log).toContain(PHRASES.task_still_looking);
+    task.dispose();
   });
 
   it('isAdvanceRequest matches the hands-free confirmations only', () => {
