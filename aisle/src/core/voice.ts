@@ -139,6 +139,16 @@ const INTENTS: ReadonlySet<ParseIntentOutput['intent']> = new Set([
   'find_item', 'navigate_to', 'guided_task', 'repeat', 'how_far', 'where_am_i', 'abort', 'help', 'unknown',
 ]);
 
+/**
+ * Modes with a route or store trip already running. Outside these the app is idle with the
+ * camera up (the awareness loop owns the scene), which is where an item request is served by
+ * the model finding it, not by a surveyed store map.
+ */
+const ON_TRIP: ReadonlySet<AppMode> = new Set<AppMode>([
+  'OUTDOOR_NAV', 'APPROACH_CROSSING', 'AT_CURB', 'CROSSING', 'TRANSITION',
+  'INDOOR_NAV', 'AT_ITEM', 'ITEM_PICKUP', 'CHECKOUT_NAV',
+]);
+
 export function coerceParseIntentOutput(raw: unknown, fallback: ParseIntentOutput): ParseIntentOutput {
   if (!raw || typeof raw !== 'object') return fallback;
   const o = raw as Partial<ParseIntentOutput>;
@@ -370,6 +380,17 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       opts.conversation?.pushAisle(output.reply, 'speech');
     };
     if (output.intent === 'find_item' && output.item) {
+      // No surveyed store map: when the awareness loop already places the user in a store
+      // (or at home) and they are not on a trip, the model finds the item by looking — a
+      // guided task with that context — instead of the map-driven trip. On any trip, or when
+      // the scene is a street or unknown, the item still drives the trip (ITEM_REQUESTED),
+      // so the outdoor "walk me to a store" path is untouched.
+      const scene = ON_TRIP.has(opts.store.getState().mode) ? null : opts.sceneContext?.() ?? null;
+      if (scene === 'store' || scene === 'home') {
+        reply();
+        opts.bus.emit({ type: 'TASK_REQUESTED', goal: output.item, context: scene, source });
+        return;
+      }
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
     } else if (output.intent === 'navigate_to' && output.destination) {
       // Round 4: the echo ("CVS. Got it.") first, then the trip's own prompts

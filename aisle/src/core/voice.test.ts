@@ -531,6 +531,32 @@ describe('round 4: the voice path emits the new events', () => {
     await make().submitText('find my keys');
     expect(events.find((x) => x.type === 'TASK_REQUESTED')).toMatchObject({ context: 'store' });
   });
+
+  it('an item named in a store scene (no trip) → the model finds it: TASK_REQUESTED store, not ITEM_REQUESTED', async () => {
+    store.setState({ mode: 'IDLE' });
+    const v = createVoiceInput({
+      speech: { say: (r: SpeechRequest) => { said.push(r); } } as unknown as SpeechService,
+      bus, store, proxyUrl: 'http://proxy', knownItems: () => KNOWN, recognizer: undefined,
+      fetchImpl: (async () => { throw new Error('offline'); }) as unknown as typeof fetch,
+      sceneContext: () => 'store',
+    });
+    await v.submitText('find the pasta');
+    expect(events.find((x) => x.type === 'TASK_REQUESTED')).toMatchObject({ goal: 'pasta', context: 'store' });
+    expect(events.find((x) => x.type === 'ITEM_REQUESTED')).toBeUndefined();
+  });
+
+  it('the same item on an active trip stays a trip (ITEM_REQUESTED), scene ignored', async () => {
+    store.setState({ mode: 'INDOOR_NAV' });
+    const v = createVoiceInput({
+      speech: { say: (r: SpeechRequest) => { said.push(r); } } as unknown as SpeechService,
+      bus, store, proxyUrl: 'http://proxy', knownItems: () => KNOWN, recognizer: undefined,
+      fetchImpl: (async () => { throw new Error('offline'); }) as unknown as typeof fetch,
+      sceneContext: () => 'store',
+    });
+    await v.submitText('find the pasta');
+    expect(events.find((x) => x.type === 'ITEM_REQUESTED')).toMatchObject({ item: 'pasta' });
+    expect(events.find((x) => x.type === 'TASK_REQUESTED')).toBeUndefined();
+  });
 });
 
 describe('round 4: destinations and guided tasks through the voice path', () => {
