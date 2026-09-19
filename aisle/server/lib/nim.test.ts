@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { testConfig } from '../test/fakes';
 import { withFirstTokenDeadline } from './deadline';
-import { type CreateStream, type NimTarget, buildBody, buildTargets, isFailoverError, nimChat, stripThinking } from './nim';
+import { type CreateStream, type NimTarget, buildBody, chunksFromCompletion, buildTargets, isFailoverError, nimChat, stripThinking } from './nim';
 
 const schema = { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false };
 
@@ -17,15 +17,31 @@ function streamOf(parts: string[], delayMs = 0): CreateStream {
 describe('buildBody', () => {
   const target: NimTarget = { provider: 'nim', baseURL: 'https://integrate.api.nvidia.com/v1', apiKey: 'k', model: 'nvidia/nemotron-3.5-lightning-30b-a3b', keyLabel: 'primary' };
 
-  it('sends stream, temperature 0, max_completion_tokens, thinking off and nvext.guided_json to NIM', () => {
+  it('sends a NON-streaming json_object request with thinking off and the schema in the system prompt to NIM (no nvext)', () => {
     const body = buildBody(target, { system: 'sys', user: 'u', schema });
-    expect(body.stream).toBe(true);
+    expect(body.stream).toBe(false);
     expect(body.temperature).toBe(0);
     expect(body.max_completion_tokens).toBe(300);
     expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
-    expect(body.nvext).toEqual({ guided_json: schema });
-    expect(body.response_format).toBeUndefined();
-    expect(body.messages).toEqual([{ role: 'system', content: 'sys' }, { role: 'user', content: 'u' }]);
+    expect(body.nvext).toBeUndefined();
+    expect(body.response_format).toEqual({ type: 'json_object' });
+    const msgs = body.messages as Array<{ role: string; content: string }>;
+    expect(msgs[0]?.role).toBe('system');
+    expect(msgs[0]?.content.startsWith('sys')).toBe(true);
+    expect(msgs[0]?.content).toContain(JSON.stringify(schema));
+    expect(msgs[1]).toEqual({ role: 'user', content: 'u' });
+  });
+
+  it('adds a system message with the schema when the caller gave none (NIM)', () => {
+    const body = buildBody(target, { user: 'u', schema });
+    const msgs = body.messages as Array<{ role: string; content: string }>;
+    expect(msgs[0]?.role).toBe('system');
+    expect(msgs[0]?.content).toContain('JSON Schema');
+  });
+
+  it('chunksFromCompletion turns a non-streaming completion into one chunk', () => {
+    expect(chunksFromCompletion({ choices: [{ message: { content: '{"a":1}' } }] })).toEqual([{ text: '{"a":1}', reasoning: undefined }]);
+    expect(chunksFromCompletion({ choices: [] })).toEqual([]);
   });
 
   it('uses response_format json_schema (no nvext) on OpenRouter', () => {

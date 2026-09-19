@@ -5,7 +5,8 @@
  * streaming chat completion against integrate.api.nvidia.com:
  *   - `stream: true`, `temperature: 0`, `max_completion_tokens`
  *   - `chat_template_kwargs: { enable_thinking: false }`   (thinking off)
- *   - `nvext: { guided_json: <schema> }`                    (schema-bound output)
+ *   - NIM: non-streaming `response_format: json_object` + schema in the prompt
+ *     (nvext.guided_json is rejected by the hosted lightning endpoint; streaming stalls)
  * plus prompt-level "JSON only". On 429 / 503 / connect error before the first
  * token it retries once with the spare NIM key (429 only) and then the same model on
  * OpenRouter (where `response_format: json_schema` replaces `nvext`); after that the
@@ -132,7 +133,19 @@ export function buildBody(target: NimTarget, p: NimChatParams): Record<string, u
     chat_template_kwargs: { enable_thinking: false },
   };
   if (target.provider === 'nim') {
-    base.nvext = { guided_json: p.schema };
+    // Measured 2026-09-18 on integrate.api.nvidia.com for nemotron-3.5-lightning-30b-a3b:
+    //  - `nvext.guided_json` → HTTP 400 "unknown field `guided_json`" (not supported here)
+    //  - streaming → first chunk after ~34 s; non-streaming → whole answer in ~1 s
+    // So NIM gets a non-streaming `json_object` request with the schema stated in the
+    // prompt; the route validates the parsed object against the schema and falls back on
+    // mismatch (plan.ts validationFallback). OpenRouter keeps streamed json_schema below.
+    base.stream = false;
+    base.response_format = { type: 'json_object' };
+    const hint = `Return exactly one JSON object and nothing else. It must match this JSON Schema: ${JSON.stringify(p.schema)}`;
+    const msgs = base.messages as NimMessage[];
+    const first = msgs[0];
+    if (first && first.role === 'system') msgs[0] = { role: 'system', content: `${first.content}\n${hint}` };
+    else base.messages = [{ role: 'system', content: hint }, ...msgs];
   } else {
     base.response_format = { type: 'json_schema', json_schema: { name: p.schemaName ?? 'output', schema: p.schema, strict: true } };
   }
@@ -140,8 +153,28 @@ export function buildBody(target: NimTarget, p: NimChatParams): Record<string, u
 }
 
 /** Default transport: the OpenAI SDK as a plain OpenAI-compatible client. */
+/** A non-streaming completion as a one-chunk stream, so the deadline helper is unchanged. */
+export function chunksFromCompletion(completion: { choices?: Array<{ message?: Record<string, unknown> }> }): NimChunk[] {
+  const msg = completion.choices?.[0]?.message ?? {};
+  const text = typeof msg.content === 'string' ? msg.content : undefined;
+  const reasoning = typeof msg.reasoning_content === 'string'
+    ? msg.reasoning_content
+    : typeof msg.reasoning === 'string' ? msg.reasoning : undefined;
+  return text !== undefined || reasoning !== undefined ? [{ text, reasoning }] : [];
+}
+
 export const openAiCreateStream: CreateStream = async (target, body, signal) => {
   const client = new OpenAI({ apiKey: target.apiKey, baseURL: target.baseURL, maxRetries: 0, timeout: 20_000 });
+  if (body.stream === false) {
+    const completion = await client.chat.completions.create(
+      body as unknown as Parameters<typeof client.chat.completions.create>[0] & { stream?: false },
+      { signal },
+    );
+    const chunks = chunksFromCompletion(completion as unknown as { choices?: Array<{ message?: Record<string, unknown> }> });
+    return (async function* () {
+      for (const c of chunks) yield c;
+    })();
+  }
   const stream = await client.chat.completions.create(
     body as unknown as Parameters<typeof client.chat.completions.create>[0] & { stream: true },
     { signal },
