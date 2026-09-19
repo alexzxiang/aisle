@@ -38,7 +38,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: aisle/server/package-lock.json
+          cache-dependency-path: |
+            aisle/package-lock.json
+            aisle/server/package-lock.json
+      # The proxy shares src/core/contracts.ts and src/outdoor/plannerJobs.ts with the app,
+      # and the app's tsconfig extends expo's: the app's node_modules must be there too.
+      - run: npm ci
+        working-directory: aisle
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
