@@ -1,0 +1,16 @@
+# EAS Build upload filter. When this file exists EAS uses it INSTEAD of .gitignore, so it
+# mirrors .gitignore except that exported CoreML models (git-ignored, not vendored — see
+# models/LICENSES.md) ARE uploaded so cloud builds for the teammate without a Mac include them.
+node_modules/
+server/node_modules/
+.expo/
+ios/build/
+ios/Pods/
+android/build/
+training/.venv/
+training/runs/
+*.pt
+*.log
+.DS_Store
+server/.env
+.env*

@@ -44,7 +44,9 @@
     "test:all": "npm test && npm run test:server",
     "lint": "npm run typecheck && npm run lint:deps && npm run lint:phrases",
     "start:mock": "EXPO_PUBLIC_MOCK=1 expo start --dev-client",
-    "ios:device": "expo run:ios --device"
+    "ios:device": "expo run:ios --device",
+    "models:coco": "bash -c 'cd training && . .venv/bin/activate && python export_coreml.py --weights yolo11n.pt --name coco-yolo-nano --coco'",
+    "models:venv": "bash -c 'cd training && python3.12 -m venv .venv && . .venv/bin/activate && pip install -q --upgrade pip && pip install -q \"ultralytics>=8.3,<9\" \"coremltools>=8.0\" \"numpy<2\"'"
   },
   "private": true,
   "jest": {
