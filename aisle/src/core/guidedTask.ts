@@ -35,6 +35,7 @@ import type { SemanticVision } from '../perception/semanticVision';
 import type { PlannerClient } from '../outdoor/planner';
 import { templateTaskPlan } from '../outdoor/plannerJobs';
 import { createHandGuide, itemOfGoal, type HandGuide } from './handGuide';
+import type { Guide, GuideInstruction, TargetBox } from './guide';
 
 export const TASK_TICK_MS = 3000;
 /** A `done` reading at or above this counts toward closing the step on camera evidence alone. */
@@ -60,6 +61,23 @@ export const TASK_GIVE_UP_MS = 120_000;
 export const TASK_DONE_STREAK = 2;
 /** An unanswered step check expires after this; the loop goes back to watching. */
 export const TASK_CHECK_TTL_MS = 15_000;
+/** A geometric instruction that has not changed is said again after this (round 7). */
+export const TASK_GUIDE_REPEAT_MS = 6000;
+/** Geometry waits this long after a step is announced, so the step's sentence is heard first. */
+export const TASK_GUIDE_AFTER_STEP_MS = 4000;
+
+/**
+ * The thing a step is about, for the geometric guide: the step's `lookFor` when it names a
+ * thing the detector or memory knows, else the goal's item ("eggs in my fridge" → "fridge"
+ * for walking steps: the place the item is in; "eggs" for the reach).
+ */
+export function stepTarget(instruction: string, lookFor: string, goal: string): string {
+  const place = goal.match(/\b(?:in|on|at|inside|from)\s+(?:the |my |a )?(.+?)$/i)?.[1]?.trim();
+  if (isReachStep(instruction)) return itemOfGoal(goal);
+  const lf = lookFor.trim().toLowerCase();
+  if (lf && !/\b(room|layout|door|frame|hallway|sign|shelf|shelves|aisle)\b/.test(lf) && lf.split(/\s+/).length <= 4) return lf.replace(/^(the|a|an|my)\s+/, '');
+  return place ?? itemOfGoal(goal);
+}
 /**
  * A look-around step ("Turn slowly so I can see the room.") has no target the camera
  * can confirm; it closes on the first `done` reading of any confidence, or after this.
@@ -109,6 +127,14 @@ export interface GuidedTaskDeps {
   seen?: () => string;
   /** The reach step's hand loop (handGuide.ts). Default: built from vision / speech / haptics. */
   handGuide?: HandGuide;
+  /**
+   * Round 7: walking instructions from geometry (guide.ts). When it has something to say
+   * about the step's target, its sentence is spoken instead of the model's, and the model
+   * is asked silently (it still judges `task.done` and supplies a `target.box`).
+   */
+  guide?: Guide;
+  /** Minimum time between two geometric instructions that say the same thing. */
+  guideRepeatMs?: number;
   conversation?: Pick<ConversationLog, 'pushAisle'>;
   now?: () => number;
   tickMs?: number;
@@ -175,6 +201,10 @@ interface RunState {
   checked: Set<number>;
   /** The hand loop is running for this step (reach steps only). */
   handing: boolean;
+  /** The last geometric instruction spoken for this step, and when (round 7). */
+  guided: { at: number; instruction: GuideInstruction } | null;
+  /** The model's last target box for this step (steers targets the detector cannot name). */
+  modelTarget: TargetBox | null;
 }
 
 export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
@@ -187,12 +217,39 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const askConfidence = deps.askConfidence ?? TASK_ASK_CONFIDENCE;
   const doneStreak = deps.doneStreak ?? TASK_DONE_STREAK;
   const checkTtlMs = deps.checkTtlMs ?? TASK_CHECK_TTL_MS;
+  const guideRepeatMs = deps.guideRepeatMs ?? TASK_GUIDE_REPEAT_MS;
   const observeMs = deps.observeMs ?? TASK_OBSERVE_MS;
   const setT: typeof setTimeout = deps.setTimeoutFn ?? setTimeout;
   const clearT: typeof clearTimeout = deps.clearTimeoutFn ?? clearTimeout;
   const { bus, store, speech } = deps;
 
   const handGuide: HandGuide = deps.handGuide ?? createHandGuide({ vision: deps.vision, speech, haptics: deps.haptics, bus, conversation: deps.conversation, now });
+
+  /**
+   * Round 7: geometry speaks first. Returns true when a geometric instruction was spoken (or
+   * deliberately held because it has not changed), so the model's prose is muted for this ask.
+   */
+  const speakGeometry = (r: RunState): boolean => {
+    if (!deps.guide) return false;
+    const s = r.steps[r.step];
+    if (!s || isObservationStep(s.instruction)) return false;
+    const t = now();
+    if (t - r.stepAt < TASK_GUIDE_AFTER_STEP_MS) return false;   // the step's own sentence goes first
+    const target = stepTarget(s.instruction, s.lookFor, r.goal);
+    const next = deps.guide.instructionFor(target, r.modelTarget);
+    if (!next) return false;
+    const prev = r.guided;
+    const news = deps.guide.changed(prev?.instruction ?? null, next);
+    if (!news && prev && t - prev.at < guideRepeatMs) return true;
+    speech.say({ text: next.text, priority: 'NAV', dedupeKey: 'task-guide', cooldownMs: 800 });
+    deps.conversation?.pushAisle(next.text, 'prompt');
+    r.guided = { at: t, instruction: next };
+    if (next.kind === 'arrived' && !isReachStep(s.instruction)) {
+      // At the thing the step was walking to: that step is done.
+      r.doneReadings = doneStreak;
+    }
+    return true;
+  };
   let run: RunState | null = null;
   let generation = 0;
   let disposed = false;
@@ -311,6 +368,8 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     deps.haptics.play('CONFIRM');
     sayPhrase(byUser ? 'task_next' : 'task_step_done', 0);
     r.step += 1;
+    r.guided = null;
+    r.modelTarget = null;
     speakStep(r, false);
   };
 
@@ -366,7 +425,15 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       lastAskAt = now();
       try {
         if (r.check && now() - r.check.at > checkTtlMs) r.check = null; // no answer: back to watching
-        const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: r.check !== null });
+        const geometric = speakGeometry(r);
+        if (geometric && r.doneReadings >= doneStreak && run === r) {
+          advanceRun(r, false);   // the guide said "arrived"
+          return;
+        }
+        const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: r.check !== null || geometric });
+        if (run === r && out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= 0.4) {
+          r.modelTarget = { box: out.response.target.box, at: now() };
+        }
         const observing = isObservationStep(r.steps[r.step]?.instruction ?? '');
         if (run === r && observing && (now() - r.stepAt >= observeMs || (out.status === 'applied' && out.response?.task.done === true))) {
           // A look-around step is done once the camera has had its look.
@@ -439,7 +506,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (gen !== generation || disposed || mode() !== 'GUIDED_TASK') return;
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) plan = templateTaskPlan({ goal, context });
 
-    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, giveUpTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false };
+    const r: RunState = { gen, goal, context, steps: plan.steps, step: 0, doneReadings: 0, timer: null, remindTimer: null, reassureTimer: null, giveUpTimer: null, asking: false, check: null, checked: new Set(), stepAt: now(), description, handing: false, guided: null, modelTarget: null };
     run = r;
     deps.conversation?.pushAisle(`Plan: ${plan.steps.length === 1 ? 'one step' : `${plan.steps.length} steps`} to ${goal}.`, 'prompt');
     speakStep(r, false);

@@ -125,6 +125,7 @@ export function emptyVisionResponse(seq: number): VisionResponse {
     hand: { hint: 'not_seen' },
     task: { done: false, confidence: 0 },
     scene: { setting: 'unknown', label: '', confidence: 0 },
+    target: { box: null, confidence: 0 },
     confidence: 0,
     seq,
   };
@@ -163,6 +164,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
       label: str(sub(raw.scene).label, '').trim(),
       confidence: num(sub(raw.scene).confidence, 0),
     },
+    target: coerceTarget(sub(raw.target)),
     confidence: num(raw.confidence, 0),
     seq: base.seq,
   };
@@ -419,6 +421,14 @@ export interface VisionFacts {
  * to a 10 % grid, plus the sorted OCR token set. Two calls with the same key and
  * a fresh result are the same question asked twice.
  */
+/** `target.box` is four numbers in 0..1 (x, y, w, h) or null; anything else is null. */
+function coerceTarget(raw: Record<string, unknown>): VisionResponse['target'] {
+  const b = raw.box;
+  const ok = Array.isArray(b) && b.length === 4 && b.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1);
+  const confidence = typeof raw.confidence === 'number' && Number.isFinite(raw.confidence) ? raw.confidence : 0;
+  return { box: ok ? [b[0], b[1], b[2], b[3]] as [number, number, number, number] : null, confidence };
+}
+
 export function sceneKey(detections: readonly Detection[], ocrTokens: readonly string[]): string {
   const det = detections
     .map((d) => `${d.cls}@${Math.round(d.box[0] * 10)},${Math.round(d.box[1] * 10)},${Math.round(d.box[2] * 10)},${Math.round(d.box[3] * 10)}`)

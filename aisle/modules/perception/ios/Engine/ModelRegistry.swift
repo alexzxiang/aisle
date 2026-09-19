@@ -33,6 +33,7 @@ public enum PipelineStage: String, CaseIterable, Sendable {
   case ocr           // Apple Vision text recognition (system, not a file)
   case segmentation  // optional walkable-surface model
   case scene         // Apple Vision scene classification (system, not a file) — round 6, "where am I" on-device
+  case hand          // Apple Vision hand pose (system, not a file) — round 7, steers the user's hand on-device
 }
 
 // MARK: - Schedule
@@ -46,17 +47,20 @@ public struct ProfileSchedule: Equatable, Sendable {
   public var segmentationFps: Double
   /// Scene classification: ~50 ms on the Neural Engine; 2 fps is plenty for a place that changes when you walk.
   public var sceneFps: Double
+  /// Hand pose: only where a hand is being steered (indoor, pickup); 0 elsewhere.
+  public var handFps: Double
   /// IDLE pauses the ARSession entirely (09 §9).
   public var sessionRunning: Bool
 
   public init(detectorFps: Double, signalFps: Double, depthFps: Double,
-              ocrFps: Double, segmentationFps: Double, sceneFps: Double = 0, sessionRunning: Bool = true) {
+              ocrFps: Double, segmentationFps: Double, sceneFps: Double = 0, handFps: Double = 0, sessionRunning: Bool = true) {
     self.detectorFps = detectorFps
     self.signalFps = signalFps
     self.depthFps = depthFps
     self.ocrFps = ocrFps
     self.segmentationFps = segmentationFps
     self.sceneFps = sceneFps
+    self.handFps = handFps
     self.sessionRunning = sessionRunning
   }
 
@@ -68,6 +72,7 @@ public struct ProfileSchedule: Equatable, Sendable {
     case .ocr: return ocrFps
     case .segmentation: return segmentationFps
     case .scene: return sceneFps
+    case .hand: return handFps
     }
   }
 
@@ -81,11 +86,11 @@ public struct ProfileSchedule: Equatable, Sendable {
     case .serious:
       return ProfileSchedule(
         detectorFps: detectorFps / 2, signalFps: signalFps / 2, depthFps: depthFps / 2,
-        ocrFps: ocrFps / 2, segmentationFps: segmentationFps / 2, sceneFps: min(sceneFps, 1),
+        ocrFps: ocrFps / 2, segmentationFps: segmentationFps / 2, sceneFps: min(sceneFps, 1), handFps: handFps / 2,
         sessionRunning: sessionRunning)
     case .critical:
       var only = ProfileSchedule(
-        detectorFps: 0, signalFps: 0, depthFps: 0, ocrFps: 0, segmentationFps: 0, sceneFps: 0,
+        detectorFps: 0, signalFps: 0, depthFps: 0, ocrFps: 0, segmentationFps: 0, sceneFps: 0, handFps: 0,
         sessionRunning: sessionRunning)
       let kept = max(5, fps(for: safetyStage) / 2)
       switch safetyStage {
@@ -95,6 +100,7 @@ public struct ProfileSchedule: Equatable, Sendable {
       case .ocr: only.ocrFps = kept
       case .segmentation: only.segmentationFps = kept
       case .scene: only.sceneFps = kept
+      case .hand: only.handFps = kept
       }
       return only
     @unknown default:
@@ -127,13 +133,13 @@ public enum ProfileSchedules {
                              segmentationFps: seg ? 5 : 0, sceneFps: 0)
     case .indoorNav:
       return ProfileSchedule(detectorFps: 15, signalFps: 0, depthFps: 10, ocrFps: 3,
-                             segmentationFps: 0, sceneFps: 2)
+                             segmentationFps: 0, sceneFps: 2, handFps: 8)
     case .itemPickup:
       return ProfileSchedule(detectorFps: 5, signalFps: 0, depthFps: 5, ocrFps: 0,
-                             segmentationFps: 0, sceneFps: 1)
+                             segmentationFps: 0, sceneFps: 1, handFps: 10)
     case .aware:
       return ProfileSchedule(detectorFps: 8, signalFps: 0, depthFps: 4, ocrFps: 1,
-                             segmentationFps: 0, sceneFps: 2)
+                             segmentationFps: 0, sceneFps: 2, handFps: 4)
     }
   }
 
@@ -306,6 +312,7 @@ public final class ModelRegistry {
     case .segmentation: return ModelRegistry.segmentationModelName
     case .ocr: return nil // Apple Vision is a system request, not a file
     case .scene: return nil // Apple Vision scene classification: system, not a file
+    case .hand: return nil  // Apple Vision hand pose: system, not a file
     }
   }
 

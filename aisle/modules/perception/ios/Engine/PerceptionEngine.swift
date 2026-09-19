@@ -88,6 +88,12 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   private let ocrQueue = DispatchQueue(label: "aisle.perception.ocr", qos: .utility)
   private let sceneQueue = DispatchQueue(label: "aisle.perception.scene", qos: .utility)
   private let sceneClassifier = SceneClassifier()
+  private let handQueue = DispatchQueue(label: "aisle.perception.hand", qos: .userInitiated)
+  private let handTracker = HandTracker()
+  /// The latest hand pose (round 7), for relabelling the user's own arm; stale after `handFreshSeconds`.
+  private var lastHand: HandPosePayload?
+  private var lastHandAt: Double = 0
+  private let handFreshSeconds: Double = 0.7
 
   private var debugExport: DebugExportRecorder?
 
@@ -289,6 +295,9 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
     if effective.sceneFps > 0, throttles[.scene]?.shouldRun(frame: context.frameIndex, targetFps: effective.sceneFps) == true {
       runScene(context)
     }
+    if effective.handFps > 0, throttles[.hand]?.shouldRun(frame: context.frameIndex, targetFps: effective.handFps) == true {
+      runHand(context)
+    }
   }
 
   public func sessionManager(_ manager: ARSessionManager, trackingStateChanged state: TrackingStateName) {
@@ -337,6 +346,12 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
         throttles[.detector]?.markIdle()
         fpsMeters[.detector]?.tick(at: frameTime)
         var tracked = tracker.update(raw, at: frameTime)
+        // Round 7: the user's own arm is not a person ahead. With a fresh hand pose, the person
+        // box that holds the hand and reaches the frame's bottom edge becomes `hand`.
+        let freshHand = (frameTime - lastHandAt) <= handFreshSeconds ? lastHand : nil
+        if let own = HandTracker.ownArmIndex(in: tracked, hand: freshHand) {
+          tracked[own].cls = .hand
+        }
         if indoor {
           tracked = hazards.applyCartHeuristic(tracked)
           if let hazard = hazards.evaluate(tracked, at: frameTime) {
@@ -439,6 +454,25 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
         if let offset = result.lateralOffset,
            let chosen = lateralArbiter.offer(offset, at: frameTime, tracking: session.trackingState) {
           emit(.lateralOffset, chosen.dictionary, frameTime: nil)
+        }
+      }
+    }
+  }
+
+  /// Round 7: Vision hand pose at the profile's `handFps`; `onHandPose` carries the fingertip,
+  /// wrist and a box, and the pose relabels the user's own arm in the detections.
+  private func runHand(_ context: FrameContext) {
+    let frameTime = context.geometry.timestamp
+    throttles[.hand]?.markBusy()
+    handQueue.async { [self] in
+      let hand = handTracker.detect(pixelBuffer: context.pixelBuffer, orientation: context.orientation, timestampMs: context.timestampMs)
+      session.frameQueue.async { [self] in
+        throttles[.hand]?.markIdle()
+        fpsMeters[.hand]?.tick(at: frameTime)
+        if let hand {
+          lastHand = hand
+          lastHandAt = frameTime
+          emit(.handPose, hand.dictionary, frameTime: nil)
         }
       }
     }

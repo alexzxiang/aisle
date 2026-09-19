@@ -231,7 +231,7 @@ export function createSceneMemory(deps: SceneMemoryDeps): SceneMemory {
     if (f === null) return;
     const t = now();
     for (const d of dets) {
-      if (d.cls === 'ped_walk' || d.cls === 'ped_hand' || d.cls === 'ped_countdown') continue;
+      if (d.cls === 'ped_walk' || d.cls === 'ped_hand' || d.cls === 'ped_countdown' || d.cls === 'hand') continue; // signal heads and the user's own hand are not places
       const bearing = bearingFor(f, d.box, hfov());
       const area = d.box[2] * d.box[3];
       const same = items.find((e) => e.cls === d.cls && Math.abs(wrap180(e.bearingDeg - bearing)) <= MEMORY_MERGE_DEG);

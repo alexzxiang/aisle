@@ -1,7 +1,8 @@
-import type { PlannerResult, SpeechRequest, TaskPlanOutput, VisionResponse } from './contracts';
+import type { Detection, PlannerResult, SpeechRequest, TaskPlanOutput, VisionResponse } from './contracts';
 import { createEventBus } from './bus';
 import { bindStoreToBus, createAppStore } from './store';
 import { PHRASES } from './phrases';
+import { createGuide } from './guide';
 import { createGuidedTask, isAdvanceRequest, TASK_REMIND_MS, TASK_TICK_MS, type GuidedTaskDeps } from './guidedTask';
 import type { AskOutcome } from '../perception/semanticVision';
 
@@ -45,6 +46,7 @@ function visionResponse(task: VisionResponse['task'], speech = ''): VisionRespon
     hand: { hint: 'not_seen' },
     task,
     scene: { setting: 'unknown', label: '', confidence: 0 },
+    target: { box: null, confidence: 0 },
     confidence: 0.9,
     seq: 1,
   };
@@ -317,6 +319,48 @@ describe('createGuidedTask', () => {
     expect(h.asks.mock.calls.filter((c) => c[0] === 'hand_guidance')[0]![1]).toMatchObject({ targetItem: 'eggs', image: 640, silent: true });
     expect(h.deps.store.getState().mode).toBe('DONE');
     expect(h.haptic.filter((p) => p === 'CONFIRM').length).toBeGreaterThanOrEqual(2);
+    task.dispose();
+  });
+
+  it('round 7: with the fridge in view the walking step says forward with steps, off to the side it says turn, and arrival closes the step', async () => {
+    const detections: { list: Detection[] } = { list: [] };
+    const guide = createGuide({
+      detections: () => detections.list,
+      memory: { whereIs: () => 'unseen', facing: () => 0 },
+      hfovDeg: () => 56,
+      now: () => Date.now(),
+    });
+    const h = harness({ askImpl: async () => applied({ done: false, confidence: 0.1 }) });
+    const task = createGuidedTask({ ...h.deps, guide, tickMs: 500 });
+    h.deps.bus.emit({ type: 'TASK_REQUESTED', goal: 'eggs in my fridge', context: 'home', source: 'voice' });
+    await flush();
+    // Step one ("Walk to the kitchen door frame.") is spoken; geometry waits four seconds.
+    await flush(3500);
+    expect(h.said.map((r) => r.text)).not.toContainEqual(expect.stringMatching(/Walk forward|Turn right/));
+    // The fridge is in view, off to the right, mid-frame height.
+    detections.list = [{ cls: 'fridge', box: [0.65, 0.3, 0.25, 0.4], score: 0.9, trackId: 1 }];
+    await flush(1000);
+    const first = h.said[h.said.length - 1].text;
+    expect(first).toMatch(/right/i);
+    expect(first).toMatch(/fridge/i);
+    // Facing it now: forward with a step count.
+    detections.list = [{ cls: 'fridge', box: [0.38, 0.3, 0.25, 0.4], score: 0.9, trackId: 1 }];
+    await flush(1000);
+    const second = h.said[h.said.length - 1].text;
+    expect(second).toMatch(/ahead|forward/i);
+    expect(second).toMatch(/steps/);
+    expect(second).not.toMatch(/\d/);
+    // Same instruction again within six seconds: silence.
+    const count = h.said.length;
+    await flush(1000);
+    expect(h.said.length).toBe(count);
+    // At the fridge (tall box, depth says close): the step closes and the next one is announced.
+    detections.list = [{ cls: 'fridge', box: [0.2, 0.05, 0.6, 0.9], score: 0.9, trackId: 1, near: 0.9 }];
+    await flush(1500);
+    expect(h.said.map((r) => r.text)).toContainEqual(expect.stringMatching(/right in front of you|within reach|You are at the fridge/));
+    expect(task.getDebugState().step).toBe(1);
+    // The model's prose was muted while geometry spoke.
+    expect(h.asks.mock.calls.filter((c) => c[0] === 'task_step').slice(-3).every((c) => c[1].silent === true)).toBe(true);
     task.dispose();
   });
 

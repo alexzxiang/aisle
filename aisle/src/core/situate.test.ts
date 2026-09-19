@@ -36,6 +36,7 @@ function response(scene: VisionResponse['scene'], speech = ''): VisionResponse {
     hand: { hint: 'not_seen' },
     task: { done: false, confidence: 0 },
     scene,
+    target: { box: null, confidence: 0 },
     confidence: 0.8,
     seq: 1,
   };

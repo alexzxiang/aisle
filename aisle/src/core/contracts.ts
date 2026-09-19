@@ -251,10 +251,12 @@ export type ModeProfile =
 
 /** Safety classes (vehicles, people, carts, signal heads) plus the scenery classes the room needs (round 6). */
 export const SAFETY_DETECTION_CLASSES = ['car', 'bus', 'truck', 'motorcycle', 'bicycle', 'person', 'cart', 'ped_walk', 'ped_hand', 'ped_countdown'] as const;
+/** Round 7: the user's own hand / arm — never a hazard, never "a person ahead". */
+export const SELF_DETECTION_CLASSES = ['hand'] as const;
 /** Round 6b: food and kitchen things. */
 export const FOOD_DETECTION_CLASSES = ['banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'pizza', 'donut', 'cake', 'wine_glass', 'fork', 'knife', 'spoon', 'remote', 'keyboard', 'cell_phone', 'toaster', 'vase', 'scissors', 'teddy_bear', 'toothbrush', 'hair_drier', 'mouse', 'tie'] as const;
 export const SCENE_DETECTION_CLASSES = [...FOOD_DETECTION_CLASSES, 'chair', 'couch', 'bed', 'table', 'tv', 'laptop', 'fridge', 'oven', 'microwave', 'sink', 'toilet', 'bottle', 'cup', 'bowl', 'plant', 'book', 'clock', 'dog', 'cat', 'backpack', 'handbag', 'suitcase', 'umbrella', 'traffic_light', 'stop_sign', 'hydrant', 'bench'] as const;
-export const DETECTION_CLASSES = [...SAFETY_DETECTION_CLASSES, ...SCENE_DETECTION_CLASSES] as const;
+export const DETECTION_CLASSES = [...SAFETY_DETECTION_CLASSES, ...SELF_DETECTION_CLASSES, ...SCENE_DETECTION_CLASSES] as const;
 export type DetectionClass = (typeof DETECTION_CLASSES)[number];
 
 export interface Detection {
@@ -264,6 +266,15 @@ export interface Detection {
   trackId: number;
   /** Relative nearness at the box centre from the depth grid, 0 far … 1 near; absent when no fresh depth. */
   near?: number;
+}
+
+/** Round 7: the user's own hand from Vision hand pose, normalized upright coordinates (origin top-left). */
+export interface HandPoseEvent {
+  tipX: number; tipY: number;      // index fingertip
+  wristX: number; wristY: number;
+  box: [x: number, y: number, w: number, h: number];
+  confidence: number;
+  timestamp: number;
 }
 
 export interface SceneClassEvent {
@@ -317,6 +328,8 @@ export interface PerceptionService {
   onTrackingState(cb: (s: TrackingState) => void): () => void;
   /** Round 6: Apple's on-device scene classifier, top labels at ≤ 2 Hz ("kitchen 0.71", "refrigerator 0.4"). */
   onSceneClass(cb: (e: SceneClassEvent) => void): () => void;
+  /** Round 7: the user's own hand, ≤ 10 Hz while a hand is being steered. */
+  onHandPose(cb: (e: HandPoseEvent) => void): () => void;
 
   snapshotJPEG(maxWidth: SnapshotWidth): Promise<Snapshot>;  // upright, EXIF baked in
   getTrackingState(): TrackingState;
@@ -378,6 +391,7 @@ export interface VisionResponse {
   signal: { state: SignalState; confidence: number };      // curb_crop only; UNKNOWN unless confident
   hand: { hint: HandHint };                                 // hand_guidance only
   task: { done: boolean; confidence: number };              // task_step only: is the current step complete?
+  target: { box: [x: number, y: number, w: number, h: number] | null; confidence: number }; // task_step / hand_guidance: where the step's target is in the still (round 7)
   scene: { setting: SceneSetting; label: string; confidence: number }; // situate only: label ≤ 5 words ("in a kitchen", "on a sidewalk")
   confidence: number;                                        // 0..1 overall; < 0.5 → callers ignore
   seq: number;

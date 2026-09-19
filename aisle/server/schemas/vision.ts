@@ -46,6 +46,10 @@ export const VISION_RESPONSE_SCHEMA: Readonly<Record<string, unknown>> = Object.
       label: { type: 'string', description: 'situate only: at most five words, a place phrase such as "in a kitchen" or "on a sidewalk"; empty when unknown' },
       confidence: { type: 'number' },
     }),
+    target: obj({
+      box: { type: ['array', 'null'], items: { type: 'number' }, minItems: 4, maxItems: 4, description: 'task_step / hand_guidance: the target item\'s box in the image as [x, y, w, h], each 0..1 with origin top-left; null when not visible' },
+      confidence: { type: 'number' },
+    }),
     confidence: { type: 'number' },
     seq: { type: 'integer' },
   }),
@@ -68,12 +72,17 @@ export function emptyVisionResponse(seq: number): VisionResponse {
     hand: { hint: 'not_seen' },
     task: { done: false, confidence: 0 },
     scene: { setting: 'unknown', label: '', confidence: 0 },
+    target: { box: null, confidence: 0 },
     confidence: 0,
     seq,
   };
 }
 
 const isIn = <T extends string>(set: readonly T[], v: unknown): v is T => typeof v === 'string' && (set as readonly string[]).includes(v);
+const box4 = (v: unknown): [number, number, number, number] | null =>
+  Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1)
+    ? [v[0] as number, v[1] as number, v[2] as number, v[3] as number]
+    : null;
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
@@ -91,6 +100,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
   const sg = (r.signal ?? {}) as Record<string, unknown>;
   const h = (r.hand ?? {}) as Record<string, unknown>;
   const sn = (r.scene ?? {}) as Record<string, unknown>;
+  const tg = (r.target ?? {}) as Record<string, unknown>;
   return {
     speech: typeof r.speech === 'string' ? r.speech : '',
     cameraRequest: isIn(CAMERA_DIRECTIONS, r.cameraRequest) ? r.cameraRequest : 'none',
@@ -102,6 +112,7 @@ export function coerceVisionResponse(raw: unknown, seq: number): VisionResponse 
     hand: { hint: isIn(HAND_HINTS, h.hint) ? h.hint : 'not_seen' },
     task: { done: (r.task as { done?: unknown } | undefined)?.done === true, confidence: num((r.task as { confidence?: unknown } | undefined)?.confidence) },
     scene: { setting: isIn(SCENE_SETTINGS, sn.setting) ? sn.setting : 'unknown', label: typeof sn.label === 'string' ? sn.label.trim().slice(0, 60) : '', confidence: num(sn.confidence) },
+    target: { box: box4(tg.box), confidence: num(tg.confidence) },
     confidence: num(r.confidence),
     seq,
   };

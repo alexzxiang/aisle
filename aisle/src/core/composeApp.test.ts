@@ -243,6 +243,8 @@ describe('composeApp (mock mode)', () => {
       'aisle:Shelves on both sides. Aisle sign ahead.',
       'aisle:Plan: 5 steps to eggs in my fridge.',
       'aisle:Walk to the kitchen door frame.',
+      // Round 7: geometry speaks about the goal's place; nothing has seen a fridge in mock mode.
+      expect.stringMatching(/^aisle:.*fridge/i),
       'aisle:Next step.',
       'aisle:Turn toward the kitchen counter.',
       'aisle:Walk to the fridge.',

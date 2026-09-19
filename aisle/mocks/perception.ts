@@ -30,6 +30,7 @@ import type {
   AppMode,
   DepthSummary,
   SceneClassEvent,
+  HandPoseEvent,
   Detection,
   Direction,
   DistanceClass,
@@ -48,7 +49,7 @@ import { createRateLimiter } from './rateLimit';
 
 export const KNOWN_EVENTS = [
   'onSignalState', 'onVehicleApproaching', 'onObstacleAhead', 'onHazard', 'onOcrText',
-  'onDetections', 'onPose', 'onLateralOffset', 'onPlanes', 'onDepth', 'onTrackingState', 'onSceneClass',
+  'onDetections', 'onPose', 'onLateralOffset', 'onPlanes', 'onDepth', 'onTrackingState', 'onSceneClass', 'onHandPose',
 ] as const;
 export type KnownEvent = (typeof KNOWN_EVENTS)[number];
 
@@ -371,6 +372,7 @@ export function createMockPerceptionService(opts: MockPerceptionOptions): MockPe
     onPlanes: on<{ floors: number; verticals: number }>('onPlanes'),
     onDepth: on<DepthSummary>('onDepth'),
     onSceneClass: on<SceneClassEvent>('onSceneClass'),
+    onHandPose: on<HandPoseEvent>('onHandPose'),
     onTrackingState: on<TrackingState>('onTrackingState'),
 
     async snapshotJPEG(): Promise<Snapshot> {

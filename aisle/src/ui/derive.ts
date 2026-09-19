@@ -413,6 +413,7 @@ const SEEN_NAMES: Readonly<Partial<Record<Detection['cls'], string>>> = Object.f
   traffic_light: 'traffic light',
   stop_sign: 'stop sign',
   plant: 'plant',
+  hand: 'your hand',
 });
 
 /** "a person, two carts" from the detector's current tracks; "nothing yet" when empty. The nearest thing says how near. */
@@ -431,6 +432,7 @@ export function detectionSummary(detections: readonly Pick<Detection, 'cls' | 'n
       const name = (SEEN_NAMES[cls as Detection['cls']] ?? cls).replace(/_/g, ' ');
       const near = nearest.get(cls);
       const tag = typeof near === 'number' && near >= 0.66 ? ' (close)' : '';
+      if (name.startsWith('your ')) return `${name}${tag}`;
       if (n === 1) return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}${tag}`;
       const plural = name.endsWith('s') ? name : `${name}s`;
       return `${n < COUNT_WORD.length ? COUNT_WORD[n] : 'several'} ${plural}${tag}`;

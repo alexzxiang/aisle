@@ -25,7 +25,7 @@
  *   `speech` field, so the socket stays closed and Tier 1 runs over HTTP until
  *   the relay exists (`STREAMED_SPEECH_RELAY_AVAILABLE`).
  */
-import type { CrossingController, PerceptionService, PlannerJob, SensorService, SignalState } from './contracts';
+import type { CrossingController, PerceptionService, PlannerJob, SensorService, SignalState, Detection } from './contracts';
 import type { AppEventBus } from './bus';
 import type { AppConfig } from './config';
 import type { AppStore } from './store';
@@ -41,6 +41,8 @@ import { createSceneDescriber, type SceneDescriber } from './describer';
 import { createGuidedTask, type GuidedTask } from './guidedTask';
 import { createSituate, type Situate } from './situate';
 import { createSceneMemory, type SceneMemory } from './sceneMemory';
+import { createGuide } from './guide';
+import { createHandGuide } from './handGuide';
 import { wirePrompts, type PromptsBinding } from './prompts';
 import { LatencyRing, liveMetrics, observePlanner, timedTransport, type LiveMetrics } from './metrics';
 import { createFixtureRouteClient, type FixtureTrack } from './fixtureRoute';
@@ -311,6 +313,12 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     // Bearings need the lens: ~100° across a portrait ultra-wide still, ~56° on the wide lens.
     hfovDeg: () => ((perception.debugLog?.() ?? []).some((l) => l.includes('ultrawide')) ? 100 : 56),
   });
+  // --- Round 7: instructions from geometry (guide.ts) and the phone's own hand ------------
+  const lensHfov = (): number => ((perception.debugLog?.() ?? []).some((l) => l.includes('ultrawide')) ? 100 : 56);
+  let latestDetections: readonly Detection[] = [];
+  unsubs.push(perception.onDetections((d) => { latestDetections = d; }));
+  const guide = createGuide({ detections: () => latestDetections, memory: sceneMemory, hfovDeg: lensHfov, now });
+  const handGuide = createHandGuide({ vision, speech, haptics, perception, bus, conversation, now });
   let guidedTaskRef: GuidedTask | null = null;
 
   // --- A: push-to-talk ---------------------------------------------------------
@@ -403,6 +411,8 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     describe: () => describer.describeNow(),
     scene: () => situate.getScene()?.label ?? null,
     seen: () => sceneMemory.describe(),
+    guide,
+    handGuide,
     conversation,
     now,
   });

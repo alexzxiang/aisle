@@ -105,6 +105,7 @@ export function createNativePerceptionService(native: PerceptionNativeModule): P
     onDepth: (cb) => subscribePerceptionEvent(native, 'onDepth', cb),
     onTrackingState: (cb) => subscribePerceptionEvent(native, 'onTrackingState', cb),
     onSceneClass: (cb) => subscribePerceptionEvent(native, 'onSceneClass', cb),
+    onHandPose: (cb) => subscribePerceptionEvent(native, 'onHandPose', cb),
 
     debugLog: () => {
       try {

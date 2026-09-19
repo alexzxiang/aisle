@@ -39,6 +39,7 @@ public enum PerceptionEventName: String, CaseIterable, Sendable {
   case depth = "onDepth"
   case trackingState = "onTrackingState"
   case sceneClass = "onSceneClass"   // round 6: Apple's scene classifier, top labels
+  case handPose = "onHandPose"       // round 7: the user's own hand (Vision hand pose)
 }
 
 // MARK: - Enumerations (raw values are the contract strings)
@@ -101,6 +102,8 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
   case bicycle
   case person
   case cart
+  /// Round 7: the user's own hand / arm (Vision hand pose, or a person box that is really the arm).
+  case hand
   case pedWalk = "ped_walk"
   case pedHand = "ped_hand"
   case pedCountdown = "ped_countdown"

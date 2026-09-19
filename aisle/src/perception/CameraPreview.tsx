@@ -65,6 +65,7 @@ export const DETECTION_COLORS: Readonly<Record<Detection['cls'], string>> = Obje
   ped_walk: '#3DDC84',
   ped_hand: '#FF4D4D',
   ped_countdown: '#FFA726',
+  hand: '#FFFFFF',          // the user's own hand (round 7): white, so it reads as "you"
   // Scenery (round 6): one quiet neutral so the safety colours above stay the loud ones.
   chair: SCENERY_COLOR, couch: SCENERY_COLOR, bed: SCENERY_COLOR, table: SCENERY_COLOR, tv: SCENERY_COLOR,
   laptop: SCENERY_COLOR, fridge: SCENERY_COLOR, oven: SCENERY_COLOR, microwave: SCENERY_COLOR, sink: SCENERY_COLOR,

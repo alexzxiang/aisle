@@ -46,6 +46,7 @@ export function neutralVisionResponse(seq: number): VisionResponse {
     hand: { hint: 'not_seen' },
     task: { done: false, confidence: 0 },
     scene: { setting: 'unknown', label: '', confidence: 0 },
+    target: { box: null, confidence: 0 },
     confidence: 0,
     seq,
   };
