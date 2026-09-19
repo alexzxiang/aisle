@@ -478,3 +478,27 @@ vitest. 81 cached phrases.
   "compass uncertain" instead). Body offset is set in Settings.
 - **Images.** Snapshots are JPEG in memory for one request; the proxy keeps none (the
   only file writes are the route cache and data scripts). `situate` uses 512 px.
+
+## Round 6 (Stream A: eyes) — 2026-09-19
+
+Why the app was blind in a room, verified in the native code: the COCO detector kept 6 of 80
+classes (no furniture, no appliances), stills to Claude were 384×512 from a 16:9 frame that
+cropped the sensor's top and bottom, one look every 4–6 s from the live (blurred) frame, and
+no fast "where am I" signal at all. Changes, all compiled (`npm run ios:check`) and installed
+on the iPhone 16 at 12:10:
+
+| # | Change | Where |
+|---|---|---|
+| 1 | Format policy: ultra-wide if ARKit offers it → 4:3 → 30 fps → fewest pixels; lens in the debug line | `ARSessionManager.swift` |
+| 2 | 768-px stills (576×768 portrait) for situate / task_step / describe; sharpest frame of the last second | `Snapshot.swift`, `SharpFrameKeeper.swift`, `semanticVision.ts` |
+| 3 | 27 scenery classes kept (chair … bench); overlay, "Sees:" strip, Claude facts in words | `Events.swift`, `VehicleTracker.swift`, `contracts.ts`, `CameraPreview.tsx`, `server/prompts/vision.ts` |
+| 4 | Apple `VNClassifyImageRequest` as stage `scene` (2 fps) → `onSceneClass` → hypothesis in ~1 s; labels to Claude as `facts.sceneLabels` | `SceneClassifier.swift`, `ModelRegistry.swift`, `PerceptionEngine.swift`, `situate.ts` |
+| 5 | Speech lane repairs long / digit lines instead of blanking (verdict `repaired`) | `server/lib/language.ts` |
+| 6 | `npm run ios:check` / `npm run ios:device` (`scripts/ios-build.sh`) | |
+
+Live through the proxy: the kitchen photo with the facts a rebuilt phone attaches
+(`fridge right (large, close)`, `onDeviceScene: kitchen 0.71`) → speech "A person is opening
+a refrigerator on your right.", scene `kitchen / in a kitchen by a fridge / 0.82`, 2.4 s.
+Not yet read from the device: the chosen video format / lens (DebugPanel `videoFormat=`).
+
+Gates: app typecheck + lints + 1031 Jest; server tsc + 162 vitest; Swift compiles; CI green.
