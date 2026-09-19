@@ -648,4 +648,24 @@ describe('goal confirmation when a spoken item is uncertain', () => {
     expect(said.some((s) => s.text === 'Pasta. Did I get that right?')).toBe(false);
     expect(events.find((e) => e.type === 'TASK_REQUESTED')).toMatchObject({ goal: 'pasta', context: 'store' });
   });
+
+  it('a spoken route is confirmed before it starts; "yes" then launches the trip (v2 B-4)', async () => {
+    const { v, rec, said, events } = setup('street');
+    await v.begin();
+    rec.final('take me to CVS');
+    await v.end();
+    expect(said.some((s) => s.text === 'CVS. Did I get that right?')).toBe(true);
+    expect(events.find((e) => e.type === 'DESTINATION_REQUESTED')).toBeUndefined();   // not launched yet
+    await v.begin();
+    rec.final('yes');
+    await v.end();
+    expect(events.find((e) => e.type === 'DESTINATION_REQUESTED')).toMatchObject({ name: 'CVS' });
+  });
+
+  it('a keyboard route starts immediately, no confirmation', async () => {
+    const { v, said, events } = setup('street');
+    await v.submitText('take me to CVS');
+    expect(said.some((s) => s.text === 'CVS. Did I get that right?')).toBe(false);
+    expect(events.find((e) => e.type === 'DESTINATION_REQUESTED')).toMatchObject({ name: 'CVS' });
+  });
 });
