@@ -53,7 +53,7 @@
     </section>
 
     <!-- 3 ----------------------------------------------------------------- -->
-    <section class="slide slide--light" data-title="One errand, three handoffs">
+    <section class="slide slide--light slide--stack" data-title="One errand, three handoffs">
       <div class="glow"></div>
       <h2 data-anim>One errand, three handoffs</h2>
       <div class="row">
@@ -99,6 +99,73 @@
       <aside>This is what separates us from a camera wired to an LLM. The banned list — safe, clear, go, cross now, no cars, you can cross — is a real linter in the repo: a build that would speak any of them fails. The twelve-word cap is checked at build time too. That constraint changed the architecture, because if you cannot say "go" you have to be genuinely useful with position and haptics instead. Four haptic patterns carry most of it: COURSE, TURN, STOP, CONFIRM.</aside>
     </section>
 
+
+    <!-- OUT LOUD ---------------------------------------------------------- -->
+    <section class="slide slide--deep statement" data-title="Why speech, not a screen">
+      <div class="glow"></div>
+      <p class="kicker" data-anim>Out Loud</p>
+      <h2 data-anim>Our user cannot look at the screen. Ever.</h2>
+      <p class="claim" data-anim>A text box would not make this project worse. It would make it useless.</p>
+      <p class="sub muted" data-anim>Every output is audio or haptic. Every input can be a held button and a sentence. The screen is a courtesy for the sighted person helping with setup.</p>
+      <aside>This is the one sentence the track asks for, and for us it is not a stretch: the user is blind, walking, and has one hand on a cane or a dog. Voice is not the interface we chose, it is the only channel available. That is also why we are strict about it — an interface you cannot look away from has to earn every word it spends.</aside>
+    </section>
+
+    <!-- OUT LOUD — the voice stack, measured ------------------------------- -->
+    <section class="slide slide--light slide--chart" data-title="508 phrases, already on the phone">
+      <div class="glow"></div>
+      <div class="head">
+        <p class="kicker" data-anim>Out Loud &nbsp;·&nbsp; the voice stack</p>
+        <h2 data-anim>508 phrases, synthesized once and shipped in the binary.</h2>
+      </div>
+      <div class="split">
+        <div class="split__main" data-anim>
+          <svg class="chart" viewBox="0 0 1400 605" role="img" aria-label="Duration of all five hundred and eight cached phrases. Most sit between two and a half and three seconds.">
+<g class="row"><title>&lt;1.5 s: 70 phrases</title>
+<rect class="bar" x="70" y="378" width="156" height="142" rx="6" fill="#5C7D74"/>
+<text class="val" x="148" y="363" text-anchor="middle">70</text>
+<text class="tick" x="148" y="554" text-anchor="middle">&lt;1.5</text></g>
+<g class="row"><title>1.5 s: 52 phrases</title>
+<rect class="bar" x="250" y="415" width="156" height="105" rx="6" fill="#5C7D74"/>
+<text class="val" x="328" y="400" text-anchor="middle">52</text>
+<text class="tick" x="328" y="554" text-anchor="middle">1.5</text></g>
+<g class="row"><title>2.0 s: 70 phrases</title>
+<rect class="bar" x="430" y="378" width="156" height="142" rx="6" fill="#5C7D74"/>
+<text class="val" x="508" y="363" text-anchor="middle">70</text>
+<text class="tick" x="508" y="554" text-anchor="middle">2.0</text></g>
+<g class="row"><title>2.5 s: 241 phrases</title>
+<rect class="bar" x="610" y="32" width="156" height="488" rx="6" fill="#0E6B4E"/>
+<text class="val" x="688" y="17" text-anchor="middle">241</text>
+<text class="tick" x="688" y="554" text-anchor="middle">2.5</text></g>
+<g class="row"><title>3.0 s: 67 phrases</title>
+<rect class="bar" x="790" y="384" width="156" height="136" rx="6" fill="#5C7D74"/>
+<text class="val" x="868" y="369" text-anchor="middle">67</text>
+<text class="tick" x="868" y="554" text-anchor="middle">3.0</text></g>
+<g class="row"><title>3.5 s: 5 phrases</title>
+<rect class="bar" x="970" y="510" width="156" height="10" rx="6" fill="#5C7D74"/>
+<text class="val" x="1048" y="495" text-anchor="middle">5</text>
+<text class="tick" x="1048" y="554" text-anchor="middle">3.5</text></g>
+<g class="row"><title>4.0+ s: 3 phrases</title>
+<rect class="bar" x="1150" y="514" width="156" height="6" rx="6" fill="#5C7D74"/>
+<text class="val" x="1228" y="499" text-anchor="middle">3</text>
+<text class="tick" x="1228" y="554" text-anchor="middle">4.0+</text></g>
+<line class="base" x1="60" y1="520" x2="1340" y2="520"/>
+<text class="tick" x="1340" y="584" text-anchor="end">seconds of speech</text>
+</svg>
+        </div>
+        <div class="split__side">
+          <p data-anim><b>ElevenLabs Flash v2.5</b> speaks every line, pre-rendered at build time. On the street the phrase is already on the phone, so a cue costs no network and cannot be delayed by a dead bar of signal.</p>
+          <p data-anim>Three backends behind one priority queue: <b>cached clip → live <span class="code">/api/tts</span> → <span class="code">expo-speech</span></b> offline. Input is on-device recognition with <b>Scribe v2</b> as the fallback.</p>
+        </div>
+      </div>
+      <p class="method method--wide" data-anim><b>METHOD</b>
+ <b>Source</b> every entry in <span class="code">assets/audio/manifest.json</span>, written by <span class="code">scripts/generate-audio.ts</span>; the whole closed phrase table, not a sample.
+ <b>Synthesis</b> ElevenLabs <span class="code">eleven_flash_v2_5</span>, <span class="code">mp3_44100_64</span> (64 kbps CBR), voice settings stability 0.5 / similarity 0.75 / style 0, speed 1.0 — rate is applied on-device instead, so one file set serves every speech-rate preference.
+ <b>Measure</b> duration is estimated from byte length at the fixed bitrate rather than decoded, so each bar is ±1 frame. Every clip is loudness-normalized (<span class="code">speech-compressed-lufs-v2</span>) so cached and live cues cannot jump in volume.
+ <b>Numbers</b> n = 508 · median 2722 ms · p90 3088 ms · min 632 ms · max 11134 ms (the one allow-listed long phrase, the disclaimer) · 433 of 508 at or under 3.0 s · 10.03 MB · 20.9 min of speech.
+ <b>Regeneration</b> content-addressed by <span class="code">textSha1</span>, so editing one phrase re-synthesizes one file.</p></p>
+      <aside>The point of this slide is that the voice work is infrastructure, not a wrapper. Every phrase in the closed table is synthesized ahead of time and normalized to one loudness, so cues do not jump in volume between a cached clip and a live one. The histogram is the twelve-word rule showing up as physics: nearly everything lands under three seconds, because a cue that runs longer than that is a cue the walker has already outrun. A recording is deleted the moment the utterance ends — no voice audio ever accumulates on the phone.</aside>
+    </section>
+
     <!-- 6 ----------------------------------------------------------------- -->
     <section class="slide slide--dark" data-transition="zoom" data-title="Nemotron never talks to the user">
       <div class="glow"></div>
@@ -115,35 +182,199 @@
         <span>crossingAnnounce</span>
         <span>answer</span>
       </div>
+      <svg class="race-svg" viewBox="0 0 1400 398" role="img" aria-label="A spoken request fans out to Nemotron, Haiku and a deterministic template running in parallel under one deadline. The first schema-valid JSON wins and is executed by code, never read aloud.">
+<defs><marker id="rh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#2C3A3E"/></marker>
+<marker id="rhm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#7BE3AF"/></marker></defs>
+<rect class="box" x="10" y="121" width="210" height="100" rx="14"/>
+<text x="115" y="165" text-anchor="middle" style="font-weight:600">Spoken</text><text class="mono" x="115" y="195" text-anchor="middle">request</text>
+<rect class="box box--nim" x="340" y="16" width="430" height="86" rx="14"/>
+<text x="366" y="53" style="font-weight:600">Nemotron</text>
+<text class="mono" x="366" y="83">nvidia/nemotron-3.5-lightning-30b-a3b</text>
+<path class="wire--live" d="M220 171 H285 V59 H330" marker-end="url(#rhm)"/>
+<path class="wire--live" d="M770 59 H832 V171 H880" marker-end="url(#rhm)"/>
+<rect class="box" x="340" y="128" width="430" height="86" rx="14"/>
+<text x="366" y="165" style="font-weight:600">Haiku</text>
+<text class="mono" x="366" y="195">claude-haiku-4-5</text>
+<path class="wire" d="M220 171 H285 V171 H330" marker-end="url(#rh)"/>
+<path class="wire" d="M770 171 H832 V171 H880" marker-end="url(#rh)"/>
+<rect class="box" x="340" y="240" width="430" height="86" rx="14"/>
+<text x="366" y="277" style="font-weight:600">Template</text>
+<text class="mono" x="366" y="307">deterministic, on-device</text>
+<path class="wire" d="M220 171 H285 V283 H330" marker-end="url(#rh)"/>
+<path class="wire" d="M770 283 H832 V171 H880" marker-end="url(#rh)"/>
+<rect class="gate" x="890" y="121" width="200" height="100" rx="14"/>
+<text x="990" y="165" text-anchor="middle" style="font-weight:600">First valid</text><text class="sublab" x="990" y="195" text-anchor="middle">JSON wins</text>
+<path class="wire--live" d="M1090 171 H1160" marker-end="url(#rhm)"/>
+<rect class="box box--nim" x="1170" y="121" width="220" height="100" rx="14"/>
+<text x="1280" y="165" text-anchor="middle" style="font-weight:600">Executed</text><text class="sublab" x="1280" y="195" text-anchor="middle">by code</text>
+<text class="mono" x="700" y="380" text-anchor="middle">schema-checked · one per-job deadline · a timeout is a plainer cue, never an outage · never read aloud</text>
+</svg>
       <p class="footnote">nvidia/nemotron-3.5-lightning-30b-a3b &nbsp;·&nbsp; it never sees an image</p>
       <aside>The track slide. Nemotron is not the thing the user talks to — its output is parsed, schema-validated and executed. If it returned prose the app would break, not degrade. It races a deterministic local template and the first valid answer wins, so a timeout is a slightly plainer cue, never an outage. Nothing time-critical waits on it. It also never touches a pixel: Claude is the one that sees images.</aside>
     </section>
 
+
+    <!-- BEYOND THE CHATBOT — the evidence ---------------------------------- -->
+    <section class="slide slide--dark slide--chart" data-title="What the race costs">
+      <div class="glow"></div>
+      <div class="head">
+        <p class="kicker" data-anim>Beyond the Chatbot &nbsp;·&nbsp; evidence</p>
+        <h2 data-anim>We measured the cost of keeping Nemotron first.</h2>
+      </div>
+      <svg class="chart" viewBox="0 0 1400 382" role="img" aria-label="Median latency per planner job. Nemotron is slower than Haiku on five of six jobs and faster on answer.">
+<line class="grid" x1="340" y1="12" x2="340" y2="334"/>
+<text class="tick" x="340" y="364" text-anchor="middle">0</text>
+<line class="grid" x1="547" y1="12" x2="547" y2="334"/>
+<text class="tick" x="547" y="364" text-anchor="middle">1</text>
+<line class="grid" x1="753" y1="12" x2="753" y2="334"/>
+<text class="tick" x="753" y="364" text-anchor="middle">2</text>
+<line class="grid" x1="960" y1="12" x2="960" y2="334"/>
+<text class="tick" x="960" y="364" text-anchor="middle">3</text>
+<line class="grid" x1="1167" y1="12" x2="1167" y2="334"/>
+<text class="tick" x="1167" y="364" text-anchor="middle">4 s</text>
+<g class="row"><title>routeCompile: Nemotron 4239 ms, Haiku 923 ms</title>
+<text class="lab" x="318" y="55" text-anchor="end">routeCompile</text>
+<rect class="bar" x="340" y="24" width="876.1" height="22" rx="4" fill="#7BE3AF"/>
+<text class="val" x="1227.1" y="42">4,239</text>
+<rect class="bar" x="340" y="48" width="190.8" height="22" rx="4" fill="#5C7D74"/>
+<text class="val" x="541.8" y="66">923</text>
+</g>
+<g class="row"><title>taskPlan: Nemotron 3569 ms, Haiku 1728 ms</title>
+<text class="lab" x="318" y="109" text-anchor="end">taskPlan</text>
+<rect class="bar" x="340" y="78" width="737.6" height="22" rx="4" fill="#7BE3AF"/>
+<text class="val" x="1088.6" y="96">3,569</text>
+<rect class="bar" x="340" y="102" width="357.1" height="22" rx="4" fill="#5C7D74"/>
+<text class="val" x="708.1" y="120">1,728</text>
+</g>
+<g class="row"><title>crossingAnnounce: Nemotron 1153 ms, Haiku 746 ms</title>
+<text class="lab" x="318" y="163" text-anchor="end">crossingAnnounce</text>
+<rect class="bar" x="340" y="132" width="238.3" height="22" rx="4" fill="#7BE3AF"/>
+<text class="val" x="589.3" y="150">1,153</text>
+<rect class="bar" x="340" y="156" width="154.2" height="22" rx="4" fill="#5C7D74"/>
+<text class="val" x="505.2" y="174">746</text>
+</g>
+<g class="row"><title>parseIntent: Nemotron 1026 ms, Haiku 751 ms</title>
+<text class="lab" x="318" y="217" text-anchor="end">parseIntent</text>
+<rect class="bar" x="340" y="186" width="212.0" height="22" rx="4" fill="#7BE3AF"/>
+<text class="val" x="563.0" y="204">1,026</text>
+<rect class="bar" x="340" y="210" width="155.2" height="22" rx="4" fill="#5C7D74"/>
+<text class="val" x="506.2" y="228">751</text>
+</g>
+<g class="row"><title>disambiguate: Nemotron 736 ms, Haiku 705 ms</title>
+<text class="lab" x="318" y="271" text-anchor="end">disambiguate</text>
+<rect class="bar" x="340" y="240" width="152.1" height="22" rx="4" fill="#7BE3AF"/>
+<text class="val" x="503.1" y="258">736</text>
+<rect class="bar" x="340" y="264" width="145.7" height="22" rx="4" fill="#5C7D74"/>
+<text class="val" x="496.7" y="282">705</text>
+</g>
+<g class="row"><title>answer: Nemotron 540 ms, Haiku 658 ms</title>
+<text class="lab" x="318" y="325" text-anchor="end">answer</text>
+<rect class="bar" x="340" y="294" width="111.6" height="22" rx="4" fill="#7BE3AF"/>
+<text class="val win" x="462.6" y="312">540</text>
+<rect class="bar" x="340" y="318" width="136.0" height="22" rx="4" fill="#5C7D74"/>
+<text class="val" x="487.0" y="336">658</text>
+</g>
+</svg>
+      <div class="legend" data-anim>
+        <span><i style="background:#7BE3AF"></i> Nemotron (NIM)</span>
+        <span><i style="background:#5C7D74"></i> Haiku</span>
+        <span class="muted">median latency per completed attempt · lower is better</span>
+      </div>
+      <p class="method method--wide" data-anim><b>METHOD</b>
+ <b>Run</b> <span class="code">server/routes/plan.eval.ts</span>, live, 2026-09-19 16:32 UTC, all five upstreams green (<span class="code">npm run doctor</span>, 1.4 s).
+ <b>Models</b> <span class="code">nvidia/nemotron-3.5-lightning-30b-a3b</span> on NVIDIA NIM against <span class="code">claude-haiku-4-5</span>. Non-streaming <span class="code">json_object</span> with the schema in the prompt, because <span class="code">guided_json</span> returns HTTP 400 on this endpoint.
+ <b>Statistic</b> each bar is the p50 of that provider's <i>completed</i> attempts for that job. The race cancels the loser, so cancelled attempts are excluded rather than counted as slow; deadline-limited samples are lower bounds used only for routing.
+ <b>Completed n</b> (NIM / Haiku) routeCompile 4/6 · parseIntent 4/59 · disambiguate 2/5 · crossingAnnounce 3/5 · answer 3/3 · taskPlan 8/7. NIM also logged 14 errors and 3 timeouts on parseIntent, 2 timeouts on routeCompile.
+ <b>Caveat</b> a non-streaming completion reports total latency as first-token latency; this is not streaming TTFT, and no bar should be read as one.</p>
+      <aside>Read the honest shape of this chart out loud rather than hiding it. Nemotron is slower than Haiku on five of the six jobs, and on routeCompile it is four and a half times slower with two timeouts. It wins on answer. We kept it first on routeCompile anyway because the directional wording is the thing we actually want from it, and now the cost of that choice is a number instead of an assumption. This is also the argument for the race existing at all: parseIntent already flipped its primary to Haiku automatically after five samples with a rolling median over three seconds, so the routing rule is live, not decorative.</aside>
+    </section>
+
     <!-- 7 ----------------------------------------------------------------- -->
-    <section class="slide slide--light" data-title="We measured it">
+    <section class="slide slide--light slide--chart" data-title="We measured it">
       <div class="glow"></div>
       <div class="head">
         <p class="kicker" data-anim>Evidence</p>
         <h2 data-anim>We measured it, and we broke it.</h2>
       </div>
-      <div class="bigrow">
-        <div data-anim="pop">
-          <p class="stat" data-count="60">0</p>
-          <p class="muted">utterance eval: clean, ASR-noisy, off-task</p>
+      <div class="split">
+        <div class="split__main" data-anim>
+          <svg class="chart" viewBox="0 0 1400 580" role="img" aria-label="Intent accuracy out of twenty per class. Template scores twenty, nineteen, twenty; the live race nineteen, nineteen, eighteen.">
+<line class="grid" x1="70" y1="495" x2="1330" y2="495"/>
+<text class="tick" x="54" y="502" text-anchor="end">0</text>
+<line class="grid" x1="70" y1="266" x2="1330" y2="266"/>
+<text class="tick" x="54" y="272" text-anchor="end">10</text>
+<line class="grid" x1="70" y1="36" x2="1330" y2="36"/>
+<text class="tick" x="54" y="43" text-anchor="end">20</text>
+<g class="row"><title>clean — template: 20 of 20</title>
+<rect class="bar" x="92" y="36" width="170" height="459" rx="6" fill="#5C7D74"/>
+<text class="val" x="177" y="20" text-anchor="middle">20/20</text></g>
+<g class="row"><title>clean — race: 19 of 20</title>
+<rect class="bar" x="298" y="59" width="170" height="436" rx="6" fill="#7BE3AF"/>
+<text class="val" x="383" y="43" text-anchor="middle">19/20</text></g>
+<text class="lab" x="280" y="543" text-anchor="middle">clean</text>
+<g class="row"><title>noisy ASR — template: 19 of 20</title>
+<rect class="bar" x="512" y="59" width="170" height="436" rx="6" fill="#5C7D74"/>
+<text class="val" x="597" y="43" text-anchor="middle">19/20</text></g>
+<g class="row"><title>noisy ASR — race: 19 of 20</title>
+<rect class="bar" x="718" y="59" width="170" height="436" rx="6" fill="#7BE3AF"/>
+<text class="val" x="803" y="43" text-anchor="middle">19/20</text></g>
+<text class="lab" x="700" y="543" text-anchor="middle">noisy ASR</text>
+<g class="row"><title>off-task — template: 20 of 20</title>
+<rect class="bar" x="932" y="36" width="170" height="459" rx="6" fill="#5C7D74"/>
+<text class="val" x="1017" y="20" text-anchor="middle">20/20</text></g>
+<g class="row"><title>off-task — race: 18 of 20</title>
+<rect class="bar" x="1138" y="82" width="170" height="413" rx="6" fill="#7BE3AF"/>
+<text class="val" x="1223" y="66" text-anchor="middle">18/20</text></g>
+<text class="lab" x="1120" y="543" text-anchor="middle">off-task</text>
+</svg>
+          <div class="legend" data-anim style="margin-top:18px">
+            <span><i style="background:#5C7D74"></i> template (fallback)</span>
+            <span><i style="background:#7BE3AF"></i> planner race (live)</span>
+          </div>
         </div>
-        <div data-anim="pop">
-          <p class="stat" data-count="98.3" data-decimals="1" data-suffix="%">0</p>
-          <p class="muted">template accuracy, vs 93.3% for the live planner race</p>
-        </div>
-        <div data-anim="pop">
-          <p class="stat" data-count="10313" data-format="comma">0</p>
-          <p class="muted">trace records from one failed grocery run, read line by line</p>
+        <div class="split__side">
+          <p data-anim>The deterministic template still wins overall, <b>98.3 %</b> to <b>93.3 %</b>. That is why the race exists rather than a bare model call.</p>
+          <p data-anim>Two failures found in the NIM endpoint: <b>guided_json</b> returns HTTP 400, and streaming's first chunk takes <b>~34 s</b> where the whole non-streamed answer takes <b>~1 s</b>. Both are dated in our source.</p>
         </div>
       </div>
-      <div class="rule-line" data-anim></div>
-      <p class="sub muted" data-anim>Two failures found in the NIM endpoint: <b>guided_json</b> returns HTTP 400, and streaming's first chunk takes ~34 s where the whole non-streamed answer takes ~1 s. Both are dated in our source.</p>
-      <p class="footnote">Full eval, confusion matrices and latency tables live in the repo.</p>
+      <p class="method method--wide" data-anim><b>METHOD</b>
+ <b>Set</b> 60 held utterances — 20 clean, 20 carrying real ASR corruption, 20 deliberately off-task — scored against labelled intents over a 9-way classification (find_item, navigate_to, guided_task, repeat, how_far, where_am_i, abort, help, unknown).
+ <b>Arms</b> <i>template</i> is the deterministic on-device classifier alone; <i>race</i> is the live Nemotron/Haiku race with the template as fallback, scored end to end including that fallback (which fired on 1.7 %).
+ <b>Also measured</b> item match on find_item 100 % template vs 95 % race; task-plan grounding 5/5 for both, where step one must name an observed landmark and keep its observed side.
+ <b>Failures, named</b> template misses one — "how fart is it" → unknown. The race misses four — "take me to the milk" → navigate_to, "instructions" → repeat, "open the door" and "turn on the lights" → guided_task. Full confusion matrices in <span class="code">server/routes/plan.eval.md</span>.
+ <b>Separately</b> 10,313 trace records from one failed grocery run, read line by line, produced the two fixes shipped since.</p>
       <aside>Be honest about the headline: the deterministic template beat the live planner race on raw intent accuracy, 98.3 to 93.3 — which is exactly why the race exists. What Nemotron buys is the grounded multi-step task plan and the phrasings the template has no rule for. The NIM findings are the track's "failure you found": we measured them, dated them in a comment, and shipped non-streaming json_object mode with the schema in the prompt instead of discovering it in a store. The 10,313 records came from a grocery run that went wrong — context defaulting to home, and relative depth used as a hard veto on movement cues. Say plainly which of those are fixed in the build you just demoed.</aside>
+    </section>
+
+
+    <!-- SEED ROUND --------------------------------------------------------- -->
+    <section class="slide slide--light slide--chart slide--evidence" data-title="Who has this problem">
+      <div class="glow"></div>
+      <div class="head">
+        <p class="kicker" data-anim>Seed Round</p>
+        <h2 data-anim>The infrastructure answer was tried. It does not arrive.</h2>
+      </div>
+      <div class="evidence">
+        <div class="evidence__row" data-anim>
+          <p class="evidence__n">~5%</p>
+          <p class="evidence__t">of New York's signalized intersections have accessible pedestrian signals — under 2 % in Chicago. <span class="cite">Waiting for the city is not a plan.</span></p>
+        </div>
+        <div class="evidence__row" data-anim>
+          <p class="evidence__n">60%</p>
+          <p class="evidence__t">of crossings end outside the crosswalk without a far-side cue; 26 % with one. <span class="cite">The average traveller drifts ~5 m over 22 m.</span></p>
+        </div>
+        <div class="evidence__row" data-anim>
+          <p class="evidence__n">100%</p>
+          <p class="evidence__t">retrieval when blind shoppers follow template aisle directions — ShopTalk, Utah State. <span class="cite">The method works. Nobody shipped it to a phone.</span></p>
+        </div>
+      </div>
+      <p class="method method--wide" data-anim><b>SOURCES &amp; STATUS</b>
+ <b>Figures</b> accessible-pedestrian-signal coverage and the crossing-drift study are the published figures cited in <span class="code">00-PROJECT-BRIEF.md</span>; ShopTalk is Utah State's template-direction trial, verbal and camera-free.
+ <b>The counter-example we respect</b> the only peer-reviewed test of a general VLM judging crossing risk for blind users scored 25 % and confused approaching with distant vehicles — which is why no cloud model decides a crossing in this app.
+ <b>Why now</b> no beacons, no store partnership, no extra hardware, so every store is covered on day one instead of after a procurement cycle. GoodMaps needs a LiDAR survey; Waymap and Lazarillo need surveying or beacon installs.
+ <b>Working product, not a deck</b> 1,029 Jest tests across 70 suites and 183 vitest across 19 files green on this checkout, typecheck and phrase lint clean in CI.
+ <b>Not yet true</b> nobody has been charged, and it has not been tested with blind users — sighted people with their eyes shut is not the same evidence.</p>
+      <aside>The Seed Round slide. The problem is not that nobody tried; it is that every existing answer needs somebody else to install something first — signals the city has not funded, beacons the store has not bought, glasses the user has not got. Ours needs a phone they already own, which is the only distribution story that starts at zero. Who has the problem: blind and low-vision travellers doing ordinary errands, every day, not the lab-visit version. If asked about money, be straight — we have not charged anyone, the honest next step is testing with blind users rather than sighted people with their eyes shut.</aside>
     </section>
 
     <!-- 8 — DEMO_URL ------------------------------------------------------ -->
@@ -165,7 +396,7 @@
 <div class="chrome">
   <div class="progress" id="progress"></div>
   <div class="nav" id="nav"></div>
-  <p class="counter" id="counter">01 / 14</p>
+  <p class="counter" id="counter">01 / 12</p>
   <p class="hint" id="hint">← → MOVE &nbsp; O OVERVIEW &nbsp; N NOTES &nbsp; F FULLSCREEN</p>
 </div>
 
