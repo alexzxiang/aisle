@@ -205,10 +205,17 @@ export function createMockSensorService(opts: MockSensorOptions): MockSensorServ
       });
     },
     courseErrorFor(target) {
+      let readBearing: () => number;
+      if (typeof target.bearingDeg === 'function') {
+        readBearing = target.bearingDeg;
+      } else {
+        const bearing = target.bearingDeg;
+        readBearing = () => bearing;
+      }
       return (): CourseError => {
         const h = lastHeading;
         const heading = h ? (h.trueHeadingDeg + bodyOffsetDeg + 360) % 360 : null;
-        const headingErrorDeg = heading === null ? 0 : signedDeltaDeg(heading, target.bearingDeg);
+        const headingErrorDeg = heading === null ? 0 : signedDeltaDeg(heading, readBearing());
         const ct = lastFix && target.line && target.line.length >= 2 ? crossTrackM(lastFix, target.line) : 0;
         return {
           headingErrorDeg: Math.round(headingErrorDeg * 10) / 10,

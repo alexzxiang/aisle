@@ -7,7 +7,7 @@ import {
   angularError,
   initialLegProgress,
   isWithinDeg,
-  referenceBearingFor,
+  referenceBearingAt,
   stepLegProgress,
   type LegProgressState,
 } from './legs';
@@ -174,10 +174,23 @@ describe('stepLegProgress', () => {
   });
 });
 
-describe('referenceBearingFor', () => {
-  it('switches to the end bearing in the last 30 m', () => {
-    const l: RouteLeg = { ...legs[0], startBearingDeg: 10, endBearingDeg: 80 };
-    expect(referenceBearingFor(l, 60)).toBe(10);
-    expect(referenceBearingFor(l, 30)).toBe(80);
+describe('referenceBearingAt', () => {
+  it('follows the leg tangent: start bearing at the head, end bearing past the bend', () => {
+    // An L-shaped leg: 100 m north, then 100 m east.
+    const corner = destinationPoint(O, 0, 100);
+    const end = destinationPoint(corner, 90, 100);
+    const curved: RouteLeg = { ...legs[0], polyline: [O, corner, end], startBearingDeg: 0, endBearingDeg: 90 };
+    expect(Math.round(referenceBearingAt(curved, 0, 0))).toBe(0);      // at the head → north
+    expect(Math.round(referenceBearingAt(curved, 150, 0))).toBe(90);   // past the bend → east
+  });
+
+  it('a straight two-point leg holds one bearing throughout', () => {
+    expect(referenceBearingAt(legs[0], 0)).toBeCloseTo(0, 0);
+    expect(referenceBearingAt(legs[0], 90)).toBeCloseTo(0, 0);
+  });
+
+  it('falls back to the start bearing when the polyline is degenerate', () => {
+    const degenerate: RouteLeg = { ...legs[0], polyline: [O], startBearingDeg: 42 };
+    expect(referenceBearingAt(degenerate, 10)).toBe(42);
   });
 });

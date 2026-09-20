@@ -29,7 +29,7 @@ import { initialBearingDeg, polylineLengthM, projectOntoPolyline, type LatLng } 
 import { initialCorrection, stepCorrection } from './courseCorrection';
 import { CROSSING_AHEAD_M, crossingAheadRequests, offlineNoticeRequest, prefetchPhrases, prefetchPortOf, replanRequest, variablePhrases } from './guidance';
 import { DIRECT_ROUTE_ATTRIBUTION, directRoute } from './directRoute';
-import { angularError, initialLegProgress, stepLegProgress, usableOutdoorFix, type LegProgressState } from './legs';
+import { angularError, initialLegProgress, referenceBearingAt, stepLegProgress, usableOutdoorFix, type LegProgressState } from './legs';
 import type { PlannerClient } from './planner';
 import { templateAnswer } from './plannerJobs';
 import { RouteClientError, type RouteClient, type RouteRequest } from './routeClient';
@@ -108,6 +108,7 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
   let request: StartRequest | null = null;
   let line: RouteLine | null = null;
   let progress: LegProgressState = initialLegProgress(0);
+  let legAlongM = 0;   // along-track on the current leg; drives the tangent-following COURSE reference
   let turn: TurnFlowState = initialTurnFlow(0);
   let remainingM: number | null = null;
   let nextCrossingM: number | null = null;
@@ -138,9 +139,11 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
   const retargetCourse = (legIndex: number, bearing?: number): void => {
     const leg = route?.legs[legIndex];
     if (!leg) return;
+    legAlongM = 0;   // a fresh leg starts at its head (start bearing) until the next fix advances it
     courseBearing = bearing ?? leg.startBearingDeg;
     haptics.stopCourse();
-    haptics.startCourse(sensors.courseErrorFor({ bearingDeg: courseBearing, line: leg.polyline, roadSide: leg.roadSide }));
+    // The bearing getter follows the current tangent without restarting COURSE at every bend.
+    haptics.startCourse(sensors.courseErrorFor({ bearingDeg: () => referenceBearingAt(leg, legAlongM), line: leg.polyline, roadSide: leg.roadSide }));
     perception.setCourseReference({ bearingDeg: courseBearing });
   };
 
@@ -255,6 +258,7 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
     const activeProjection = activeLeg ? projectOntoPolyline(fix, activeLeg.polyline) : null;
     remainingM = before === progress.legIndex ? step.remainingM
       : activeProjection ? Math.max(0, polylineLengthM(activeLeg.polyline) - activeProjection.alongM) : activeLeg?.distanceM ?? 0;
+    legAlongM = activeProjection?.alongM ?? 0;
 
     const here: LatLng = { lat: fix.lat, lng: fix.lng };
     const routeProj = projectOntoRoute(here, line);
@@ -294,7 +298,12 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
       const a = activeLeg.polyline[activeProjection.segIndex];
       const b = activeLeg.polyline[activeProjection.segIndex + 1];
       const bearing = a && b ? initialBearingDeg(a, b) : activeLeg.startBearingDeg;
-      if (courseBearing === null || Math.abs(angularError(courseBearing, bearing)) > 5) retargetCourse(progress.legIndex, bearing);
+      if (courseBearing === null || Math.abs(angularError(courseBearing, bearing)) > 5) {
+        // Keep native pose drift aligned with the local tangent; the haptic COURSE source
+        // already follows it through the getter, so it does not restart on every bend.
+        courseBearing = bearing;
+        perception.setCourseReference({ bearingDeg: bearing });
+      }
       const heading = sensors.getHeading();
       const fused = sensors.getFusedHeadingDeg();
       // Near a maneuver, its dedicated turn flow owns the instructions.

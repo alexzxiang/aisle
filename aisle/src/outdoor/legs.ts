@@ -6,7 +6,7 @@
  * Never more than one leg per fix. GPS accuracy gates whether a fix counts.
  */
 import type { GeoFix } from '../core/contracts';
-import { alongTrackUnclampedM, haversineM, polylineLengthM, projectOntoPolyline, type LatLng } from './geo';
+import { alongTrackUnclampedM, bearingAtAlong, haversineM, polylineLengthM, projectOntoPolyline, type LatLng } from './geo';
 import type { RouteLeg } from './types';
 
 /**
@@ -138,7 +138,24 @@ export function stepLegProgress(prev: LegProgressState, fix: GeoFix, legs: reado
   return { state: next, events, counted: true, distToEndM, alongM, crossTrackM, remainingM };
 }
 
-/** Bearing the user should face on a leg: its start bearing until the last 30 m, then the end bearing. */
-export function referenceBearingFor(leg: RouteLeg, remainingM: number): number {
-  return remainingM <= 30 ? leg.endBearingDeg : leg.startBearingDeg;
+/**
+ * A gentle look-ahead so the reference leads the walker into a bend instead of trailing the
+ * point they already stand on (~7 steps). Small enough never to cut a corner into the next leg.
+ */
+export const REFERENCE_LOOKAHEAD_M = 5;
+
+/**
+ * The bearing the user should face at `alongM` metres into the leg: the local tangent of the
+ * leg's own polyline (with a small look-ahead), so the COURSE reference follows a curving
+ * sidewalk rather than holding the stale start bearing for the whole leg. `bearingAtAlong`
+ * clamps out-of-range distances to the first / last segment, so this is the start bearing at
+ * the leg's head and the end bearing near the maneuver. A straight (two-point) leg returns its
+ * one bearing throughout, so nothing changes there.
+ */
+export function referenceBearingAt(leg: RouteLeg, alongM: number, lookAheadM = REFERENCE_LOOKAHEAD_M): number {
+  const line = leg.polyline;
+  if (!line || line.length < 2) return leg.startBearingDeg;
+  const bearing = bearingAtAlong(line, (Number.isFinite(alongM) ? alongM : 0) + lookAheadM);
+  const normalized = ((bearing % 360) + 360) % 360;
+  return normalized >= 360 - 1e-6 ? 0 : normalized;
 }

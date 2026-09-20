@@ -130,8 +130,9 @@ describe('createAisleCentering (side effects)', () => {
       stopCourse: () => { calls.push('stopCourse'); },
     };
     const sensors = {
-      courseErrorFor: (t: { bearingDeg: number; roadSide: string }) => {
-        calls.push(`courseErrorFor:${t.bearingDeg}:${t.roadSide}`);
+      courseErrorFor: (t: { bearingDeg: number | (() => number); roadSide: string }) => {
+        const bearing = typeof t.bearingDeg === 'function' ? t.bearingDeg() : t.bearingDeg;
+        calls.push(`courseErrorFor:${bearing}:${t.roadSide}`);
         return () => ({ headingErrorDeg: 0, crossTrackM: 0, roadSide: 'NONE' as const, compassAccuracy: 3 as const });
       },
       getFusedHeadingDeg: () => heading,

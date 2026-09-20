@@ -320,6 +320,18 @@ describe('createSensorService', () => {
     expect(svc.getDebugState().lastCourseError!.crossTrackSource).toBe('none');
   });
 
+  it('courseErrorFor reads a bearing getter fresh each poll (the reference follows a curving leg)', async () => {
+    const { sources, sinks } = scriptedSources();
+    const svc = createSensorService({ sources, store });
+    await svc.start();
+    sinks.heading!(H(90, 3, Date.now()));
+    let ref = 90;
+    const get = svc.courseErrorFor({ bearingDeg: () => ref, roadSide: 'NONE' });
+    expect(get().headingErrorDeg).toBe(0);    // facing 90, reference 90
+    ref = 60;                                  // the leg bent: the reference moved
+    expect(get().headingErrorDeg).toBe(30);   // still facing 90 → now 30° off the new reference
+  });
+
   it('courseErrorFor uses C’s lateral offset when fresh, dead reckoning otherwise, and sets C’s course reference', async () => {
     const { sources, sinks } = scriptedSources();
     const per = fakePerception();

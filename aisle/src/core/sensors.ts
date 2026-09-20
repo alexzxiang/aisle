@@ -499,12 +499,22 @@ export function createSensorService(opts: SensorServiceOptions = {}): AisleSenso
     });
 
   const courseErrorFor: SensorService['courseErrorFor'] = (target) => {
-    const bearing = normalizeDeg(target.bearingDeg);
+    let readBearing: () => number;
+    if (typeof target.bearingDeg === 'function') {
+      readBearing = target.bearingDeg;
+    } else {
+      const bearing = target.bearingDeg;
+      readBearing = () => bearing;
+    }
     const est = new CrossTrackEstimator(target.line);
     let lastFixTs = -Infinity;
-    perception?.setCourseReference({ bearingDeg: bearing });
+    // Anchor C's pose-drift line once, at the reference's initial bearing. The heading target
+    // may then follow a curving leg (below); the cross-track baseline is deliberately not
+    // re-anchored mid-leg (that is C's module, and re-anchoring would zero real drift).
+    perception?.setCourseReference({ bearingDeg: normalizeDeg(readBearing()) });
     return (): CourseError => {
       const t = now();
+      const bearing = normalizeDeg(readBearing());
       const fused = fuser.fused(t);
       const raw = fuser.getHeading();
       let headingErrorDeg = 0;

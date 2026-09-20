@@ -165,7 +165,9 @@ export interface SensorService {
   /** The producer for HapticService.startCourse. Fuses heading, dead reckoning, GPS
    *  cross-track and (when present) the perception module's lateral offset. */
   courseErrorFor(target: {
-    bearingDeg: number;
+    /** The bearing to hold. A getter lets the reference follow a curving leg's tangent,
+     *  read fresh each poll, without restarting COURSE (a fixed number is the constant case). */
+    bearingDeg: number | (() => number);
     line?: Array<{ lat: number; lng: number }>;
     roadSide: 'LEFT' | 'RIGHT' | 'NONE';
   }): () => CourseError;
