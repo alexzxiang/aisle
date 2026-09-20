@@ -4,14 +4,19 @@ import { createGuidedTask } from './guidedTask';
 import { emptyVisionResponse, type AskOptions, type AskOutcome } from '../perception/semanticVision';
 import type { Guide, GuideInstruction, TargetBox } from './guide';
 import type { SearchObservation } from './searchObservation';
-import type { VisionQuestion } from './contracts';
+import type { TaskContext, VisionQuestion } from './contracts';
+import { createExplorationMap } from './explorationMap';
+import { GIVE_UP_PULSE_MS, OPENING_EXHAUSTED, OPENING_SWEEP, OPENING_SWEEP_MS } from './searchExplorer';
 
-function setup(context: 'home' | 'store', goal = 'bananas') {
+function setup(context: TaskContext, goal = 'bananas', track = false) {
   const bus = createEventBus();
   const store = createAppStore({ bus, warn: () => undefined, initial: { firstRun: false } });
   bindStoreToBus(store, bus);
   let steps = 0;
   let seq = 0;
+  let lowConfidence = false;
+  let tracking = false;
+  const map = createExplorationMap();
   const said: string[] = [];
   let observation: SearchObservation = {
     items: ['milk', 'yogurt'], sign: 'Dairy', view: 'overview', quality: 'usable', confidence: 0.9, barrier: 'none',
@@ -25,25 +30,66 @@ function setup(context: 'home' | 'store', goal = 'bananas') {
   const ask = jest.fn(async (_q: VisionQuestion, _opts?: AskOptions): Promise<AskOutcome> => {
     const n = ++seq;
     const response = emptyVisionResponse(n);
-    response.confidence = 0.9;
+    response.confidence = lowConfidence ? 0.3 : 0.9;
     response.search = observation;
     response.task = { done: true, confidence: 0.99 }; // A cloud completion cannot skip the search.
-    return { seq: n, status: 'applied', response, streamed: false, latencyMs: 100 };
+    return { seq: n, status: lowConfidence ? 'low_confidence' : 'applied', capturedAt: Date.now(), response, streamed: false, latencyMs: 100 };
   });
   const planner = jest.fn();
   const hand = { start: jest.fn(async () => ({ done: 'touching' as const, steps: 1 })), stop: jest.fn(), isRunning: () => false };
   const task = createGuidedTask({
     bus, store, guide, adaptiveSearch: true, steps: () => steps, heading: () => 0,
+    ...(track ? { map, pose: () => {
+      if (!tracking) return null;
+      const p = { x: 0, y: 1.4, z: 0, yawDeg: 0, timestamp: Date.now(), trackingState: 'NORMAL' as const };
+      map.ingestPose(p); return p;
+    }, path: () => ({ center: 0.1 }) } : {}),
     speech: { say: (r) => { said.push(r.text); } }, haptics: { play: () => undefined },
     vision: { ask }, planner: { run: planner }, handGuide: hand as never,
   });
   bus.emit({ type: 'TASK_REQUESTED', goal, context, source: 'voice' });
-  return { task, store, bus, said, ask, planner, hand, guide, walk: () => { steps += 3; }, setObservation: (o: Partial<SearchObservation>) => { observation = { ...observation, ...o }; } };
+  return { task, store, bus, said, ask, planner, hand, guide, lowConfidence: () => { lowConfidence = true; }, recoverTracking: () => { tracking = true; }, walk: () => { steps += 3; }, setObservation: (o: Partial<SearchObservation>) => { observation = { ...observation, ...o }; } };
 }
 
 describe('adaptive search in the actual guided-task loop', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(1700000000000); });
   afterEach(() => jest.useRealTimers());
+
+  it('uses independently confident search evidence from low-confidence overall results', async () => {
+    const h = setup('store'); h.lowConfidence();
+    await jest.advanceTimersByTimeAsync(20000);
+    expect(h.said).toContain('May I guide you toward the produce section?');
+    expect(h.hand.start).not.toHaveBeenCalled();
+    h.task.dispose();
+  });
+
+  it.each([false, true])('corrects inferred context but preserves explicit context (explicit=%s)', async explicit => {
+    const h = setup('classroom');
+    if (explicit) h.store.setState({ scene: { setting: 'classroom', label: 'in a classroom', source: 'user', confirmed: true, confidence: 1, at: Date.now() } });
+    const original = h.ask.getMockImplementation()!;
+    h.ask.mockImplementation(async (q, opts) => {
+      const result = await original(q, opts);
+      result.response!.scene = { setting: 'store', label: 'in a grocery store', confidence: 0.95 };
+      return result;
+    });
+    await jest.advanceTimersByTimeAsync(10000);
+    expect(h.task.getDebugState().context).toBe(explicit ? 'classroom' : 'store');
+    expect(h.task.getDebugState().goal).toBe('bananas');
+    h.task.dispose();
+  });
+
+  it('continues camera requests during tracking loss and resumes observation after recovery', async () => {
+    const h = setup('store', 'bananas', true);
+    await jest.advanceTimersByTimeAsync(12000);
+    expect(h.ask.mock.calls.length).toBeGreaterThan(1);
+    expect(h.said.join(' ')).not.toMatch(/Walk forward/);
+    const before = h.ask.mock.calls.length;
+    h.recoverTracking();
+    await jest.advanceTimersByTimeAsync(18000);
+    expect(h.ask.mock.calls.length).toBeGreaterThan(before);
+    expect(h.task.getDebugState().searchAreas?.[0]?.items).toContain('milk');
+    h.task.dispose();
+  });
 
   it('recovers when neither bananas nor table is visible, without asking for visual confirmation', async () => {
     const h = setup('home', 'bananas on the table');
@@ -66,7 +112,7 @@ describe('adaptive search in the actual guided-task loop', () => {
     expect(h.said).toContain('May I guide you toward the produce section?');
     expect(h.task.intercept('yes')).toBe(true);
     await jest.advanceTimersByTimeAsync(6000);
-    expect(h.said).toContain('Produce display ahead. Walk forward four steps.');
+    expect(h.said).toContain('Produce display ahead. Walk forward three steps.');
     // Arrival: the landmark's box fills the view on two frames; the new spot has its own sign.
     h.setObservation({ sign: 'Produce', items: ['apples', 'oranges'] });
     h.guide.instructionFor = jest.fn((name: string, box?: TargetBox | null): GuideInstruction | null => (box ? { kind: 'arrived', text: '', relativeDeg: 0, steps: 0, targetVisible: true, box } : null));
@@ -84,15 +130,28 @@ describe('adaptive search in the actual guided-task loop', () => {
     h.task.dispose();
   });
 
-  it('inserts approach and opening when a requested item is behind a closed freezer door', async () => {
+  it('does not insert a household freezer-opening mission in a store', async () => {
     const h = setup('store', 'ice cream');
     h.setObservation({ barrier: 'closed_freezer', item: { box: [0.4, 0.5, 0.2, 0.2], confidence: 0.95 }, landmarks: [{ name: 'freezer', kind: 'appliance', section: 'frozen', box: [0.1, 0.1, 0.7, 0.8], confidence: 0.9 }] });
     await jest.advanceTimersByTimeAsync(3500);
-    expect(h.task.getDebugState()).toMatchObject({ stage: 'approach', step: 0, total: 5 });
+    expect(h.task.getDebugState()).toMatchObject({ stage: 'find_place', step: 0, total: 3 });
     expect(h.hand.start).not.toHaveBeenCalled();
-    expect(h.task.getDebugState().goal).toBe('ice cream in the freezer');
+    expect(h.task.getDebugState().goal).toBe('ice cream');
     await jest.advanceTimersByTimeAsync(6500);
-    expect(h.task.getDebugState().stage).toBe('approach');
+    expect(h.said.join(' ')).not.toMatch(/Open the (?:fridge|freezer)/);
+    h.task.dispose();
+  });
+
+  it('lets an explicit explore request leave a home container without reinserting it on the next frame', async () => {
+    const h = setup('home', 'bananas');
+    h.setObservation({ barrier: 'closed_freezer', landmarks: [{ name: 'freezer', kind: 'appliance', section: 'frozen', box: [0.1, 0.1, 0.7, 0.8], confidence: 0.9 }] });
+    await jest.advanceTimersByTimeAsync(3500);
+    expect(h.task.getDebugState().total).toBe(5);
+    h.task.advance();
+    expect(h.task.intercept('explore')).toBe(true);
+    await jest.advanceTimersByTimeAsync(10000);
+    expect(h.task.getDebugState().total).toBe(3);
+    expect(h.task.getDebugState().goal).toBe('bananas');
     h.task.dispose();
   });
 
@@ -120,6 +179,45 @@ describe('adaptive search in the actual guided-task loop', () => {
     expect(h.store.getState().mode).toBe('IDLE');
     expect(h.task.isActive()).toBe(false);
     expect(h.ask).not.toHaveBeenCalled();
+    h.task.dispose();
+  });
+});
+
+describe('leaving an area the camera shows nothing in', () => {
+  beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(1700000000000); });
+  afterEach(() => jest.useRealTimers());
+
+  // The reported failure: unrelated shelves and two empty bowls, no bananas anywhere near.
+  const barren = { items: ['bowl', 'bowl'], sign: undefined, landmarks: [], quality: 'usable' as const, confidence: 0.9 };
+
+  it('proposes moving on inside the weak-area budget instead of studying the containers', async () => {
+    const h = setup('store', 'bananas');
+    h.setObservation(barren);
+    await jest.advanceTimersByTimeAsync(16000);
+    const transcript = h.said.join(' | ');
+    expect(transcript).toMatch(/May I|another (?:part|way)|elsewhere|Turn slowly/);
+    // It must not have talked the user into inspecting the bowls it can plainly see.
+    expect(transcript).not.toMatch(/bowl/i);
+    h.task.dispose();
+  });
+
+  it('sweeps the person through new viewpoints instead of one line and silence', async () => {
+    const h = setup('store', 'bananas');
+    h.setObservation(barren);
+    await jest.advanceTimersByTimeAsync(16000);
+    // Nothing but a view the camera has not had can lift an opening pause, so it must ask
+    // for one — a different quarter each time, not the same sentence into the silence.
+    await jest.advanceTimersByTimeAsync(OPENING_SWEEP_MS * OPENING_SWEEP.length + 2000);
+    for (const line of OPENING_SWEEP) expect(h.said).toContain(line);
+    expect(new Set(h.said).size).toBe(h.said.length);           // no sentence repeated
+    h.task.dispose();
+  });
+
+  it('ends the sweep with a way out rather than repeating itself forever', async () => {
+    const h = setup('store', 'bananas');
+    h.setObservation(barren);
+    await jest.advanceTimersByTimeAsync(16000 + OPENING_SWEEP_MS * (OPENING_SWEEP.length + 1) + GIVE_UP_PULSE_MS);
+    expect(h.said).toContain(OPENING_EXHAUSTED);
     h.task.dispose();
   });
 });

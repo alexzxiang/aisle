@@ -13,6 +13,13 @@ export interface SearchLandmark {
   confidence: number;
 }
 export interface SearchObservation {
+  strategy?: {
+    relevance: 'promising' | 'unlikely' | 'unknown';
+    action: 'inspect' | 'relocate' | 'recover';
+    landmark: string;
+    reason: string;
+    confidence: number;
+  };
   inspection?: { target: string; assessed: boolean; confidence: number };
   /** Requested item, separate from a navigation landmark named in Look for. */
   item?: { box: SearchBox | null; confidence: number };
@@ -48,7 +55,13 @@ export function coerceSearchObservation(raw: unknown): SearchObservation | undef
     landmarks.push({ boundary: ['open_passage', 'cross_aisle', 'closed_door'].includes(String(l.boundary)) ? l.boundary as SearchLandmark['boundary'] : 'unknown', name: name(l.name), kind: l.kind as SearchLandmark['kind'], box, confidence: confidence(l.confidence), section: FOOD_SECTIONS.includes(l.section as FoodSection) ? l.section as FoodSection : 'unknown' });
   }
   const inspection = record(r.inspection);
+  const strategy = record(r.strategy);
   return {
+    ...(r.strategy ? { strategy: {
+      relevance: ['promising', 'unlikely'].includes(String(strategy.relevance)) ? strategy.relevance as 'promising' | 'unlikely' : 'unknown' as const,
+      action: ['inspect', 'relocate'].includes(String(strategy.action)) ? strategy.action as 'inspect' | 'relocate' : 'recover' as const,
+      landmark: name(strategy.landmark), reason: name(strategy.reason), confidence: confidence(strategy.confidence),
+    } } : {}),
     inspection: { target: name(inspection.target), assessed: inspection.assessed === true, confidence: confidence(inspection.confidence) },
     item: { box: searchBox(record(r.item).box), confidence: confidence(record(r.item).confidence) },
     barrier: ['closed_fridge', 'closed_freezer', 'none', 'unknown'].includes(String(r.barrier)) ? r.barrier as SearchObservation['barrier'] : 'unknown',

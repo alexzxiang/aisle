@@ -135,7 +135,7 @@ describe('createGuidedTask', () => {
     recovered = true;
     const spoken = h.said.length;
     await flush(10000);
-    expect(h.said.slice(spoken).some(r => /Face the shelf|face the right shelf/.test(r.text))).toBe(true);
+    expect(h.said.slice(spoken).some(r => /Point along the aisle|Hold steady for a quick look/.test(r.text))).toBe(true);
     task.dispose();
   });
 

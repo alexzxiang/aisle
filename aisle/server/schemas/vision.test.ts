@@ -22,7 +22,7 @@ describe('VISION_RESPONSE_SCHEMA', () => {
       expect(o.additionalProperties).toBe(false);
       expect(o.required).toEqual(Object.keys(o.properties as Record<string, unknown>));
     });
-    expect(objects).toBe(13);  // Existing fields plus search, search.item, and search landmarks.
+    expect(objects).toBe(14);  // Includes the structured search strategy.
   });
 
   it('uses no numeric ranges or string lengths (unsupported by structured outputs)', () => {

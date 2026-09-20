@@ -521,6 +521,8 @@ public struct PlanesPayload: PerceptionPayload, Equatable {
 }
 
 public struct DepthSummaryPayload: PerceptionPayload, Equatable {
+  /// LiDAR distances in metres; absent for monocular relative depth.
+  public var pathMeters: [Double]? = nil
   public var centerBottomRel: Double
   public var closingRate: Double
   public var timestamp: Double
@@ -541,6 +543,7 @@ public struct DepthSummaryPayload: PerceptionPayload, Equatable {
     var d: [String: Any] = ["centerBottomRel": centerBottomRel, "closingRate": closingRate, "timestamp": timestamp]
     if let leftBottomRel { d["leftBottomRel"] = leftBottomRel }
     if let rightBottomRel { d["rightBottomRel"] = rightBottomRel }
+    if let pathMeters { d["pathMeters"] = pathMeters; d["source"] = "lidar" }
     return d
   }
 }

@@ -21,9 +21,17 @@ export interface HeadingChoice {
 }
 
 export interface Openness {
+  meters?: number;
   center: number;
   left?: number;
   right?: number;
+}
+
+/** A short segment, leaving a metre before the measured obstruction. */
+export function explorationSteps(path: Openness): number {
+  if (path.meters === undefined) return 3;
+  if (!Number.isFinite(path.meters)) return 0;
+  return Math.max(0, Math.min(3, Math.floor((path.meters - 1) / 0.7)));
 }
 
 export interface ExplorationMap {

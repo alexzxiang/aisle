@@ -25,6 +25,7 @@
 import type { AppMode, ParseIntentInput, ParseIntentOutput, PlannerResult, SpeechService, TaskContext } from './contracts';
 import { classifyGoalPhrase } from '../outdoor/plannerJobs';
 import { explicitHomeGoal } from './indoorIntent';
+import { whereaboutsFrom } from './situate';
 import { classForWords } from './sceneMemory';
 import type { AppEventBus } from './bus';
 import type { ConversationLog } from './conversation';
@@ -530,14 +531,14 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // so the outdoor "walk me to a store" path is untouched.
       const onTrip = ON_TRIP.has(opts.store.getState().mode);
       const scene = onTrip ? null : opts.sceneContext?.() ?? null;
-      if (scene === 'store' || scene === 'home') {
+      if (scene === 'store' || scene === 'home' || scene === 'classroom') {
         startTask(output.item, scene);
         return;
       }
       // A household thing named off any trip is a home task whatever the scene guess says
       // ("bananas" while the awareness loop still believes "street" — 2026-09-19 trace).
       if (!onTrip && isHouseholdThing(output.item)) {
-        startTask(output.item, 'home');
+        startTask(output.item, 'unknown');
         return;
       }
       opts.bus.emit({ type: 'ITEM_REQUESTED', item: output.item, source });
@@ -552,8 +553,9 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       // The awareness loop's confirmed or observed scene beats the mode's guess; the mode still wins inside a trip.
       const scene = opts.sceneContext?.();
       const context: TaskContext = inStore || scene === 'store' ? 'store'
-        : explicitHomeGoal(output.goal) !== null || /\b(fridge|refrigerator|my kitchen|my living room)\b/i.test(output.goal) ? 'home'
-        : m === 'OUTDOOR_NAV' ? 'street' : (scene ?? 'home');
+        : scene === 'classroom' ? 'classroom'
+        : explicitHomeGoal(output.goal) !== null || /\bmy (?:fridge|refrigerator|kitchen|living room)\b/i.test(output.goal) ? 'home'
+        : m === 'OUTDOOR_NAV' ? 'street' : (scene ?? 'unknown');
       startTask(output.goal, context);
       return;
     } else if (output.intent === 'abort') {
@@ -575,6 +577,15 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       return last;
     }
     pushUser(transcript, source);
+    const locationClause = whereaboutsFrom(transcript);
+    const combinedItem = locationClause ? /\b(?:find|look for|search for)\s+(?:where\s+)?(?:the\s+)?(.+?)(?=\s+(?:are|is|if|please|then)\b|[.!?]|$)/i.exec(transcript)?.[1]?.trim() : null;
+    if (locationClause && combinedItem && combinedItem.length <= 60) {
+      opts.intercept?.(`I am ${locationClause}`);
+      const output: ParseIntentOutput = { intent: 'guided_task', item: null, goal: combinedItem, reply: PHRASES.noted };
+      act(output, source, uncertain);
+      last = { output, transcript, sttPath, planner: false, plannerLatencyMs: null };
+      return last;
+    }
     const previousGoal = opts.store.getState().taskGoal ?? (pendingConfirm?.kind === 'task' ? pendingConfirm.goal : null);
     const previousItem = previousGoal ?? opts.store.getState().targetItem ?? last?.output.item;
     const placeCorrection = /^(?:in|from|inside) (?:my|the) (?:fridge|refrigerator)[.!]?$/i.test(transcript.trim());

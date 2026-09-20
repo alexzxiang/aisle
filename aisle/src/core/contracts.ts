@@ -175,7 +175,7 @@ export interface SensorService {
 // 5. Event bus (Agent A implements, everyone emits/subscribes)
 // ---------------------------------------------------------------------------
 
-export type TaskContext = 'home' | 'store' | 'street' | 'unknown';
+export type TaskContext = 'home' | 'store' | 'classroom' | 'street' | 'unknown';
 export type Direction = 'LEFT' | 'CENTER' | 'RIGHT';
 export type Side = 'LEFT' | 'RIGHT';
 export type SignalState = 'WALK' | 'DONT_WALK' | 'COUNTDOWN' | 'UNKNOWN';
@@ -310,6 +310,8 @@ export interface OcrRead {
 }
 
 export interface DepthSummary {
+  source?: 'lidar';
+  pathMeters?: [number, number, number]; // portrait left/center/right, high-confidence LiDAR only
   centerBottomRel: number;   // relative depth 0..1 (1 = nearest) in the centre-bottom cell
   closingRate: number;       // d(rel)/dt, positive = approaching
   timestamp: number;
@@ -367,8 +369,8 @@ export type VisionQuestion =
   | 'curb_crop' | 'hand_guidance' | 'free' | 'task_step' | 'situate';
 
 /** `situate`: where the camera seems to be. Coarse on purpose; `label` carries the specifics. */
-export type SceneSetting = 'street' | 'crossing' | 'entrance' | 'store' | 'home' | 'kitchen' | 'hallway' | 'room' | 'vehicle' | 'unknown';
-export const SCENE_SETTINGS: readonly SceneSetting[] = ['street', 'crossing', 'entrance', 'store', 'home', 'kitchen', 'hallway', 'room', 'vehicle', 'unknown'];
+export type SceneSetting = 'street' | 'crossing' | 'entrance' | 'store' | 'home' | 'classroom' | 'kitchen' | 'hallway' | 'room' | 'vehicle' | 'unknown';
+export const SCENE_SETTINGS: readonly SceneSetting[] = ['street', 'crossing', 'entrance', 'store', 'home', 'classroom', 'kitchen', 'hallway', 'room', 'vehicle', 'unknown'];
 
 /** The awareness loop's state (situate.ts): what the app believes about where the user is. */
 export interface SceneHypothesis {

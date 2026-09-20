@@ -127,7 +127,7 @@ export interface MissionSnapshot {
   /** Round 14: the explorer is walking somewhere or waiting for consent — hold the guesses. */
   exploring?: boolean;
   /** Round 16: where the search runs; usual places (counter, table, bowl…) are a home thing. */
-  context?: 'home' | 'store' | 'street';
+  context?: import('./contracts').TaskContext;
   /** guide.instructionFor('doorway') with the model's doorway box. */
   door: GuideInstruction | null;
   /** The awareness loop's room label ("in a kitchen"), when it has one. */
@@ -243,7 +243,7 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     if (previous) { next.tried.push(previous); next.working = null; }
     next.scanSince = null; next.openAsked = false; next.opened = false; next.reasoned = false; next.askedRoom = false;
     const evidence = (place: string): PlaceEvidence => s.candidates?.find((c) => c.place === place)?.evidence ?? 'unseen';
-    const ranked = rankHypotheses(goal.item, goal.place, next.tried, evidence);
+    const ranked = s.context && s.context !== 'home' ? [] : rankHypotheses(goal.item, goal.place, next.tried, evidence);
     const pick: PlaceHypothesis | undefined = ranked[0];
     if (!pick) return null;
     next.working = pick.place;
@@ -326,6 +326,9 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     }
     return out('find_place', `${cap(itemName)} not seen yet. Let me keep looking.`, 'scan', goal.item, null, true, null, true);
   }
+  if (!working && (s.context === 'classroom' || s.context === 'unknown')) {
+    return out('find_place', 'Let me check this area and find somewhere else to look.', 'scan', goal.item, null, false, null, true);
+  }
   if (!working) {
     const picked = nextHypothesis();
     if (picked) return picked;
@@ -336,7 +339,7 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
 
   // 2. Not in view, but the place it should be on is: walk there, then look across it.
   if (working && placeName && s.place) {
-    const opens = rankHypotheses(goal.item, goal.place, [], () => 'unseen').find((h) => h.place === working)?.opens ?? /^(?:fridge|freezer|cabinet|drawer|wardrobe|dishwasher|microwave|oven|box)$/.test(working);
+    const opens = (!s.context || s.context === 'home') && (rankHypotheses(goal.item, goal.place, [], () => 'unseen').find((h) => h.place === working)?.opens ?? /^(?:fridge|freezer|cabinet|drawer|wardrobe|dishwasher|microwave|oven|box)$/.test(working));
     if (s.place.targetVisible) next.lastSeen = { what: 'place', at: s.now, steps: s.place.steps, bottom: s.place.box ? s.place.box.box[1] + s.place.box.box[3] : 0, relativeDeg: s.place.relativeDeg };
     else if (seen && seen.what === 'place' && state.phase === 'approach_place' && s.now - seen.at <= MISSION_OVERSHOOT_MS && seen.steps !== null && seen.steps <= 2 && seen.bottom >= 0.85) {
       next.lastSeen = null;
@@ -463,10 +466,12 @@ export function answerRoom(state: MissionState, transcript: string, now: number)
 /** "explore", "keep exploring", "look somewhere else", "next aisle", "another room", "move on" → leave this spot. */
 export function exploreRequest(transcript: string): { asked: boolean; prefer: 'aisle' | 'room' | null } {
   const t = normalizeAnswer(transcript);
+  if (/\b(?:do not|don'?t|stop) (?:explor|mov|walk)/.test(t)) return { asked: false, prefer: null };
   if (/\b(?:next|another|other|different) aisle\b/.test(t) || /\baisles?\b/.test(t) && /\b(?:try|check|look|search|move|explore)\b/.test(t)) return { asked: true, prefer: 'aisle' };
   if (/\b(?:next|another|other|different) room\b/.test(t) || /\brooms?\b/.test(t) && /\b(?:try|check|look|search|move|explore)\b/.test(t)) return { asked: true, prefer: 'room' };
   if (/^(?:explore|keep exploring|explore more|look around more|look somewhere else|search somewhere else|try somewhere else|move on|keep moving|let'?s move|somewhere else|elsewhere|look elsewhere|search elsewhere)$/.test(t)) return { asked: true, prefer: null };
   if (/^(?:it'?s|its|it is) not here$/.test(t) || /^not here$/.test(t)) return { asked: true, prefer: null };
+  if (/\b(?:explore|exploring)\b/.test(t) || /\b(?:can|should|may) (?:i|we) (?:walk|move|go) (?:forward|on|elsewhere)\b/.test(t)) return { asked: true, prefer: null };
   return { asked: false, prefer: null };
 }
 
@@ -484,9 +489,10 @@ export function answerOpen(state: MissionState, transcript: string): { consumed:
 }
 
 export interface MissionRunnerDeps {
+  initialTried?: string[];
   search?: SearchExplorer;
   /** Where the search runs (default home). */
-  context?: 'home' | 'store' | 'street';
+  context?: import('./contracts').TaskContext;
   /** Round 18: the session's map, for "not on this table" marks that outlive a pan and a mission. */
   map?: ExplorationMap;
   pose?: () => Pose | null;
@@ -539,6 +545,7 @@ export interface MissionRunner {
 export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps): MissionRunner {
   const now = deps.now ?? Date.now;
   let state: MissionState = initialMissionState(goal.place);
+  if (deps.initialTried) state.tried = [...deps.initialTried];
   let asking: 'room' | 'open' | null = null;
   let lastKey: string | null = null;
   let pendingSide: string | null = null;
@@ -596,7 +603,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       });
       if (again.length > 0) state = { ...state, tried: state.tried.filter((n) => !again.includes(n)) };
     }
-    const candidates = state.working || deps.context === 'store' ? undefined
+    const candidates = state.working || (deps.context && deps.context !== 'home') ? undefined
       : rankHypotheses(goal.item, goal.place, state.tried, () => 'unseen').slice(0, 4).map((h) => ({ place: h.place, evidence: evidenceOf(look(h.place)) }));
     return {
       coverageComplete: deps.search && deps.map ? deps.map.trip.coverage(goal.item, deps.pose?.() ?? undefined).checked : undefined,
@@ -628,6 +635,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       // Reasoning first (the stated place, then where such things usually are, with what the
       // phone can act on); the explorer takes the tick only when geometry has nothing to say.
       const reasoned = decide(goal, state, snap);
+      state = reasoned.next;
       // Round 18: a place ruled out is marked on the map where we stand (we scan at arm's length).
       if (reasoned.decision.ruledOut && deps.map) {
         const p = deps.pose?.() ?? null;
@@ -704,6 +712,9 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       // "explore" / "look somewhere else" / "next aisle" / "another room": leave this spot now.
       const ex = exploreRequest(t);
       if (ex.asked && state.phase !== 'reach' && state.phase !== 'confirm') {
+        if (/\b(?:can|should|may|could) (?:i|we)\b/i.test(t) && deps.search) {
+          return { consumed: true, text: deps.search.exploreNow(ex.prefer, false).text };
+        }
         return { consumed: true, text: this.explore(ex.prefer) };
       }
       // "try the cabinet" / "it's on the table": the person's word beats every guess.

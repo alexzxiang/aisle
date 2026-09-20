@@ -322,7 +322,7 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     // While the leg runs, the navigator does not hop to "maybe on the table".
     feed(2000);
     const during = m.tick();
-    expect(during.text === null || /Keep walking|Drifting|Keep turning/.test(during.text)).toBe(true);
+    expect(during.text === null || /Walk forward|Drifting|Keep turning/.test(during.text)).toBe(true);
     expect(during.decision.key.startsWith('search:') || during.text === null).toBe(true);
     // Six metres on: the leg ends, a look around, then reasoning resumes.
     for (let z = 0.1; z <= 6.5; z += 0.1) { pose.z = -z; feed(100); }

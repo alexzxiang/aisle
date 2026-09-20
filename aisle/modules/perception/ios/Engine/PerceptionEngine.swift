@@ -68,6 +68,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   private var obstacles = ObstacleEstimator()
   /// The latest depth grid, for per-detection nearness (round 6b); stale after `depthGridFreshSeconds`.
   private var lastDepthGrid: DepthGrid?
+  private var lastDepthWasLidar = false
   private let depthGridFreshSeconds: Double = 0.6
   private var thermal = ThermalWatcher()
 
@@ -441,7 +442,26 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   }
 
   private func runDepth(_ context: FrameContext) {
+    // Current-frame LiDAR avoids a second neural inference on supported phones.
+    // Keep the phone level: floor/ceiling range is not forward clearance.
+    if abs(context.pitchDeg) <= 20, let data = context.frame.sceneDepth,
+       let meters = Self.lidarPath(data) {
+      if !lastDepthWasLidar { obstacles.reset(); lastDepthWasLidar = true }
+      lastDepthGrid = nil // path ranges are not a target-aligned depth grid
+      let t = context.geometry.timestamp
+      let near = meters.map { max(0.0, min(1.0, 1.0 - $0 / 4.0)) }
+      let grid = DepthGrid(cells: [near, near, near], timestamp: t)
+      let outcome = obstacles.process(grid, indoor: profile == .indoorNav || profile == .itemPickup || profile == .aware)
+      fpsMeters[.depth]?.tick(at: t)
+      if var depth = outcome.depth {
+        depth.pathMeters = meters
+        emit(.depth, depth.dictionary, frameTime: nil)
+      }
+      if let obstacle = outcome.obstacle { emit(.obstacleAhead, obstacle.dictionary, frameTime: t) }
+      return
+    }
     guard let model = registry.model(for: .depth) else { return }
+    if lastDepthWasLidar { obstacles.reset(); lastDepthWasLidar = false }
     throttles[.depth]?.markBusy()
     let frameTime = context.geometry.timestamp
     let indoor = profile == .indoorNav || profile == .itemPickup || profile == .aware
@@ -466,6 +486,45 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
         }
       }
     }
+  }
+
+  /// Portrait (.right) camera coordinates, left/center/right corridor samples.
+  /// Reject sparse/low-confidence returns; a missing return never means open space.
+  static func lidarPath(_ data: ARDepthData) -> [Double]? {
+    let buffer = data.depthMap
+    guard let confidence = data.confidenceMap,
+          CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_DepthFloat32,
+          CVPixelBufferGetWidth(buffer) == CVPixelBufferGetWidth(confidence),
+          CVPixelBufferGetHeight(buffer) == CVPixelBufferGetHeight(confidence) else { return nil }
+    CVPixelBufferLockBaseAddress(buffer, .readOnly)
+    CVPixelBufferLockBaseAddress(confidence, .readOnly)
+    defer {
+      CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+      CVPixelBufferUnlockBaseAddress(confidence, .readOnly)
+    }
+    guard let base = CVPixelBufferGetBaseAddress(buffer),
+          let conf = CVPixelBufferGetBaseAddress(confidence) else { return nil }
+    let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+    let rowBytes = CVPixelBufferGetBytesPerRow(buffer), confBytes = CVPixelBufferGetBytesPerRow(confidence)
+    var columns: [Double] = []
+    for col in 0..<3 {
+      var values: [Double] = []
+      for y in 0..<8 {
+        for x in 0..<8 {
+          let uprightX = (Double(col) + (Double(x) + 0.5) / 8.0) / 3.0
+          let uprightY = 0.4 + (Double(y) + 0.5) / 8.0 * 0.3
+          let sx = min(width - 1, Int(uprightY * Double(width)))
+          let sy = min(height - 1, Int((1.0 - uprightX) * Double(height)))
+          let c = conf.advanced(by: sy * confBytes + sx).assumingMemoryBound(to: UInt8.self).pointee
+          let d = Double(base.advanced(by: sy * rowBytes + sx * 4).assumingMemoryBound(to: Float32.self).pointee)
+          if c >= 2 && d.isFinite && d >= 0.15 && d <= 5 { values.append(d) }
+        }
+      }
+      guard values.count >= 48 else { return nil }
+      values.sort()
+      columns.append(values[values.count / 5]) // nearer fifth, not a background median
+    }
+    return columns
   }
 
   private func runOcr(_ context: FrameContext) {

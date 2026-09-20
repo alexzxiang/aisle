@@ -357,9 +357,10 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   let latestDetections: readonly Detection[] = [];
   let latestDetectionAt = -Infinity;
   unsubs.push(perception.onDetections((d) => { latestDetections = d; latestDetectionAt = now(); }));
-  let latestDepth: { at: number; center: number; left?: number; right?: number; closingRate: number } | null = null;
+  let latestDepth: { at: number; center: number; left?: number; right?: number; closingRate: number; meters?: number } | null = null;
   unsubs.push(perception.onDepth((d) => {
     latestDepth = { at: now(), closingRate: d.closingRate, center: d.centerBottomRel, ...(typeof d.leftBottomRel === 'number' ? { left: d.leftBottomRel } : {}), ...(typeof d.rightBottomRel === 'number' ? { right: d.rightBottomRel } : {}) };
+    if (d.source === 'lidar' && d.pathMeters?.every(m => Number.isFinite(m) && m > 0)) latestDepth.meters = d.pathMeters[1];
   }));
   obstacleWords = (e) => describeObstacle({
     detections: now() - latestDetectionAt <= 1500 ? latestDetections : [],
@@ -426,14 +427,15 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     askScene: (question) => describer.describeNow(question),
     // Open questions answer first: the awareness loop's, then the guided task's step check,
     // then "where is the X" from memory — never a store trip for a fridge.
-    intercept: (transcript) => (whereaboutsFrom(transcript) !== null && situate.intercept(transcript))
+    intercept: (transcript) => (whereaboutsFrom(transcript) !== null && situate.intercept(transcript)
+      && !/\b(?:find|search|look for|help me)\b/i.test(transcript))
       || (guidedTaskRef?.intercept(transcript) ?? false)
       || (store.getState().mode !== 'GUIDED_TASK' && situate.intercept(transcript)) || sceneMemory.intercept(transcript),
     sceneContext: () => {
       const scene = situate.getScene();
       if (scene?.confirmed || scene?.setting === 'store') return situate.getContext();
-      const homeObjects = now() - latestDetectionAt <= 1500 && latestDetections.some((d) => ['fridge', 'couch', 'bed', 'oven'].includes(d.cls) && d.score >= 0.5);
-      return homeObjects ? 'home' : situate.getContext();
+      // Shared furniture alone cannot distinguish an apartment from a store/classroom.
+      return scene && scene.confidence >= 0.8 ? situate.getContext() : null;
     },
   });
   dialogueBusy = () => voice.isListening() || voice.isAwaitingConfirmation();

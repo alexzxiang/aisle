@@ -214,6 +214,9 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
     config.worldAlignment = .gravityAndHeading
     config.planeDetection = [.horizontal, .vertical]
     config.environmentTexturing = .none
+    if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+      config.frameSemantics.insert(.sceneDepth)
+    }
     config.isAutoFocusEnabled = true
     if let format = VideoFormatPolicy.pick(from: ARWorldTrackingConfiguration.supportedVideoFormats) {
       config.videoFormat = format

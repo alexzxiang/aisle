@@ -278,7 +278,7 @@ describe('composeApp (mock mode)', () => {
     bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas', context: 'home', source: 'keyboard' });
     await jest.advanceTimersByTimeAsync(3000);
     expect(app.guidedTask.getDebugState().context).toBe('home');
-    await app.voice.submitText('we are in the grocery store');
+    await app.voice.submitText('I am in a grocery store help me find where the bananas are if they are not nearby please explore to try to find them');
     await jest.advanceTimersByTimeAsync(3000);
     expect(app.guidedTask.getDebugState().context).toBe('store');
     expect(store.getState().taskGoal).toBe('bananas');

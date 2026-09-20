@@ -69,13 +69,14 @@ export function isNo(t: string): boolean {
 export function whereaboutsFrom(transcript: string): string | null {
   const t = transcript.trim().replace(/[.!?]+$/, '');
   if (!HERE_PREFIX_RE.test(t)) return null;
-  const rest = t.replace(HERE_PREFIX_RE, '').trim();
+  const rest = t.replace(HERE_PREFIX_RE, '').split(/[,;.!?]|\s+(?:and\s+)?(?:please\s+)?(?:help me|find|search|look for|can you|could you|I need|I want)\b/i)[0]!.trim();
   if (rest.length < 2 || rest.length > 60) return null;
   // Keep the preposition the user used so the label reads naturally.
   return PLACE_PREP_RE.test(rest) ? rest : `in ${rest}`;
 }
 
 const SETTING_WORDS: ReadonlyArray<[RegExp, SceneSetting]> = [
+  [/\b(classroom|lecture hall|schoolroom)\b/i, 'classroom'],
   // Store declarations win over fixtures such as a deli counter or freezer.
   [/\b(store|shop|market|grocery|aisle|pharmacy|cvs|walgreens|giant eagle|target|walmart|mall|checkout|cashier|register|dairy|produce|deli|bakery|shopping cart|grocery cart)\b/i, 'store'],
   [/\b(kitchen|fridge|refrigerator|freezer|stove|oven|sink|counter|pantry)\b/i, 'kitchen'],
@@ -99,6 +100,7 @@ export function settingFromWords(phrase: string): SceneSetting {
 
 /** Substrings of `VNClassifyImageRequest` identifiers that vote for a setting. Order matters only for ties. */
 const SCENE_VOTES: ReadonlyArray<[SceneSetting, RegExp]> = [
+  ['classroom', /classroom|schoolroom|lecture_hall/],
   ['kitchen', /kitchen|refrigerator|fridge|stove|oven|microwave|dishwasher|kettle|toaster|countertop/],
   ['crossing', /crosswalk|zebra|intersection|traffic_light|traffic_sign|pedestrian/],
   ['store', /supermarket|grocery|store|shop|market|mall|shelf|shelves|aisle|pharmacy|checkout|cashier|bakery|deli|retail/],
@@ -119,6 +121,7 @@ const SCENE_OBJECT: ReadonlyArray<[RegExp, string]> = [
 ];
 
 const SETTING_PHRASE: Readonly<Record<SceneSetting, string>> = {
+  classroom: 'in a classroom',
   street: 'on a street', crossing: 'at a crossing', entrance: 'at a doorway', store: 'in a store', home: 'at home',
   kitchen: 'in a kitchen', hallway: 'in a hallway', room: 'in a room', vehicle: 'in a vehicle', unknown: '',
 };
@@ -162,6 +165,7 @@ export function classifySceneLabels(labels: SceneClassEvent['labels']): SceneCla
 }
 
 const SETTING_LABEL: Readonly<Record<SceneSetting, string>> = {
+  classroom: 'in a classroom',
   street: 'on a street',
   crossing: 'at a crossing',
   entrance: 'at an entrance',
@@ -177,6 +181,8 @@ const SETTING_LABEL: Readonly<Record<SceneSetting, string>> = {
 /** The task context a setting implies (voice.ts hands it to TASK_REQUESTED). */
 export function contextForSetting(setting: SceneSetting): TaskContext {
   switch (setting) {
+    case 'classroom':
+      return 'classroom';
     case 'street':
     case 'crossing':
     case 'entrance':
@@ -393,6 +399,8 @@ export function createSituate(deps: SituateDeps): Situate {
     if (r.setting === 'unknown' || r.confidence < minConfidence) return;
     const candidate: SceneHypothesis = { setting: r.setting, label: r.label, confidence: r.confidence, confirmed: false, source: 'camera', at: t };
     const cur = scene();
+    // Explicit environment remains authoritative across item changes and weak frames.
+    if (cur?.source === 'user' && cur.confirmed) return;
     if (cur && sameScene(cur, candidate)) {
       // Same place: refresh silently, keep the user's confirmation and wording.
       if (cur.source === 'camera') setScene({ ...cur, confidence: r.confidence, at: t, label: cur.confirmed ? cur.label : candidate.label });

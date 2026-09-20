@@ -55,6 +55,13 @@ export const VISION_RESPONSE_SCHEMA: Readonly<Record<string, unknown>> = Object.
       confidence: { type: 'number' },
     }),
     search: { ...obj({
+      strategy: obj({
+        relevance: { type: 'string', enum: ['promising', 'unlikely', 'unknown'] },
+        action: { type: 'string', enum: ['inspect', 'relocate', 'recover'] },
+        landmark: { type: 'string', description: 'Exact name from search.landmarks to approach or inspect; empty if no observed destination.' },
+        reason: { type: 'string', description: 'Short factual explanation of relevance, not a movement command.' },
+        confidence: { type: 'number' },
+      }),
       inspection: obj({ target: { type: 'string', description: 'Exact requested item from Goal.' }, assessed: { type: 'boolean', description: 'True only if this visible shelf band was deliberately inspected for the requested item; not for an overview, navigation, blur or opaque packaging.' }, confidence: { type: 'number' } }),
       item: obj({ box: { type: ['array', 'null'], items: { type: 'number' }, description: 'The requested FOOD/ITEM from Goal, even while Look for names a navigation landmark. Null unless identified; never a shelf or appliance.' }, confidence: { type: 'number' } }),
       barrier: { type: 'string', enum: ['closed_fridge', 'closed_freezer', 'none', 'unknown'], description: 'A physical door blocking access to the requested item. Visible contents through glass are still behind a closed door.' },
