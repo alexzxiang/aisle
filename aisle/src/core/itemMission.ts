@@ -322,7 +322,9 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
       next.reasoned = true;
       const sec = foodSection(goal.item);
       const line = sec !== 'unknown' ? `No ${itemName} in view. ${plural ? 'They' : 'It'} should be in ${sec}.` : `No ${itemName} in view. Let me look around the store.`;
-      return out('find_place', line, 'store-section', goal.item, null, false, null, true);
+      // Said before the explorer takes the tick (like a home hypothesis), or its choreography
+      // line would pre-empt the one sentence that says why we are heading for produce.
+      return out('find_place', line, 'store-section', goal.item, null, false, null, false);
     }
     return out('find_place', `${cap(itemName)} not seen yet. Let me keep looking.`, 'scan', goal.item, null, true, null, true);
   }
@@ -729,6 +731,8 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       }
       lastKey = decision.key;
       lastSpokenAt = t;
+      // One voice at a time: a navigator line paces the explorer's next one too.
+      deps.search?.heard?.();
       return { text: fitWords(decision.text), haptic: decision.haptic, modelMaySpeak: decision.modelMaySpeak, decision };
     },
     boxTarget() {

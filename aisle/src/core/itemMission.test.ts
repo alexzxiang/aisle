@@ -347,6 +347,20 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     expect(search.busy()).toBe(false);
   });
 
+  it.each(['store', 'classroom', 'unknown'] as const)('home priors (counter, table, bowl) never drive a %s search, even with a table and counter in view', (context) => {
+    let t = T0;
+    const detections: Detection[] = [{ cls: 'table', score: 0.95, trackId: 1, box: [0.3, 0.3, 0.4, 0.5] }, { cls: 'countertop', score: 0.9, trackId: 2, box: [0, 0.4, 0.4, 0.4] }];
+    const guide = createGuide({ detections: () => detections, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
+    const search = createSearchExplorer({ item: 'bananas', context, guide, now: () => t });
+    const m = createMissionRunner(parseMissionGoal('bananas')!, { guide, now: () => t, search, context });
+    const lines: string[] = [];
+    for (let i = 0; i < 8; i++) { const r = m.tick(); if (r.text) lines.push(r.text); t += 4000; }
+    expect(lines.join(' ')).not.toMatch(/counter|table|bowl|fridge/i);
+    expect(m.userText()).not.toMatch(/Hypothesis/);
+    // The store gets its one reasoning line first, before the explorer's choreography.
+    if (context === 'store') expect(lines[0]).toBe('No bananas in view. They should be in produce.');
+  });
+
   it('"next room" keeps the doorway intent through a leg, but the item in view still wins (round 19)', () => {
     let t = T0;
     const pose = { x: 0, z: 0, y: 0, yawDeg: 0, trackingState: 'NORMAL' as const, timestamp: t };

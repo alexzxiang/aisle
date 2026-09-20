@@ -358,9 +358,15 @@ describe('paused search recovery', () => {
     h.wait(31000);
     expect(h.search.tick('bananas', null)?.text).toContain('Waiting for camera analysis');
     expect(h.search.status()).toBe('paused');
-    expect(h.search.intercept(command).consumed).toBe(true);
-    expect(h.search.tick('bananas', null)?.text).toBe('Hold the camera steady while I process this view.');
+    expect(h.search.intercept(command).text).toBe('Resuming the search. Hold the camera steady.');
+    // The resume line already asked for a steady camera: the fresh window is silent until a frame
+    // arrives or fifteen seconds pass, and only then is the wait said again — once.
+    expect(h.search.tick('bananas', null)?.text ?? null).toBeNull();
     expect(h.search.status()).toBe('scan');
+    h.wait(16000);
+    expect(h.search.tick('bananas', null)?.text).toBe('Hold the camera steady while I process this view.');
+    h.wait(6000);
+    expect(h.search.tick('bananas', null)?.text ?? null).toBeNull();
   });
 
   it('recovers from a camera outage on a fresh usable frame without a voice command', () => {

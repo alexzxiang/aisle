@@ -64,6 +64,8 @@ export interface SearchExplorer {
   observe(observation: SearchObservation | undefined, seq: number, capturedAt: number): boolean;
   /** A model sentence owns this scan turn; do not immediately follow it with canned choreography. */
   narrated(): void;
+  /** The navigator spoke for the search ("should be in produce"): one voice at a time, so the explorer's own pacing counts it. */
+  heard?(): void;
   tick(target: string, direct: GuideInstruction | null, opts?: { surface?: boolean; confined?: boolean }): SearchDirective | null;
   intercept(text: string): { consumed: boolean; text: string | null };
   target(): string | null;
@@ -475,7 +477,10 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     // lane the camera is nearly always being analysed, and leaving is a decision about time and
     // coverage. Past twice the budget the person walks whatever is in flight.
     if (!detectorChecked && analyzing && now() - localScanAt < budget * 2) return null;
-    if (!detectorChecked && (now() - localScanAt < budget || scan < 1)) return null;
+    // The look-around has to have begun — by a canned pan or by the model's own narration of the
+    // view (which paces out the canned pans, and must not thereby pin the person to the spot).
+    const lookedAround = scan >= 1 || modelNarratedAt !== -Infinity;
+    if (!detectorChecked && (now() - localScanAt < budget || !lookedAround)) return null;
     if (coverage?.positive && !detectorChecked) return null;
     if (coverage?.checked) {
       area.outcome = 'not_seen_in_scanned_views';
@@ -511,9 +516,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       pendingLeg = pose; phase = 'permission'; permissionAt = now(); saidAt = -Infinity;
       return emit(question());
     }
-    // Nowhere to walk yet and a frame in flight: it may name a way on, and the model may be
-    // about to narrate one — a canned pause on top of that reads as two voices. Wait for it.
-    if (analyzing) return null;
+    // Nowhere to walk yet and a frame in flight, or a sentence just spoken: the frame may name a
+    // way on, and a canned pause on the heels of the model's narration reads as two voices. Wait.
+    if (analyzing || now() - saidAt < 5000) return null;
     return pause('No opening seen. Turn slowly; I am checking for another way.', 'opening');
   };
   return {
@@ -581,7 +586,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           if (known) { areas.splice(areas.indexOf(area), 1); area = known; area.visits += 1; }
           else area.sign = o.sign;
           const text = `The sign here reads ${o.sign}.`;
-          if (speakable(text)) pendingNarration = text;
+          // The sign is said first; a line already queued (the reason for the walk to come) follows.
+          if (speakable(text)) { if (pendingNarration && pendingNarration !== text && !followUp) followUp = pendingNarration; pendingNarration = text; }
         }
       } else { signHits = 0; signCandidate = ''; }
       if (reliableArea) area.items = [...new Set([...area.items, ...o.items])].slice(-20);
@@ -813,15 +819,18 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         return move(`Walk forward ${stepsWords(ADVANCE_STEPS)}, then I will look again.`, 'advance', targetWords);
       }
       if (now() - startedAt > EXPLORE_BUDGET_MS) return pause('No match after several areas. Continue searching, or ask someone nearby?', null);
+      // What this place is (and why we are about to leave it) is said before the proposal to leave.
+      if (pendingNarration && now() - saidAt >= 5000) { const line = pendingNarration; pendingNarration = followUp; followUp = null; return emit(line); }
       const moveOn = leaveStalledView(pose);
       if (moveOn) return moveOn;
-      if (pendingNarration && now() - saidAt >= 5000) { const line = pendingNarration; pendingNarration = followUp; followUp = null; return emit(line); }
       if (now() < verificationUntil) return emit('Checking a possible match. Hold the camera steady.');
       if (!analyzing && promisingHere() && !area.closeSearched && !opts.confined && now() - saidAt >= 5000) {
         area.closeSearched = true; closeMode = true; scan = 0; scanAt = now();
         return emit('This area looks promising. Let me inspect it more closely.');
       }
-      if (now() - observedAt > 15000) {
+      // No view for fifteen seconds since the search began or the last frame: the first five are
+      // the first inference, not a camera problem, so the wait is measured from the start too.
+      if (now() - Math.max(startedAt, observedAt) > 15000) {
         if (now() - Math.max(startedAt, observedAt) > 30000) {
           return pause('Waiting for camera analysis. Hold steady; I am retrying.', 'camera');
         }
@@ -848,8 +857,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         }
         if (blurPromptStage < prompts.length - 1) return { text: null, target, phase };
       }
-      // Do not prompt another pan while the previous view is being analyzed.
-      if (!analyzing && observedAt >= scanAt && now() - scanAt >= SCAN_MS && now() - saidAt >= 5000) {
+      // Do not prompt another pan while the previous view is being analyzed, and not before the
+      // first frame of the search has been seen at all: the first look is the model's.
+      if (!analyzing && observedAt !== -Infinity && observedAt >= scanAt && now() - scanAt >= SCAN_MS && now() - saidAt >= 5000) {
         if (scan >= 3) {
           const coverage = map?.trip.coverage(deps.item, pose ?? undefined);
           if (coverage && coverage.missing.length < missingBands) { missingBands = coverage.missing.length; coverageProgressAt = now(); }
@@ -976,6 +986,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     leaving: () => exitIntent !== null,
     narrating: () => !exitIntent && phase === 'scan' && quality === 'usable' && now() - observedAt <= FRESH_MS && !trackingStopped && !closeMode && !lastConfined && !promisingHere(),
     narrated: () => { modelNarratedAt = now(); saidAt = now(); pendingNarration = null; followUp = null; },
+    heard: () => { saidAt = now(); },
     exploreNow(prefer = null, consent = true) {
       // "Next room" / "leave the aisle" pin the kind of way out and hold until we are through it
       // or two metres on; a bare "explore" or "go forward" does not.

@@ -290,6 +290,21 @@ describe('leaving an area the camera shows nothing in', () => {
     h.task.dispose();
   });
 
+  it('a model that narrates every frame does not pin the person to the spot: the aisle end is still proposed', async () => {
+    const h = setup('store', 'bananas');
+    h.setObservation({ items: ['milk', 'yogurt'], sign: 'Dairy', landmarks: [{ name: 'aisle end', kind: 'aisle_end', boundary: 'cross_aisle', section: 'unknown', box: [0.4, 0.2, 0.2, 0.4], confidence: 0.9 }] });
+    const original = h.ask.getMockImplementation()!;
+    h.ask.mockImplementation(async (q, opts) => {
+      const result = await original(q, opts);
+      result.response!.speech = 'Dairy shelves here. Produce is likely toward the front.';
+      return result;
+    });
+    await jest.advanceTimersByTimeAsync(20000);
+    expect(h.said).toContain('Dairy shelves here. Produce is likely toward the front.');
+    expect(h.said.some((l) => /May I take you out of this aisle|another aisle/.test(l))).toBe(true);
+    h.task.dispose();
+  });
+
   it('speaks a fifteen-word model exploration line that the twelve-word cap would have dropped', async () => {
     const h = setup('store', 'bananas');
     h.setObservation(barren);
@@ -320,10 +335,11 @@ describe('leaving an area the camera shows nothing in', () => {
     h.task.dispose();
   });
 
-  it('leaves a barren store area within about six seconds, not twelve', async () => {
+  it('leaves a barren store area on the six-second budget (paced one line per five seconds), not twelve', async () => {
     const h = setup('store', 'bananas');
     h.setObservation(barren);
-    await jest.advanceTimersByTimeAsync(9000);
+    // Reason at zero, one pan at five, the way out by ten: the twelve-second dwell is gone.
+    await jest.advanceTimersByTimeAsync(10500);
     expect(h.said.join(' | ')).toMatch(/No opening seen|May I|another (?:part|way)|elsewhere/);
     h.task.dispose();
   });
