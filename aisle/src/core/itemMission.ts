@@ -33,6 +33,8 @@ import { isAffirmative, isNegative, normalizeAnswer } from './yesNo';
 import { fitWords } from './phrases';
 import { foodSection } from './foodCatalog';
 import type { SearchExplorer } from './searchExplorer';
+import { projectFrom, type ExplorationMap } from './explorationMap';
+import type { Pose } from './contracts';
 import { checkedLine, hypothesisLine, rankHypotheses, spoken, statedPlaceIn, type PlaceEvidence, type PlaceHypothesis } from './hypotheses';
 
 export type MissionPhase = 'approach_item' | 'approach_place' | 'open_place' | 'scan_place' | 'find_place' | 'find_door' | 'reach' | 'confirm';
@@ -146,6 +148,8 @@ export interface MissionDecision {
   asking: 'room' | 'open' | null;
   /** Geometry has nothing to steer by: the search explorer may take this tick instead. */
   explore?: boolean;
+  /** Round 18: this tick ruled a place out (scanned without the item): the runner marks it on the map. */
+  ruledOut?: string;
 }
 
 export interface MissionState {
@@ -243,7 +247,9 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     if (!pick) return null;
     next.working = pick.place;
     next.reasoned = true;
-    return out('find_place', hypothesisLine(itemName, plural, pick, previous === null && next.tried.length === 0, previous), `hypothesis:${pick.place}`, pick.place, null);
+    const r = out('find_place', hypothesisLine(itemName, plural, pick, previous === null && next.tried.length === 0, previous), `hypothesis:${pick.place}`, pick.place, null);
+    if (previous) r.decision.ruledOut = previous;
+    return r;
   };
 
   // Reach and confirm are owned by the caller (hand loop, the user's "yes"); hold them.
@@ -356,7 +362,9 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
           const picked = nextHypothesis();
           if (picked) return picked;
           next.working = null;
-          return out('find_place', `${checkedLine(next.tried)} Where else?`, 'exhausted', goal.item, null, false, null, true);
+          const r = out('find_place', `${checkedLine(next.tried)} Where else?`, 'exhausted', goal.item, null, false, null, true);
+          r.decision.ruledOut = working;
+          return r;
         }
         if (!s.place.targetVisible && s.now - since > 8000) {
           // The place itself is gone from view while scanning: we drifted; find it again.
@@ -478,6 +486,9 @@ export interface MissionRunnerDeps {
   search?: SearchExplorer;
   /** Where the search runs (default home). */
   context?: 'home' | 'store' | 'street';
+  /** Round 18: the session's map, for "not on this table" marks that outlive a pan and a mission. */
+  map?: ExplorationMap;
+  pose?: () => Pose | null;
   guide: Pick<Guide, 'instructionFor'>;
   sceneLabel?: () => string | null;
   now?: () => number;
@@ -543,6 +554,18 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     return b && now() - b.at <= (deps.search ? 6000 : MISSION_MODEL_BOX_MS) ? b : null;
   };
   /** The freshest box for a thing: the model's, else the last one the detector had inside the sticky window. */
+  /** Where a visible thing stands in the world, from the pose and its bearing and steps. */
+  const whereIs = (g: GuideInstruction): { x: number; z: number } | null => {
+    const p = deps.pose?.() ?? null;
+    if (!p || g.relativeDeg === null) return null;
+    return projectFrom(p, g.relativeDeg, g.steps ?? 3);
+  };
+  /** This very table was scanned for this item already (a mark within ABSENT_RADIUS_M). */
+  const checkedHere = (place: string, g: GuideInstruction): boolean => {
+    if (!deps.map || !g.targetVisible || place.toLowerCase() === goal.item.toLowerCase()) return false;
+    const at = whereIs(g);
+    return at !== null && deps.map.absentNear(goal.item, place, at);
+  };
   const look = (words: string): GuideInstruction | null => {
     const key = words.toLowerCase();
     const t = now();
@@ -552,12 +575,26 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     // three-second round trip); the reach itself waits for Claude to confirm the food (guidedTask).
     const g = deps.guide.instructionFor(words, fallback, deps.search ? { maxAgeMs: 6000 } : undefined);
     if (g?.targetVisible && g.box) sticky.set(key, g.box);
+    // Round 18: a place already scanned for this item, met again (a pan back, a later mission),
+    // is not a place to walk to — it stays "unseen" for this search until the mark expires.
+    if (g?.targetVisible && checkedHere(words, g)) return { kind: 'scan_unknown', text: '', relativeDeg: null, steps: null, targetVisible: false };
     return g;
   };
 
   const evidenceOf = (g: GuideInstruction | null): PlaceEvidence =>
     g?.targetVisible ? 'visible' : g && (g.kind === 'scan_remembered' || g.kind === 'turn' || g.kind === 'turn_around') ? 'remembered' : 'unseen';
   const snapshot = (): MissionSnapshot => {
+    // Round 18: a tried *name* comes back when a different instance of it is in view — another
+    // table across the room, far from every "not here" mark — so a second table gets its turn.
+    if (deps.map && deps.pose && state.tried.length > 0 && !state.working) {
+      const again = state.tried.filter((name) => {
+        const raw = deps.guide.instructionFor(name, null, deps.search ? { maxAgeMs: 6000 } : undefined);
+        if (!raw?.targetVisible) return false;
+        const at = whereIs(raw);
+        return at !== null && !deps.map!.absentNear(goal.item, name, at);
+      });
+      if (again.length > 0) state = { ...state, tried: state.tried.filter((n) => !again.includes(n)) };
+    }
     const candidates = state.working || deps.context === 'store' ? undefined
       : rankHypotheses(goal.item, goal.place, state.tried, () => 'unseen').slice(0, 4).map((h) => ({ place: h.place, evidence: evidenceOf(look(h.place)) }));
     return {
@@ -589,6 +626,11 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       // Reasoning first (the stated place, then where such things usually are, with what the
       // phone can act on); the explorer takes the tick only when geometry has nothing to say.
       const reasoned = decide(goal, state, snap);
+      // Round 18: a place ruled out is marked on the map where we stand (we scan at arm's length).
+      if (reasoned.decision.ruledOut && deps.map) {
+        const p = deps.pose?.() ?? null;
+        if (p) deps.map.markAbsent(goal.item, reasoned.decision.ruledOut, p);
+      }
       const explorerBusy = deps.search?.busy() ?? false;
       const wantsExplore = reasoned.decision.explore === true || explorerBusy || (state.phase === 'scan_place' && !snap.item?.targetVisible && reasoned.decision.key.endsWith(':looking'));
       if (deps.search && !memoryFresh && wantsExplore && state.phase !== 'reach' && state.phase !== 'confirm' && !snap.item?.targetVisible) {

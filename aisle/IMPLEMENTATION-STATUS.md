@@ -845,3 +845,9 @@ ARKit offers no ultra-wide format on this phone, and a separate capture session 
 pose the map runs on — panning with view memory is the better trade. Resolution: the detector
 is fixed at 640; the still to Claude is 768 px; the OCR already runs on the full frame, which is
 why signs now come from it. App 1323 tests, proxy 217. JS + server — Metro reload, proxy restart.
+
+### Round 18 (Stream A) — 2026-09-20
+The "not there" memory is now positional and session-long: a place scanned without the item
+gets an absent mark at the phone's world position (per item, 30 min TTL) on one map shared by
+every mission; the same table met again after a pan or in the next request stays checked, a
+different table across the room does not. Viewed cells persist with it. App 1324 tests. JS only.

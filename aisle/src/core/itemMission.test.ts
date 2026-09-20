@@ -2,6 +2,7 @@ import type { Detection } from './contracts';
 import { createGuide, type GuideInstruction } from './guide';
 import { MAX_UTTERANCE_WORDS, checkPhrase, countWords } from './phrases';
 import { createSearchExplorer } from './searchExplorer';
+import { createExplorationMap } from './explorationMap';
 import {
   answerOpen, answerRoom, clockWord, createMissionRunner, decide, exploreRequest, guessRoom, initialMissionState, itemLine, missionName, parseMissionGoal,
   MISSION_CHANGE_FLOOR_MS, MISSION_REPEAT_MS, MISSION_SLOW_REPEAT_MS,
@@ -350,6 +351,43 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     expect(lost.decision.explore).toBe(true);
     t += 3000;
     expect(m.tick().text).toBe('Turn slowly all the way around so I can find the table.');
+  });
+
+  it('"not on this table" persists across a pan away and back, and across a new mission; a different table is still fair game (round 18)', () => {
+    let t = T0;
+    const pose = { x: 0, z: 0, y: 0, yawDeg: 0, trackingState: 'NORMAL' as const, timestamp: t };
+    const map = createExplorationMap(() => t);
+    // One table straight ahead, three steps away (box height → steps).
+    let dets: Detection[] = [{ cls: 'table', box: [0.3, 0.4, 0.4, 0.25], score: 0.9, trackId: 1 }];
+    const guide = createGuide({ detections: () => dets, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
+    const deps = { guide, now: () => t, map, pose: () => ({ ...pose, timestamp: t }) };
+    const m = createMissionRunner(parseMissionGoal('bananas')!, deps);
+    expect(m.tick().text).toBe('No bananas in view. They are usually on the table.');
+    t += 2500;
+    expect(m.tick().text).toMatch(/^Table ahead\. Walk forward/);
+    // Arrive and scan it for fifteen seconds without bananas.
+    dets = [{ cls: 'table', box: [0.05, 0.2, 0.9, 0.8], score: 0.9, trackId: 1 }];
+    t += 2500;
+    expect(m.tick().text).toBe('At the table. Tilt the camera down and pan slowly.');
+    t += 16_000;
+    expect(m.tick().text).toBe('Not on the table. Maybe on the counter.');
+    expect(map.absentMarks('bananas')).toHaveLength(1);
+    expect(map.absentMarks('bananas')[0]).toMatchObject({ place: 'table' });
+    // Pan away (no table in view) — the counter guess runs its short course.
+    dets = [];
+    t += 2500; m.tick();
+    // Pan back onto the same table later: it is *not* a place to walk to any more.
+    dets = [{ cls: 'table', box: [0.3, 0.4, 0.4, 0.25], score: 0.9, trackId: 1 }];
+    t += 60_000;
+    for (let i = 0; i < 6; i += 1) { t += 2500; const r = m.tick(); expect(r.text ?? '').not.toMatch(/^Table/); }
+    // A new mission for the same item, from the same spot: the table is still known to be checked.
+    const again = createMissionRunner(parseMissionGoal('bananas')!, deps);
+    const first = again.tick().text ?? '';
+    expect(first).not.toMatch(/usually on the table/);
+    // A different table, ten metres away across the room: fair game.
+    pose.x = 10;
+    const other = createMissionRunner(parseMissionGoal('bananas')!, deps);
+    expect(other.tick().text).toBe('No bananas in view. They are usually on the table.');
   });
 
   it('answers the room question through intercept and repeats on demand', () => {

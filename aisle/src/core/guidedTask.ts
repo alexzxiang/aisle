@@ -139,6 +139,8 @@ export interface GuidedTaskDeps {
   /** Round 12: ARKit pose and the depth grid's bottom row, for exploring a big space by coverage. */
   pose?: () => import('./contracts').Pose | null;
   path?: () => { center: number; left?: number; right?: number } | null;
+  /** Round 18: the session's exploration map (viewed cells, "not here" marks) shared by every mission. */
+  map?: import('./explorationMap').ExplorationMap;
   /** Round 17: the lens's field of view and the phone's own OCR sign reads, for the explorer. */
   hfovDeg?: () => number;
   signs?: () => ReadonlyArray<{ text: string; box: [number, number, number, number]; at: number }>;
@@ -753,10 +755,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         instruction: 'It may be in the fridge. Find the fridge first.',
       };
     }
-    const search = deps.adaptiveSearch && deps.guide && (context === 'home' || context === 'store') ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, pose: deps.pose, path: deps.path, hfovDeg: deps.hfovDeg, signs: deps.signs, now,
+    const search = deps.adaptiveSearch && deps.guide && (context === 'home' || context === 'store') ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, pose: deps.pose, path: deps.path, hfovDeg: deps.hfovDeg, signs: deps.signs, map: deps.map, now,
       doorway: () => { const g = deps.guide!.instructionFor('the doorway'); return g?.targetVisible && g.box ? g.box : null; } }) : null;
     const missionGoal = deps.guide && !fixedFridge && (context === 'home' || (context === 'store' && search)) ? parseMissionGoal(goal) : null;
-    const mission = missionGoal ? createMissionRunner(missionGoal, { guide: deps.guide!, sceneLabel: deps.scene, search: search ?? undefined, context: context === 'store' ? 'store' : context === 'street' ? 'street' : 'home', now }) : null;
+    const mission = missionGoal ? createMissionRunner(missionGoal, { guide: deps.guide!, sceneLabel: deps.scene, search: search ?? undefined, context: context === 'store' ? 'store' : context === 'street' ? 'street' : 'home', map: deps.map, pose: deps.pose, now }) : null;
 
     const fixed = fixedFridge ?? (mission ? { askFirst: MISSION_STEPS[0].instruction, steps: [...MISSION_STEPS] } : null);
     if (!fixed) sayPhrase('let_me_see', 0);

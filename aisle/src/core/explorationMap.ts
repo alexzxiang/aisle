@@ -59,6 +59,28 @@ export interface ExplorationMap {
   scannedCells(): number;
   /** Straight-line distance from `from` to `to`, metres. */
   distance(from: Pick<Pose, 'x' | 'z'>, to: Pick<Pose, 'x' | 'z'>): number;
+  /**
+   * Round 18: "the bananas are not on *this* table" — a mark at a world position, per item and
+   * place. It outlives a pan, a walk away and a later mission for the same item, so the same
+   * table met again from another side is known to be checked, while a different table across
+   * the room is not.
+   */
+  markAbsent(item: string, place: string, p: Pick<Pose, 'x' | 'z'>): void;
+  /** Is there an absent mark for this item and place within `radiusM` of `p`? */
+  absentNear(item: string, place: string, p: Pick<Pose, 'x' | 'z'>, radiusM?: number): boolean;
+  absentMarks(item: string): ReadonlyArray<{ place: string; x: number; z: number; at: number }>;
+}
+
+/** An absent mark this old no longer counts (someone may have moved the thing). */
+export const ABSENT_TTL_MS = 30 * 60_000;
+/** The same place instance: within this distance of a mark. */
+export const ABSENT_RADIUS_M = 2.5;
+
+/** The world position of a thing seen `steps` steps away at `relativeDeg` from the phone's yaw. */
+export function projectFrom(p: Pick<Pose, 'x' | 'z' | 'yawDeg'>, relativeDeg: number, steps: number, stepM = 0.7): { x: number; z: number } {
+  const rad = ((p.yawDeg + relativeDeg) * Math.PI) / 180;
+  const d = Math.max(0.5, steps * stepM);
+  return { x: p.x + Math.sin(rad) * d, z: p.z - Math.cos(rad) * d };
 }
 
 const key = (cx: number, cz: number): string => `${cx},${cz}`;
@@ -68,10 +90,12 @@ export const wrap360 = (deg: number): number => ((deg % 360) + 360) % 360;
 /** How far a look counts as having seen the ground, metres. */
 export const VIEW_RANGE_M = 4.5;
 
-export function createExplorationMap(): ExplorationMap {
+export function createExplorationMap(now: () => number = Date.now): ExplorationMap {
   const visited = new Map<string, number>();
   const scanned = new Set<string>();
   const seen = new Map<string, number>();
+  const absent: Array<{ item: string; place: string; x: number; z: number; at: number }> = [];
+  const norm = (s: string): string => s.trim().toLowerCase();
   /** cell → set of yaw sectors (30°) found blocked. */
   const blocked = new Map<string, Set<number>>();
 
@@ -162,5 +186,26 @@ export function createExplorationMap(): ExplorationMap {
     visitedCells: () => visited.size,
     scannedCells: () => scanned.size,
     distance: (a, b) => Math.hypot(a.x - b.x, a.z - b.z),
+    markAbsent(item, place, p) {
+      const i = norm(item);
+      const pl = norm(place);
+      const t = now();
+      // One mark per instance: refresh a mark within the radius rather than piling up.
+      const same = absent.find((m) => m.item === i && m.place === pl && Math.hypot(m.x - p.x, m.z - p.z) <= ABSENT_RADIUS_M);
+      if (same) { same.x = p.x; same.z = p.z; same.at = t; return; }
+      absent.push({ item: i, place: pl, x: p.x, z: p.z, at: t });
+      if (absent.length > 200) absent.shift();
+    },
+    absentNear(item, place, p, radiusM = ABSENT_RADIUS_M) {
+      const i = norm(item);
+      const pl = norm(place);
+      const t = now();
+      return absent.some((m) => m.item === i && m.place === pl && t - m.at <= ABSENT_TTL_MS && Math.hypot(m.x - p.x, m.z - p.z) <= radiusM);
+    },
+    absentMarks(item) {
+      const i = norm(item);
+      const t = now();
+      return absent.filter((m) => m.item === i && t - m.at <= ABSENT_TTL_MS).map(({ place, x, z, at }) => ({ place, x, z, at }));
+    },
   };
 }

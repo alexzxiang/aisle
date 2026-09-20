@@ -101,7 +101,7 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1323 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1324 tests
 cd aisle/server && npx tsc --noEmit && npx vitest run   # 215 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
@@ -427,6 +427,17 @@ Read from `trace.jsonl` rather than guessed:
   aisle signs far better than a 768 px still; reads that name a food section or an aisle are
   section landmarks (`signs` dep from composeApp).
 Camera questions answered in the round-17 status entry.
+
+## Round 18 (Stream A): "not on *this* table" outlives a pan, a walk and the next mission
+`ExplorationMap.markAbsent(item, place, {x, z})` / `absentNear(...)`: when the navigator rules a
+place out after a fruitless scan, the runner writes a mark at the phone's position (we scan at
+arm's length), per item and place, on the **session-level** map (`composeApp` creates one
+`createExplorationMap()` and hands it to every mission and explorer). `look()` then treats a
+visible place instance within `ABSENT_RADIUS_M` (2.5 m) of a mark as not visible for this
+item, so panning back onto the same table — or asking for the bananas again a minute later —
+does not walk you to it; a different table across the room (far from every mark) brings the
+name back into play. Marks expire after `ABSENT_TTL_MS` (30 min). Viewed cells persist for the
+session as well. Pinned in `itemMission.test.ts` (round 18).
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

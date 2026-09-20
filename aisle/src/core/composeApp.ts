@@ -43,6 +43,7 @@ import { createSituate, type Situate } from './situate';
 import { classForWords, createSceneMemory, type SceneMemory } from './sceneMemory';
 import { createGuide } from './guide';
 import { describeObstacle, obstacleDetection } from './obstacleWords';
+import { createExplorationMap } from './explorationMap';
 import { createTracer } from './trace';
 import { createHandGuide } from './handGuide';
 import { wirePrompts, type PromptsBinding } from './prompts';
@@ -487,6 +488,9 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   // --- Round 4: guided tasks (no route; Tier 2 plans the steps, Tier 1 confirms each) ---
   let searchSteps = 0;
   unsubs.push(sensors.subscribeSteps((steps) => { searchSteps = steps; }));
+  // Round 18: one map for the whole session — what the camera looked at, and where a thing was
+  // found absent — so a pan away, a walk, or a new "find the bananas" does not forget.
+  const explorationMap = createExplorationMap(now);
   let latestPose: import('./contracts').Pose | null = null;
   // Round 17: the phone's own OCR reads (full resolution) as sign landmarks for the store search.
   let latestOcr: Array<{ text: string; box: [number, number, number, number]; at: number }> = [];
@@ -517,6 +521,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     path: () => (latestDepth && now() - latestDepth.at <= 1000 ? latestDepth : null),
     hfovDeg: lensHfov,
     signs: () => latestOcr,
+    map: explorationMap,
     bus,
     store,
     speech,
