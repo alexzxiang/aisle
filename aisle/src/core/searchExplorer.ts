@@ -49,6 +49,13 @@ export interface SearchDirective {
   target: string;
   phase: 'scan' | 'permission' | 'move' | 'advance' | 'paused';
   haptic?: 'TURN' | 'CONFIRM' | 'STOP' | null;
+  /**
+   * True only for a generic camera-choreography look-around ("point along the aisle") that the
+   * model may replace with its own narration of where the item likely is and which way to explore.
+   * Informative narration, close-shelf inspection, moves, permission and pauses keep this false —
+   * geometry owns those words.
+   */
+  narratable?: boolean;
 }
 export interface SearchExplorer {
   analyzing?(pending: boolean): void;
@@ -66,6 +73,13 @@ export interface SearchExplorer {
   status(): SearchDirective['phase'];
   /** The explorer is walking or waiting for consent (round 14): the navigator holds its guesses. */
   busy(): boolean;
+  /**
+   * A generic store look-around with the target not yet nearby: the model owns the words this
+   * turn (it can say where the item likely is and which way to explore). False the moment the
+   * area looks promising, a close-shelf inspection starts, or the explorer moves/asks consent —
+   * then the computer-vision geometry owns the words and zeroes the user in.
+   */
+  narrating(): boolean;
   /**
    * Round 14: the person asked to explore ("explore", "next aisle", "another room"): leave the
    * current spot now — the freshest landmark without asking, else a coverage leg — and say so.
@@ -266,16 +280,16 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     if (areas.length > 24) areas.shift();
     return next;
   }
-  const emit = (raw: string, target = targetWords): SearchDirective => {
+  const emit = (raw: string, target = targetWords, narratable = false): SearchDirective => {
     const text = fit(raw);
     const interval = phase === 'paused' ? 20000 : phase === 'permission' ? 15000 : 5000;
     const ready = now() - saidAt >= interval || saidAt === -Infinity;
     if (ready && speakable(text)) {
       saidAt = now();
       deps.trace?.('search_decision', { phase, target, text, area: area.id, context: deps.context });
-      return { text, target, phase };
+      return { text, target, phase, narratable };
     }
-    return { text: null, target, phase };
+    return { text: null, target, phase, narratable };
   };
   const resetScan = (): void => { scan = 0; scanAt = -Infinity; phase = 'scan'; pauseRecovery = null; proposal = null; memoryRoute = null; pendingLeg = null; arrivalHits = 0; saidAt = -Infinity; moveKey = null; lastMoveSteps = null; leg = null; crossing = false; };
   const resumeScan = (renewBudget: boolean): void => {
@@ -403,7 +417,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     if (lastConfined || now() - observedAt > FRESH_MS || analyzing) return null;
     const coverage = map?.trip.coverage(deps.item, pose ?? undefined);
     if (coverage && coverage.missing.length < missingBands) { missingBands = coverage.missing.length; coverageProgressAt = now(); }
-    const budget = promisingHere() ? 35000 : 12000;
+    const budget = promisingHere() ? 35000 : 6000;
     if (now() - localScanAt < budget || scan < 1) return null;
     if (coverage?.positive) return null;
     if (coverage?.checked) {
@@ -745,9 +759,11 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           return pause('No opening seen. Turn slowly; I am checking for another way.', 'opening');
         }
         const corridor = deps.context === 'store' && /\baisle end|end of (?:the )?aisle|corridor\b/i.test(area.landmark ?? '');
+        // A generic store look-around is the model's turn to narrate; close-shelf inspection is geometry's.
+        const generic = deps.context === 'store' && !(opts.confined || closeMode || (opts.surface && promisingHere()));
         const text = (opts.confined || closeMode || (opts.surface && promisingHere()) ? (deps.context === 'store' || opts.confined ? SHELVES : SURFACES) : deps.context === 'store' ? (corridor ? CORRIDOR_SCANS : AISLE_SCANS) : SCANS)[scan]!;
         scan += 1; scanAt = now();
-        return emit(text);
+        return emit(text, targetWords, generic);
       }
       return { text: null, target, phase };
     },
@@ -799,6 +815,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     repeat: () => { saidAt = -Infinity; },
     restart: () => resumeScan(true),
     busy: () => phase === 'move' || phase === 'advance' || phase === 'permission',
+    narrating: () => phase === 'scan' && deps.context === 'store' && !closeMode && !lastConfined && !promisingHere(),
     exploreNow(prefer = null, consent = true) {
       gaveUpAt = -Infinity; startedAt = now(); localScanAt = now();
       map?.trip.defer(deps.item);

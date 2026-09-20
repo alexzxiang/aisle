@@ -121,7 +121,11 @@ describe('createGuidedTask', () => {
     let seq = 0;
     const h = harness({ askImpl: async () => {
       const response = visionResponse({ done: false, confidence: 0 });
-      if (recovered) response.search = { sign: null, items: [], view: 'overview', quality: 'usable', confidence: 0.9, barrier: 'none', landmarks: [] };
+      if (recovered) {
+        response.search = { sign: null, items: [], view: 'overview', quality: 'usable', confidence: 0.9, barrier: 'none', landmarks: [] };
+        // A generic store look-around is the model's turn now: its narration is what resumes.
+        response.speech = 'Produce is likely at the back. Walk forward.';
+      }
       return { status: 'applied', seq: ++seq, capturedAt: Date.now(), response, streamed: false, latencyMs: 0 };
     } });
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => Date.now() });
@@ -135,7 +139,7 @@ describe('createGuidedTask', () => {
     recovered = true;
     const spoken = h.said.length;
     await flush(10000);
-    expect(h.said.slice(spoken).some(r => /Point along the aisle|Hold steady for a quick look/.test(r.text))).toBe(true);
+    expect(h.said.slice(spoken).some(r => r.text.includes('Produce is likely at the back. Walk forward.'))).toBe(true);
     task.dispose();
   });
 

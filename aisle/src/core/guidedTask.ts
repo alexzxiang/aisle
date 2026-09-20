@@ -30,7 +30,7 @@ import type { AppEventBus } from './bus';
 import type { AppStore } from './store';
 import type { ConversationLog } from './conversation';
 import type { VoiceOutcome } from './voice';
-import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit, phraseText } from './phrases';
+import { MAX_SEARCH_SPEECH_WORDS, MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit, phraseText } from './phrases';
 import type { SemanticVision } from '../perception/semanticVision';
 import type { PlannerClient } from '../outdoor/planner';
 import { templateTaskPlan } from '../outdoor/plannerJobs';
@@ -709,7 +709,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
           // Geometry owns the words; the model's sentence only fills a silence it cannot.
           if (r.missionModelMaySpeak && out.status === 'applied' && out.response?.speech) {
             const text = out.response.speech;
-            if (!hasDigit(text) && !findForbiddenTerm(text) && countWords(text) <= MAX_UTTERANCE_WORDS) {
+            if (!hasDigit(text) && !findForbiddenTerm(text) && countWords(text) <= MAX_SEARCH_SPEECH_WORDS) {
               speech.say({ text, priority: 'NAV', dedupeKey: 'task-model', cooldownMs: 6000 });
             }
           }

@@ -201,6 +201,45 @@ describe('leaving an area the camera shows nothing in', () => {
     h.task.dispose();
   });
 
+  it('lets the model narrate a generic store look-around instead of a canned scan line', async () => {
+    const h = setup('store', 'bananas');
+    h.setObservation(barren);
+    const original = h.ask.getMockImplementation()!;
+    h.ask.mockImplementation(async (q, opts) => {
+      const result = await original(q, opts);
+      result.response!.speech = 'Produce is at the back, walk forward.';
+      return result;
+    });
+    await jest.advanceTimersByTimeAsync(5000);
+    const transcript = h.said.join(' | ');
+    expect(transcript).toContain('Produce is at the back, walk forward.');
+    expect(transcript).not.toMatch(/Point along the aisle|Turn the camera (?:left|right)\. Hold steady/);
+    h.task.dispose();
+  });
+
+  it('speaks a fifteen-word model exploration line that the twelve-word cap would have dropped', async () => {
+    const h = setup('store', 'bananas');
+    h.setObservation(barren);
+    const fourteen = 'Produce is at the very back of the store, so keep walking straight forward.';
+    const original = h.ask.getMockImplementation()!;
+    h.ask.mockImplementation(async (q, opts) => {
+      const result = await original(q, opts);
+      result.response!.speech = fourteen;
+      return result;
+    });
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(h.said).toContain(fourteen);
+    h.task.dispose();
+  });
+
+  it('leaves a barren store area within about six seconds, not twelve', async () => {
+    const h = setup('store', 'bananas');
+    h.setObservation(barren);
+    await jest.advanceTimersByTimeAsync(9000);
+    expect(h.said.join(' | ')).toMatch(/No opening seen|May I|another (?:part|way)|elsewhere/);
+    h.task.dispose();
+  });
+
   it('sweeps the person through new viewpoints instead of one line and silence', async () => {
     const h = setup('store', 'bananas');
     h.setObservation(barren);

@@ -250,6 +250,16 @@ describe('decide: where the person stands → what to say', () => {
 });
 
 describe('createMissionRunner: the first line is immediate, repeats are paced, the model box steers', () => {
+  it('invites the model to suggest which way to move while exploring, still deferring stops to the app', () => {
+    let t = T0;
+    const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
+    const m = createMissionRunner(goal, { guide, now: () => t });
+    const text = m.userText();
+    expect(text).toMatch(/suggest which way to move|which way to explore/i);
+    expect(text).not.toMatch(/keep speech to what you see/i);
+    expect(text).toMatch(/obstacle|stops you|owns/i);
+  });
+
   it('speaks at once from the detector, holds an unchanged line for four seconds, and moves to reach', () => {
     let t = T0;
     let dets: Detection[] = [{ cls: 'banana', box: [0.7, 0.4, 0.1, 0.1], score: 0.9, trackId: 1 }, { cls: 'table', box: [0.1, 0.3, 0.4, 0.4], score: 0.9, trackId: 2 }];

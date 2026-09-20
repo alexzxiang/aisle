@@ -25,6 +25,12 @@ import { PREPARED_GUIDANCE, type PreparedKey } from './preparedGuidance';
 // ---------------------------------------------------------------------------
 
 export const MAX_UTTERANCE_WORDS = 12;
+/**
+ * In-store search/exploration lets the cloud model speak a little longer so it can name where the
+ * item likely is and which way to move ("Produce is at the back — walk forward"). Only the indoor
+ * task_step search path uses this; the street-crossing envelope stays at MAX_UTTERANCE_WORDS.
+ */
+export const MAX_SEARCH_SPEECH_WORDS = 15;
 /** Tier-1 camera/user prompts are shorter still (01 §8 item 4). */
 export const MAX_PROMPT_WORDS = 6;
 /** Long-phrase allow-list (01 §3): the one member is the first-launch disclaimer. */

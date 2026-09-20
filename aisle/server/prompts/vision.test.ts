@@ -62,6 +62,16 @@ describe('the two on-device lists are distinguished', () => {
   it('keeps the detector authoritative for position', () => {
     expect(VISION_PROMPTS.task_step).toMatch(/boxes and sides are reliable/);
   });
+
+  it('lets the model suggest a direction to explore and route around obstacles, up to fifteen words', () => {
+    const p = VISION_PROMPTS.task_step;
+    expect(p).toMatch(/at most fifteen words/);
+    // When the item is not in view the model may move the person, and steer around obstacles.
+    expect(p).toMatch(/walk forward|turn left|which way to move/i);
+    expect(p).toMatch(/obstacle/i);
+    // The crossing envelope is untouched: the shared core still caps every utterance at twelve.
+    expect(VISION_PROMPTS.scan_left).toMatch(/at most twelve words/);
+  });
 });
 
 describe('relative depth never establishes physical proximity', () => {
