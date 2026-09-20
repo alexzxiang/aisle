@@ -318,7 +318,8 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
   it('"explore" mid-search leaves the spot at once: the explorer walks, the navigator holds its guesses (round 14)', () => {
     let t = T0;
     const pose = { x: 0, z: 0, y: 0, yawDeg: 0, trackingState: 'NORMAL' as const, timestamp: t };
-    const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
+    let detections: Detection[] = [];
+    const guide = createGuide({ detections: () => detections, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
     const map = createExplorationMap(() => t);
     const feed = (ms: number) => { for (let i = 0; i < ms; i += 100) { t += 100; map.ingestPose({ ...pose, timestamp: t }); } };
     feed(300);
@@ -328,16 +329,46 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     t += 1000;
     const r = m.intercept('explore');
     expect(r.consumed).toBe(true);
+    // Round 19: "explore" walks into unvisited ground at once — no doorway has to be named first.
     expect(r.text).toBe('Okay. Hold still. Let me check the path ahead.');
     expect(search.busy()).toBe(true);
     // While the leg runs, the navigator does not hop to "maybe on the table".
+    detections = [{ cls: 'table', score: 0.99, trackId: 1, box: [0.1, 0.2, 0.8, 0.7] }];
     feed(2000);
     const during = m.tick();
-    expect(during.text === null || /Walk forward|Drifting|Keep turning/.test(during.text)).toBe(true);
+    expect(during.text ?? '').not.toMatch(/table|counter|bowl/);
+    expect(during.modelMaySpeak).toBe(false);
+    expect(m.boxTarget()).toBe('opening');
+    expect(m.userText()).toContain('Committed exploration');
     expect(during.decision.key.startsWith('search:') || during.text === null).toBe(true);
-    // Six metres on: the leg ends, a look around, then reasoning resumes.
-    for (let z = 0.1; z <= 6.5; z += 0.1) { pose.z = -z; feed(100); }
+    // Two metres on the leg ends with a look around; only then does reasoning resume.
+    for (let z = 0.1; z <= 2.5; z += 0.1) { pose.z = -z; feed(100); }
     expect(m.tick().text).toBe('Stop here. Let me look around.');
+    expect(search.busy()).toBe(false);
+  });
+
+  it('"next room" keeps the doorway intent through a leg, but the item in view still wins (round 19)', () => {
+    let t = T0;
+    const pose = { x: 0, z: 0, y: 0, yawDeg: 0, trackingState: 'NORMAL' as const, timestamp: t };
+    let detections: Detection[] = [];
+    const guide = createGuide({ detections: () => detections, memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
+    const map = createExplorationMap(() => t);
+    const feed = (ms: number) => { for (let i = 0; i < ms; i += 100) { t += 100; map.ingestPose({ ...pose, timestamp: t }); } };
+    feed(300);
+    const search = createSearchExplorer({ map, item: 'bananas', context: 'home', guide, now: () => t, pose: () => ({ ...pose, timestamp: t }), path: () => ({ center: 0.1, left: 0.1, right: 0.1 }) });
+    const m = createMissionRunner(parseMissionGoal('bananas')!, { guide, now: () => t, search });
+    m.tick();
+    t += 1000;
+    expect(m.intercept('check the next room').text).toBe('Okay. Hold still. Let me check the path ahead.');
+    // A table on the way is not the next room: the intent holds past the first leg.
+    detections = [{ cls: 'table', score: 0.99, trackId: 1, box: [0.1, 0.2, 0.8, 0.7] }];
+    for (let z = 0.1; z <= 2.5; z += 0.1) { pose.z = -z; feed(100); }
+    expect(m.tick().text ?? '').not.toMatch(/table|counter|bowl/);
+    expect(search.busy()).toBe(true);
+    // The bananas themselves end the walk: the camera seeing the thing is the point.
+    detections = [{ cls: 'banana', score: 0.9, trackId: 2, box: [0.4, 0.4, 0.2, 0.2] }];
+    feed(600);
+    expect(m.tick().text).toMatch(/[Bb]ananas/);
     expect(search.busy()).toBe(false);
   });
 

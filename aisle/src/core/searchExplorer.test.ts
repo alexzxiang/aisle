@@ -1,5 +1,5 @@
 import { createExplorationMap } from './explorationMap';
-import { createSearchExplorer } from './searchExplorer';
+import { EXIT_UNCONFIRMED, createSearchExplorer } from './searchExplorer';
 import type { SearchObservation } from './searchObservation';
 import { coerceSearchObservation } from './searchObservation';
 import { foodSection, sectionFromFoods } from './foodCatalog';
@@ -48,6 +48,112 @@ function setup(context: 'store' | 'home' = 'store') {
 }
 
 describe('active search with trip memory', () => {
+  it('keeps looking for a doorway across an uncertain frame and accepts two distinct open views', () => {
+    const h = setup('home');
+    h.search.exploreNow('room');
+    const doorway = { name: 'room opening', kind: 'doorway' as const, boundary: 'open_passage' as const,
+      section: 'unknown' as const, confidence: 0.92, box: [0.35, 0.1, 0.3, 0.8] as [number, number, number, number] };
+    h.tick({ landmarks: [doorway] });
+    h.tick({ landmarks: [{ ...doorway, boundary: 'unknown', confidence: 0.6 }] });
+    expect(h.search.status()).toBe('scan');
+    h.tick({ landmarks: [{ ...doorway, name: 'hallway gap' }] });
+    expect(h.search.status()).toBe('move');
+    expect(h.search.target()).toBe('room opening');
+  });
+
+  it('accepts a confirmed cross-aisle labeled as a doorway when leaving an aisle', () => {
+    const h = setup('store');
+    h.search.exploreNow('aisle');
+    const gap = { name: 'gap between shelves', kind: 'doorway' as const, boundary: 'cross_aisle' as const,
+      section: 'unknown' as const, confidence: 0.92, box: [0.35, 0.1, 0.3, 0.8] as [number, number, number, number] };
+    h.tick({ landmarks: [gap] });
+    h.tick({ landmarks: [gap] });
+    expect(h.search.status()).toBe('move');
+    expect(h.search.target()).toBe('gap between shelves');
+  });
+
+  it('asks for changing angles after repeated unclear views without looping on hold steady', () => {
+    const h = setup('home');
+    const lines: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const line = h.tick({ quality: 'blurred', landmarks: [] })?.text;
+      if (line) lines.push(line);
+    }
+    // A blurred view is a reason to move or turn, not to stand still: at most one hold-still,
+    // new angles after it, and never the same line twice in a row.
+    expect(lines.filter(l => /Hold the camera (?:still|steady)/.test(l)).length).toBeLessThanOrEqual(1);
+    expect(lines.filter(l => /Turn/.test(l)).length).toBeGreaterThanOrEqual(2);
+    lines.forEach((l, i) => { if (i) expect(l).not.toBe(lines[i - 1]); });
+  });
+
+  it('keeps scanning other angles without repeating an exit failure', () => {
+    const h = setup('home');
+    h.search.exploreNow('room');
+    const lines: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const line = h.tick({ landmarks: [] })?.text;
+      if (line) lines.push(line);
+    }
+    expect(lines).toContain('Lower the camera slightly to show the floor beyond the opening.');
+    expect(lines.every(l => !l.includes('ask someone nearby'))).toBe(true);
+    // One full sweep with no position to walk from ends in one honest line, not a loop.
+    expect(lines.filter(l => l === EXIT_UNCONFIRMED)).toHaveLength(1);
+    expect(new Set(lines).size).toBe(lines.length);
+  });
+
+  it('leaving a room walks into unvisited floor when the model names no doorway, and the item in view ends it', () => {
+    let t = 100000;
+    const map = createExplorationMap(() => t);
+    const pose = { x: 0, y: 1.4, z: 0, yawDeg: 0, timestamp: t, trackingState: 'NORMAL' as const, worldSessionId: 'one' };
+    const feed = (ms: number) => { for (let i = 0; i < ms; i += 100) { t += 100; map.ingestPose({ ...pose, timestamp: t }); } };
+    feed(300);
+    let seq = 0;
+    const search = createSearchExplorer({ item: 'bananas', context: 'home', map, pose: () => ({ ...pose, timestamp: t }), now: () => t,
+      guide: { instructionFor: () => null }, path: () => ({ center: 0.1, left: 0.1, right: 0.1 }) });
+    search.observe(observation({ landmarks: [] }), ++seq, t);
+    expect(search.exploreNow('room').text).toBe('Okay. Hold still. Let me check the path ahead.');
+    expect(search.status()).toBe('advance');
+    feed(2100);
+    expect(search.tick('bananas', null)?.text).toBe('Walk forward three steps, then stop for another look.');
+    const item: GuideInstruction = { kind: 'forward', targetVisible: true, text: 'Bananas ahead.', relativeDeg: 0, steps: 2, box: { box: [0.4, 0.4, 0.2, 0.2], at: t } };
+    expect(search.tick('bananas', item)).toBeNull();
+    expect(search.busy()).toBe(false);
+  });
+
+  it('a doorway named once holds the person still for the confirming frame instead of walking elsewhere', () => {
+    let t = 100000;
+    const map = createExplorationMap(() => t);
+    const pose = { x: 0, y: 1.4, z: 0, yawDeg: 0, timestamp: t, trackingState: 'NORMAL' as const, worldSessionId: 'one' };
+    const feed = (ms: number) => { for (let i = 0; i < ms; i += 100) { t += 100; map.ingestPose({ ...pose, timestamp: t }); } };
+    feed(300);
+    let seq = 0;
+    const search = createSearchExplorer({ item: 'bananas', context: 'home', map, pose: () => ({ ...pose, timestamp: t }), now: () => t,
+      guide: { instructionFor: (_n, box) => ({ kind: 'forward', targetVisible: true, text: 'Walk forward.', relativeDeg: 0, steps: 3, box: box ?? undefined }) }, path: () => ({ center: 0.1, left: 0.1, right: 0.1 }) });
+    const doorway = { name: 'left doorway', kind: 'doorway' as const, boundary: 'open_passage' as const, section: 'unknown' as const, confidence: 0.9, box: [0.05, 0.1, 0.3, 0.8] as [number, number, number, number] };
+    search.observe(observation({ landmarks: [doorway] }), ++seq, t);
+    expect(search.exploreNow('room').text).toBe('Hold still. I may see an opening.');
+    feed(1000);
+    search.observe(observation({ landmarks: [doorway] }), ++seq, t);
+    expect(search.tick('bananas', null)?.text).toBe('Okay. Heading for the left doorway.');
+    expect(search.target()).toBe('left doorway');
+  });
+
+  it('"go forward" walks the heading the person points at, unless the depth grid says it is blocked', () => {
+    let t = 100000;
+    const map = createExplorationMap(() => t);
+    const pose = { x: 0, y: 1.4, z: 0, yawDeg: 90, timestamp: t, trackingState: 'NORMAL' as const, worldSessionId: 'one' };
+    const feed = (ms: number) => { for (let i = 0; i < ms; i += 100) { t += 100; map.ingestPose({ ...pose, timestamp: t }); } };
+    feed(300);
+    let center = 0.1;
+    const search = createSearchExplorer({ item: 'bananas', context: 'home', map, pose: () => ({ ...pose, timestamp: t }), now: () => t,
+      guide: { instructionFor: () => null }, path: () => ({ center, left: 0.1, right: 0.1 }) });
+    expect(search.exploreNow('forward').text).toBe('Okay. Hold still. Let me check the path ahead.');
+    expect(search.busy()).toBe(true);
+    center = 0.9;
+    feed(1600);
+    expect(search.tick('bananas', null)?.text).toMatch(/Stop/);
+  });
+
   it('keeps an explicit room exit ahead of tables, and acquires a confirmed doorless opening', () => {
     expect(exploreRequest('please exit the room')).toEqual({ asked: true, prefer: 'room' });
     expect(exploreRequest('leave this aisle')).toEqual({ asked: true, prefer: 'aisle' });

@@ -112,10 +112,12 @@ it('accepts a full resume sentence after camera failure without starting movemen
 });
 
 it('uses a structured relocation proposal only when its landmark is actually observed', () => {
-  const search = createSearchExplorer({ item: 'keys', context: 'classroom', guide: { instructionFor: () => null }, now: () => 100000 });
+  let t = 100000;
+  const search = createSearchExplorer({ item: 'keys', context: 'classroom', guide: { instructionFor: () => null }, now: () => t });
   const observation = coerceSearchObservation(view({ strategy: { relevance: 'unlikely', action: 'relocate', landmark: 'imaginary kitchen', reason: 'Desks here.', confidence: 0.99 } }));
-  search.observe(observation, 1, 100000);
-  search.observe(observation, 2, 100000);
+  search.observe(observation, 1, t);
+  t += 1000;
+  search.observe(observation, 2, t);
   expect(search.exploreNow(null, false)).toMatchObject({ phase: 'permission', target: 'left opening' });
 });
 

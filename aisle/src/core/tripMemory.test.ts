@@ -14,6 +14,32 @@ function rig() {
   return { map, pose, observe: (patch: Partial<SearchObservation> = {}, item = 'bananas') => { for (let i = 0; i < 8; i++) pose({ pitchDeg: patch.view === 'upper' ? 15 : patch.view === 'lower' ? -15 : 0 }); map.observe(observation(patch), item, t); }, now: () => t };
 }
 
+test('deferral survives a camera pan without claiming absence or affecting other items', () => {
+  const h = rig();
+  h.map.defer('bananas');
+  h.pose({ yawDeg: 180 }); h.pose({ yawDeg: 0 });
+  expect(h.map.deferredHere('bananas')).toBe(true);
+  expect(h.map.deferredHere('milk')).toBe(false);
+  expect(h.map.coverage('bananas').checked).toBe(false);
+  for (let i = 0; i < 1201; i++) h.pose();
+  expect(h.map.deferredHere('bananas')).toBe(false);
+});
+
+test('new waypoints inherit local cooldown without extending it past its original walked radius', () => {
+  const h = rig();
+  h.map.defer('bananas');
+  for (let i = 1; i <= 20; i++) h.pose({ x: i / 10 });
+  expect(h.map.deferredHere('bananas')).toBe(true);
+  expect(h.map.revisitDiagnostics('bananas')).toMatchObject({ deferred: true, activeAnchors: 1, deferHits: 1 });
+  for (let i = 21; i <= 45; i++) h.pose({ x: i / 10 });
+  expect(h.map.deferredHere('bananas')).toBe(false);
+  for (let i = 44; i >= 0; i--) h.pose({ x: i / 10 });
+  expect(h.map.deferredHere('bananas')).toBe(true);
+  expect(h.map.revisitDiagnostics('bananas').returned).toBeGreaterThan(0);
+  h.pose({ worldSessionId: 'new-session' }); h.pose(); h.pose();
+  expect(h.map.deferredHere('bananas')).toBe(false);
+});
+
 test('remembers dairy across item missions and routes around a corner using walked edges', () => {
   const h = rig();
   h.observe({ sign: 'DAIRY', items: ['milk', 'yogurt'] }); h.observe({ sign: 'DAIRY', items: ['milk', 'yogurt'] });

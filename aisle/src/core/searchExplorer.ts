@@ -23,10 +23,10 @@ import type { Guide, GuideInstruction, TargetBox } from './guide';
 import type { TripRoute } from './tripMemory';
 import type { Pose, TaskContext } from './contracts';
 import { stepsWords } from './guide';
-import { createExplorationMap, explorationSteps, type ExplorationMap, type Openness } from './explorationMap';
+import { BLOCKED_NEAR, createExplorationMap, explorationSteps, wrap360, type ExplorationMap, type Openness } from './explorationMap';
 import { foodSection, sectionFromFoods, type FoodSection } from './foodCatalog';
 import { aisleClueScore, groceryAisle, relatedGroceryItems } from './groceryAisles';
-import { itemLine } from './itemMission';
+import { itemLine, type ExplorePreference } from './itemMission';
 import type { SearchLandmark, SearchObservation, SearchView } from './searchObservation';
 import { isAffirmative, isNegative } from './yesNo';
 import { createDetectorSearchEvidence, type DetectorFrame } from './detectorSearchEvidence';
@@ -77,6 +77,8 @@ export interface SearchExplorer {
   status(): SearchDirective['phase'];
   /** The explorer is walking or waiting for consent (round 14): the navigator holds its guesses. */
   busy(): boolean;
+  /** A committed room/aisle transition, including pauses and tracking recovery. */
+  leaving?(): boolean;
   /**
    * A generic look-around in any environment with the target not yet nearby: the model owns the words this
    * turn (it can say where the item likely is and which way to explore). False the moment the
@@ -88,7 +90,7 @@ export interface SearchExplorer {
    * Round 14: the person asked to explore ("explore", "next aisle", "another room"): leave the
    * current spot now — the freshest landmark without asking, else a coverage leg — and say so.
    */
-  exploreNow(prefer?: 'aisle' | 'room' | null, consent?: boolean): SearchDirective;
+  exploreNow(prefer?: ExplorePreference, consent?: boolean): SearchDirective;
   repeat(): void;
   restart(): void;
   enterArea(landmark: string): void;
@@ -162,6 +164,13 @@ export const EXPLORE_LEG_MS = 15_000;
 export const EXPLORE_DRIFT_DEG = 30;
 /** Total exploration budget before the app admits the area is covered. */
 export const EXPLORE_BUDGET_MS = 5 * 60_000;
+/**
+ * Round 19: asked to leave a room with no doorway named yet, the explorer walks into unvisited
+ * ground (a doorway the person stands in is not a landmark the model can box). This many legs
+ * in a row blocked or without progress, and it goes back to sweeping the camera for an opening.
+ */
+export const EXIT_LEGS_MAX = 4;
+export const EXIT_UNCONFIRMED = 'No opening confirmed yet. Tell me which way, or keep turning.';
 const SCANS = [
   'Turn the camera slowly left.',
   'Now turn the camera slowly right.',
@@ -226,7 +235,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   let explained = '';
   let quality: SearchObservation['quality'] = 'occluded';
   let unusableStreak = 0;
+  let blurPromptStage = -1;
   let landmarks: Array<SearchLandmark & { at: number; hits: number }> = [];
+  let portalTracks: Array<SearchLandmark & { at: number; hits: number; yaw: number | null }> = [];
   let proposal: SearchLandmark | null = null;
   let targetWords = deps.item;
   let saidAt = -Infinity;
@@ -257,6 +268,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   let exitIntent: 'room' | 'aisle' | null = null;
   let exitScan = 0;
   let exitScanAt = -Infinity;
+  let exitLegs = 0;
+  let exitAskedAt = -Infinity;
+  let revisitTraceAt = -Infinity;
   let lastConfined = false;
   let startedAt = now();
   let mapGeneration = map?.trip.generation() ?? 0;
@@ -310,7 +324,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     resetScan();
     if (renewBudget) startedAt = now();
     localScanAt = now(); coverageProgressAt = now(); missingBands = 3;
-    gaveUpAt = -Infinity; unusableStreak = 0; advances = 0; openingSweep = 0;
+    gaveUpAt = -Infinity; unusableStreak = 0; blurPromptStage = -1; advances = 0; openingSweep = 0;
   };
   const pause = (text: string, recovery: typeof pauseRecovery): SearchDirective => {
     phase = 'paused'; pauseRecovery = recovery; pauseText = text; openingSweep = 0;
@@ -331,15 +345,18 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     return { text, target, phase, haptic };
   };
   /** Begin a coverage leg from here toward unvisited ground; null when everything around is visited or blocked. */
-  const startLeg = (pose: Pose, preferTurn = false): SearchDirective | null => {
+  const startLeg = (pose: Pose, preferAhead = false): SearchDirective | null => {
     if (!map) return null;
-    const choice = now() - startedAt <= EXPLORE_BUDGET_MS ? map.bestHeading(pose, pose.yawDeg, deps.path?.() ?? null) : null;
+    const path = deps.path?.() ?? null;
+    // "There is an opening in front of me": the person's word picks the heading; the depth grid
+    // still vetoes it now and on every step of the leg.
+    const ahead = preferAhead && !(path && path.center >= BLOCKED_NEAR) ? { yawDeg: wrap360(pose.yawDeg), turn: 'ahead' as const, unvisited: 0 } : null;
+    const choice = ahead ?? (now() - startedAt <= EXPLORE_BUDGET_MS ? map.bestHeading(pose, pose.yawDeg, path) : null);
     if (!choice) return null;
     leg = { yawDeg: choice.yawDeg, from: { x: pose.x, z: pose.z }, steps0: deps.steps?.() ?? 0, at: now(), aligned: false, alignedAt: null };
     phase = 'advance'; moveKey = null; moveSaidAt = -Infinity; proposal = null;
     const turn = choice.turn === 'ahead' ? '' : choice.turn === 'around' ? 'Turn around, then ' : choice.turn === 'left' ? 'Turn left, then ' : choice.turn === 'right' ? 'Turn right, then ' : choice.turn === 'half_left' ? 'Turn half left, then ' : 'Turn half right, then ';
     const line = turn ? `${turn}hold still. Let me check that direction.` : 'Hold still. Let me check the path ahead.';
-    void preferTurn;
     return move(line, `leg:${choice.turn}`, targetWords, choice.turn === 'ahead' ? null : 'TURN');
   };
   const arrive = (): SearchDirective => {
@@ -362,6 +379,20 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   const section = foodSection(deps.item);
   const recentlyReached = new Map<string, number>();
   const candidateKey = (l: SearchLandmark): string => `${area.id}:${clean(l.name)}`;
+  const isPortal = (l: SearchLandmark): boolean => l.kind === 'doorway' || l.kind === 'aisle_end';
+  const exitPortal = (l: SearchLandmark): boolean => exitIntent === 'room' ? l.kind === 'doorway'
+    : exitIntent === 'aisle' ? l.kind === 'aisle_end' || (l.kind === 'doorway' &&
+      (l.boundary === 'cross_aisle' || /\b(aisle|shel(?:f|ves)|passage|corridor|opening|gap)\b/i.test(l.name))) : true;
+  const recentlyReachedHere = (l: SearchLandmark): boolean => !exitIntent &&
+    now() - (recentlyReached.get(clean(l.name)) ?? -Infinity) < 120000;
+  /**
+   * An opening the model has named once, confidently, with floor beyond it: one more frame
+   * confirms it. For ten seconds after a request to leave that is worth holding still for,
+   * rather than walking off toward unvisited ground in some other direction.
+   */
+  const awaitingPortal = (): boolean => exitIntent !== null && now() - exitAskedAt < 10000
+    && landmarks.some((l) => isPortal(l) && exitPortal(l) && l.hits === 1 && l.confidence >= 0.8
+      && ['open_passage', 'cross_aisle'].includes(l.boundary ?? '') && now() - l.at <= FRESH_MS);
   // Containers are not grocery destinations. Apply this to every selection path,
   // including explicit "explore" requests, so a fallback cannot reintroduce them.
   const groceryDestination = (l: SearchLandmark): boolean => deps.context === 'store'
@@ -396,7 +427,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     const withDoor = door && !fresh.some((l) => l.kind === 'doorway' && overlap(l.box, door.box) >= 0.3) ? [...fresh, door] : fresh;
     const signs = ocrSigns().filter((s) => !withDoor.some((l) => l.kind === 'section' && overlap(l.box, s.box) >= 0.3));
     return [...withDoor, ...signs].filter(groceryDestination)
-      .filter(l => !exitIntent || l.kind === (exitIntent === 'room' ? 'doorway' : 'aisle_end'))
+      .filter(l => !exitIntent || exitPortal(l))
       .filter(l => !/\b(bowls?|baskets?)\b/i.test(l.name) || l.hits >= 2 && l.confidence >= 0.85);
   };
   const choose = (): SearchLandmark | null => {
@@ -406,8 +437,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     return candidates().filter((l) => !['doorway', 'aisle_end'].includes(l.kind) || (l.hits >= 2 && l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? '')))
       .filter((l) => (l.hits >= 2 || l.confidence >= 0.75) && !refused.has(candidateKey(l)))
       .filter((l) => clean(l.name) !== clean(area.landmark ?? ''))
-      .filter((l) => now() - (recentlyReached.get(clean(l.name)) ?? -Infinity) >= 120000)
-      .filter((l) => deps.context !== 'store' || !map?.trip.aisleVisited(l.name, deps.item))
+      .filter((l) => !recentlyReachedHere(l))
+      .filter((l) => !!exitIntent || deps.context !== 'store' || !map?.trip.aisleVisited(l.name, deps.item))
       .filter((l) => !(l.kind === 'surface' && wrongAisle))
       .sort((a, b) => rank(b) - rank(a))[0] ?? null;
     function rank(l: SearchLandmark): number {
@@ -436,10 +467,14 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     return proposal?.kind === 'doorway' ? 'May I guide you through the doorway to search elsewhere?' : 'May I guide you toward another visible surface to search?';
   };
   const leaveStalledView = (pose: Pose | null): SearchDirective | null => {
-    if (lastConfined || now() < verificationUntil || (!detectorChecked && (now() - observedAt > FRESH_MS || analyzing))) return null;
+    if (lastConfined || now() < verificationUntil || (!detectorChecked && now() - observedAt > FRESH_MS)) return null;
     const coverage = map?.trip.coverage(deps.item, pose ?? undefined);
     if (coverage && coverage.missing.length < missingBands) { missingBands = coverage.missing.length; coverageProgressAt = now(); }
     const budget = promisingHere() ? 35000 : 6000;
+    // A pending frame may still name a way on, so wait for it — but not forever: with the fast
+    // lane the camera is nearly always being analysed, and leaving is a decision about time and
+    // coverage. Past twice the budget the person walks whatever is in flight.
+    if (!detectorChecked && analyzing && now() - localScanAt < budget * 2) return null;
     if (!detectorChecked && (now() - localScanAt < budget || scan < 1)) return null;
     if (coverage?.positive && !detectorChecked) return null;
     if (coverage?.checked) {
@@ -453,7 +488,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     const exit = candidates()
       .filter(l => (l.kind === 'aisle_end' || l.kind === 'doorway') && l.hits >= 2 && l.confidence >= 0.8
         && ['open_passage', 'cross_aisle'].includes(l.boundary ?? '') && !refused.has(candidateKey(l))
-        && now() - (recentlyReached.get(clean(l.name)) ?? -Infinity) >= 120000)
+        && !recentlyReachedHere(l))
       .sort((a, b) => Number(b.kind === 'aisle_end') - Number(a.kind === 'aisle_end') || b.confidence - a.confidence)[0] ?? null;
     if (exit) {
       proposal = exit; phase = 'permission'; permissionAt = now(); saidAt = -Infinity;
@@ -476,6 +511,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       pendingLeg = pose; phase = 'permission'; permissionAt = now(); saidAt = -Infinity;
       return emit(question());
     }
+    // Nowhere to walk yet and a frame in flight: it may name a way on, and the model may be
+    // about to narrate one — a canned pause on top of that reads as two voices. Wait for it.
+    if (analyzing) return null;
     return pause('No opening seen. Turn slowly; I am checking for another way.', 'opening');
   };
   return {
@@ -500,17 +538,35 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         && !/\b(walk|run|move|head|proceed|turn|step|reach|grab|touch|enter|exit|open|cross|go|safe|absent|nearby)\b/i.test(strategy.reason) && !pendingNarration) {
         pendingNarration = strategy.reason; explained = strategy.reason;
       }
-      unusableStreak = quality === 'usable' ? 0 : unusableStreak + 1;
+      if (quality === 'usable') { unusableStreak = 0; blurPromptStage = -1; }
+      else unusableStreak += 1;
       // "blurred" and "occluded" are Claude's words for a cluttered kitchen at arm's length; the
       // landmarks it lists in such a frame are still ways on. Only very low confidence is discarded.
       if (o.confidence < 0.5) return false;
       const previous = landmarks;
       // The same landmark comes back under drifting names ("aisle end", "end of aisle"): match by
       // kind and overlap first, name second, and keep the first name so the person hears one word.
+      const captureYaw = capturePose?.yawDeg ?? null;
+      portalTracks = portalTracks.filter(p => capturedAt - p.at <= 15000);
       landmarks = o.landmarks.filter((l) => l.confidence >= LANDMARK_MIN_CONFIDENCE).map((l) => {
         const same = previous.find((p) => capturedAt - p.at <= 15000 && p.boundary === l.boundary && (clean(p.name) === clean(l.name) || (p.kind === l.kind && overlap(p.box, l.box) >= 0.3)));
-        return { ...l, name: same?.name ?? l.name, at: capturedAt, hits: (same?.hits ?? 0) + 1 };
+        if (!isPortal(l)) return { ...l, name: same?.name ?? l.name, at: capturedAt, hits: (same?.hits ?? 0) + 1 };
+        const matched = portalTracks.find(p => p.at < capturedAt && (p.kind === l.kind || (exitIntent === 'aisle' && isPortal(p)))
+          && (overlap(p.box, l.box) >= 0.2 || clean(p.name) === clean(l.name) && overlap(p.box, l.box) >= 0.1)
+          && (captureYaw === null || p.yaw === null || Math.abs(((captureYaw - p.yaw + 540) % 360) - 180) <= 25));
+        if (l.boundary === 'closed_door' && matched) portalTracks = portalTracks.filter(p => p !== matched);
+        const positive = l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? '');
+        const hits = positive ? (matched?.hits ?? 0) + 1 : 0;
+        if (positive) {
+          const track = { ...l, name: matched?.name ?? l.name, at: capturedAt, hits, yaw: captureYaw };
+          if (matched) portalTracks = portalTracks.filter(p => p !== matched);
+          portalTracks.push(track);
+        }
+        return { ...l, name: matched?.name ?? l.name, at: capturedAt, hits };
       });
+      if (exitIntent) deps.trace?.('search_exit_evidence', { objective: exitIntent, quality, observed: o.landmarks
+        .filter(isPortal).map(l => ({ kind: l.kind, boundary: l.boundary ?? 'unknown', confidence: l.confidence })),
+        confirmed: candidates().filter(l => isPortal(l)).map(l => ({ kind: l.kind, hits: l.hits })) });
       // Signs identify the current area only when repeated; merely seeing a distant sign
       // during movement must not teleport the user into that aisle.
       const reliableArea = phase !== 'move' && phase !== 'advance' && o.quality === 'usable' && o.confidence >= OBSERVATION_MIN_CONFIDENCE;
@@ -572,11 +628,15 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       detectorChecked = detectorEvidence.update(deps.detectorFrame?.() ?? null, pose, now(), deps.hfovDeg?.() ?? 56)
         && now() >= verificationUntil;
       if (map && pose) map.ingestPose(pose);
+      if (map && now() - revisitTraceAt >= 5000) {
+        revisitTraceAt = now();
+        deps.trace?.('search_revisit', { item: deps.item, ...map.trip.revisitDiagnostics(deps.item) });
+      }
       if (pose && (!localOrigin || Math.hypot(pose.x - localOrigin.x, pose.z - localOrigin.z) > 1.5)) {
         localOrigin = pose; localScanAt = now(); coverageProgressAt = now(); missingBands = 3;
       }
       if (map && map.trip.generation() !== mapGeneration) {
-        mapGeneration = map.trip.generation(); resetScan(); landmarks = []; observedAt = -Infinity;
+        mapGeneration = map.trip.generation(); resetScan(); landmarks = []; portalTracks = []; observedAt = -Infinity;
       }
       if (deps.pose && (!pose || (map && !map.trip.ready()))) {
         if (!trackingStopped) { resetScan(); trackingStopped = true; saidAt = -Infinity; }
@@ -593,15 +653,34 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       }
       if ((phase === 'move' || phase === 'advance') && lastTickAt !== -Infinity && now() - lastTickAt > STALE_TICK_MS) resetScan();
       lastTickAt = now();
-      // A found target always wins, including while permission is pending.
-      if (direct?.targetVisible && !opts.surface) { resetScan(); return null; }
+      // A found target always wins, including while permission is pending and while leaving a
+      // room: the camera seeing the thing is the point of the walk.
+      if (direct?.targetVisible && !opts.surface) { exitIntent = null; resetScan(); return null; }
       if (exitIntent && phase === 'scan') {
         if (choose()) return this.exploreNow(exitIntent);
+        if (awaitingPortal()) return emit('Hold still. I may see an opening.');
+        // No doorway the model could box — the person may be standing in it. Unvisited floor
+        // ahead is the way out; the depth grid vetoes each step, and a blocked leg marks the
+        // heading so the next one turns elsewhere.
+        if (map && pose && exitLegs < EXIT_LEGS_MAX) {
+          const started = startLeg(pose);
+          if (started) return started;
+        }
         if (now() - exitScanAt < OPENING_SWEEP_MS) return { text: null, target: targetWords, phase };
-        exitScanAt = now();
-        const text = exitScan < OPENING_SWEEP.length ? OPENING_SWEEP[exitScan++]
-          : 'No exit confirmed. Describe its direction, or ask someone nearby.';
-        return emit(text);
+        if (exitScan >= 4) {
+          // One full sweep and nowhere to walk: say so once, and let a new opening or a new
+          // heading resume the search rather than repeating a failure every nine seconds.
+          exitIntent = null;
+          const paused = pause(EXIT_UNCONFIRMED, 'opening');
+          openingSweep = OPENING_SWEEP.length;
+          return paused;
+        }
+        const text = exitScan % 4 === 3
+          ? 'Lower the camera slightly to show the floor beyond the opening.'
+          : OPENING_SWEEP[exitScan % 4]!;
+        const next = emit(text);
+        if (next.text) { exitScan += 1; exitScanAt = now(); }
+        return next;
       }
       if (phase === 'permission') {
         if (deps.automaticExploration && now() - permissionAt >= 5000) {
@@ -624,7 +703,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           deps.trace?.('search_decision', { phase, text: line, area: area.id, context: deps.context, sweep: openingSweep });
           return { text: line, target: targetWords, phase };
         }
-        if (pauseRecovery === 'opening' && pauseText !== OPENING_EXHAUSTED) pauseText = OPENING_EXHAUSTED;
+        if (pauseRecovery === 'opening' && pauseText !== OPENING_EXHAUSTED && pauseText !== EXIT_UNCONFIRMED) pauseText = OPENING_EXHAUSTED;
         // Keep the actual reason, rather than replacing it with a generic nag.
         return now() - lastPulseAt >= GIVE_UP_PULSE_MS
           ? (lastPulseAt = now(), { text: pauseText, target: targetWords, phase })
@@ -700,7 +779,10 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           if (blocked || far) {
             const noProgress = travelled < 0.5;
             if (blocked || noProgress) map.markBlocked(pose, leg.yawDeg);
+            if (blocked || noProgress) exitLegs += 1; else exitLegs = 0;
             if (!blocked && travelled >= 1.5) {
+              // Through the opening the request to leave is met; new ground short of one keeps
+              // the intent (the next look-around may name the doorway) but the legs keep coming.
               if (crossing) exitIntent = null;
               if (crossing && deps.context === 'store') map.trip.leaveAisle();
               area = freshArea(); area.landmark = crossing ? (deps.context === 'store' ? 'cross aisle corridor' : 'beyond opening') : undefined;
@@ -751,10 +833,20 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         if (wait.text) cameraWaitAt = now();
         return wait;
       }
-      if (unusableStreak >= 3 && landmarks.length === 0 && now() - localScanAt < 45000) return emit(quality === 'dark' ? 'The view is dark. Aim toward a brighter area.' : 'The view is blocked or blurred. Hold the camera steady.');
-      if (unusableStreak >= 3 && landmarks.length === 0 && now() - localScanAt >= 45000) {
-        map?.trip.defer(deps.item);
-        return pause('View blocked or blurred. Adjust the camera; I am still checking.', 'camera');
+      if (unusableStreak >= 3 && landmarks.length === 0) {
+        // A blurred or dark view earns one "hold still" (motion blur), then new angles — and
+        // after that the ordinary look-around and move-on below, never a loop of the same line.
+        const prompts = quality === 'dark'
+          ? ['The view is dark. Aim toward a brighter area.', 'Turn toward a brighter area for another view.']
+          : ['The view is unclear. Hold the camera still for a moment.',
+            'That angle is still unclear. Turn the camera slowly left.',
+            'Try a new angle to your right and show the floor.'];
+        const stage = Math.min(Math.floor(unusableStreak / 3) - 1, prompts.length - 1);
+        if (stage > blurPromptStage) {
+          const next = emit(prompts[stage]!);
+          if (next.text) { blurPromptStage = stage; return next; }
+        }
+        if (blurPromptStage < prompts.length - 1) return { text: null, target, phase };
       }
       // Do not prompt another pan while the previous view is being analyzed.
       if (!analyzing && observedAt >= scanAt && now() - scanAt >= SCAN_MS && now() - saidAt >= 5000) {
@@ -881,11 +973,16 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     repeat: () => { saidAt = -Infinity; },
     restart: () => resumeScan(true),
     busy: () => exitIntent !== null || phase === 'move' || phase === 'advance' || phase === 'permission',
-    narrating: () => phase === 'scan' && quality === 'usable' && now() - observedAt <= FRESH_MS && !trackingStopped && !closeMode && !lastConfined && !promisingHere(),
+    leaving: () => exitIntent !== null,
+    narrating: () => !exitIntent && phase === 'scan' && quality === 'usable' && now() - observedAt <= FRESH_MS && !trackingStopped && !closeMode && !lastConfined && !promisingHere(),
     narrated: () => { modelNarratedAt = now(); saidAt = now(); pendingNarration = null; followUp = null; },
     exploreNow(prefer = null, consent = true) {
-      if (prefer && !exitIntent) { exitScan = 0; exitScanAt = -Infinity; }
-      exitIntent = prefer ?? exitIntent;
+      // "Next room" / "leave the aisle" pin the kind of way out and hold until we are through it
+      // or two metres on; a bare "explore" or "go forward" does not.
+      const portalWish = prefer === 'aisle' || prefer === 'room' ? prefer : null;
+      if (portalWish && !exitIntent) { exitScan = 0; exitScanAt = -Infinity; exitLegs = 0; }
+      if (portalWish) exitAskedAt = now();
+      exitIntent = portalWish ?? exitIntent;
       gaveUpAt = -Infinity; startedAt = now(); localScanAt = now();
       map?.trip.defer(deps.item);
       // The current spot is done with: remember it as searched, then leave.
@@ -898,20 +995,30 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       const fresh = candidates().filter((l) => (!['doorway', 'aisle_end'].includes(l.kind) || (l.hits >= 2 && l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? ''))) && now() - l.at <= FRESH_MS && l.confidence >= LANDMARK_MIN_CONFIDENCE && !refused.has(candidateKey(l)) && clean(l.name) !== clean(area.landmark ?? '')
         && now() - (recentlyReached.get(clean(l.name)) ?? -Infinity) >= 120000
         && (deps.context !== 'store' || !map?.trip.aisleVisited(l.name, deps.item)));
-      const pick = (wanted ? fresh.find((l) => l.kind === wanted) : null) ?? choose() ?? fresh.sort((a, b) => b.confidence - a.confidence)[0] ?? null;
-      if (pick) {
+      const byConfidence = (a: SearchLandmark, b: SearchLandmark): number => b.confidence - a.confidence;
+      const portal = (wanted ? fresh.find((l) => l.kind === wanted) : null) ?? fresh.filter(isPortal).sort(byConfidence)[0] ?? null;
+      const go = (pick: SearchLandmark): SearchDirective => {
         proposal = pick;
         if (!consent) { phase = 'permission'; permissionAt = now(); saidAt = -Infinity; return emit(question(), pick.name); }
         phase = 'move'; moveAt = now(); saidAt = -Infinity; moveKey = null; moveSaidAt = -Infinity; lastMoveSteps = null; landmarkSeenAt = now();
         return { text: fit(`Okay. Heading for the ${pick.name}.`), target: pick.name, phase, haptic: 'CONFIRM' };
-      }
-      if (map && pose && !exitIntent) {
+      };
+      // "Go forward" walks first; otherwise a confirmed opening beats everything else, and one
+      // the model has named once is worth one more frame before walking elsewhere.
+      if (portal && prefer !== 'forward') return go(portal);
+      if (awaitingPortal()) { resetScan(); return { text: 'Hold still. I may see an opening.', target: targetWords, phase, haptic: null }; }
+      // Exploring means new ground: with a position, walk into it before settling for another
+      // surface in the same room (a table across the room is not "somewhere else").
+      if (map && pose) {
         if (!consent && map.bestHeading(pose, pose.yawDeg, deps.path?.() ?? null)) {
           pendingLeg = pose; phase = 'permission'; permissionAt = now(); saidAt = -Infinity; return emit(question());
         }
-        const started = startLeg(pose, prefer === 'aisle');
+        const started = startLeg(pose, prefer === 'forward');
         if (started) return { ...started, text: started.text ? fit(`Okay. ${started.text}`) : 'Okay. Exploring.' };
       }
+      if (portal) return go(portal);
+      const other = exitIntent ? null : choose() ?? fresh.sort(byConfidence)[0] ?? null;
+      if (other) return go(other);
       resetScan();
       return { text: 'Turn slowly so I can find another opening.', target: targetWords, phase, haptic: 'TURN' };
     },

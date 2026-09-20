@@ -905,14 +905,16 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       const r = run;
       if (!r || mode() !== 'GUIDED_TASK') return false;
       const t = transcript.trim();
+      // "Can I go that way?" is the person asking to move, not asking to be asked: proceed
+      // (the walk begins by checking the path, and "stop" ends it at any time).
       if (r.fridge && r.search && r.step < 4 && exploreRequest(t).asked && r.step !== 0) {
-        void begin(itemOfGoal(r.goal), r.context, true, !/\b(?:can|should|may|could) (?:i|we)\b/i.test(t));
+        void begin(itemOfGoal(r.goal), r.context, true, true);
         return true;
       }
       // "Explore" / "next aisle" while looking for the fridge itself: leave this spot now.
       if (r.fridge && r.search && r.step === 0 && exploreRequest(t).asked) {
         r.searchRevision = (r.searchRevision ?? 0) + 1;
-        const d = r.search.exploreNow(exploreRequest(t).prefer, !/\b(?:can|should|may|could) (?:i|we)\b/i.test(t));
+        const d = r.search.exploreNow(exploreRequest(t).prefer);
         r.searchTarget = d.target;
         if (d.haptic) deps.haptics.play(d.haptic);
         if (d.text) {

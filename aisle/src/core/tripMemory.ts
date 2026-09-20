@@ -54,6 +54,31 @@ export function createTripMemory(now: () => number = Date.now) {
   let walkedSincePortal = 0;
   const evidence: Evidence[] = [];
   const deferred = new Map<string, number>();
+  const deferRoots = new Map<string, { id: string; item: string; until: number }>();
+  const revisitStats = { created: 0, returned: 0, deferChecks: 0, deferHits: 0 };
+  // Rebuild from original anchors, never from the expanded neighborhood: otherwise
+  // each new waypoint would extend a three-metre cooldown indefinitely.
+  const refreshDeferred = () => {
+    deferred.clear();
+    for (const [key, root] of deferRoots) {
+      if (root.until <= now()) { deferRoots.delete(key); continue; }
+      const costs = new Map<string, number>([[root.id, 0]]);
+      const queue = [root.id];
+      while (queue.length) {
+        const from = queue.shift()!;
+        for (const edge of edges) {
+          const to = edge.from === from ? edge.to : edge.to === from ? edge.from : null;
+          if (!to) continue;
+          const cost = costs.get(from)! + edge.metres;
+          if (cost <= 3 && cost < (costs.get(to) ?? Infinity)) { costs.set(to, cost); queue.push(to); }
+        }
+      }
+      for (const id of costs.keys()) {
+        const k = `${id}:${root.item}`;
+        deferred.set(k, Math.max(deferred.get(k) ?? 0, root.until));
+      }
+    }
+  };
   const voxels = new Map<string, Point3>();
   let history: Pose[] = [];
   const poseNodes = new Map<number, string>();
@@ -141,11 +166,14 @@ export function createTripMemory(now: () => number = Date.now) {
       if (!node && places.length < 2000) {
         node = { id: `place-${++serial}`, epoch, x: p.x, y: p.y, z: p.z, kind: 'area', name: 'visited area', sign: null, section: 'unknown', items: [], at: p.timestamp };
         places.push(node);
+        revisitStats.created++;
       }
       if (!node) return;
+      if (previous && previous.id !== node.id && node.at < p.timestamp) revisitStats.returned++;
       if (previous && previous.id !== node.id && previous.epoch === node.epoch && distance(previous, node) <= 2) {
         if (!edges.some(e => (e.from === previous.id && e.to === node!.id) || (e.to === previous.id && e.from === node!.id))) {
           edges.push({ from: previous.id, to: node.id, metres: distance(previous, node) });
+          refreshDeferred();
         }
       }
       current = node;
@@ -278,28 +306,29 @@ export function createTripMemory(now: () => number = Date.now) {
         .map(a => ({ id: a.id, label: a.label, section: a.section, result: a.searches.find(s => s.item === norm(item))!.result, visits: a.visits }));
     },
     checkedNear(item: string, p: Point3) { const n = ready && current && distance(current, p) <= 1.2 ? current : null; return !!n && coverage(n.id, item, 'yawDeg' in p ? Number(p.yawDeg) : undefined).checked; },
+    /** A local retry cooldown, independent of evidence that the item is absent. */
+    deferredHere(item: string) {
+      revisitStats.deferChecks++;
+      const hit = !!current && ready && !!last && now() - last.timestamp <= 2000 && (deferred.get(`${current.id}:${norm(item)}`) ?? 0) > now();
+      if (hit) revisitStats.deferHits++;
+      return hit;
+    },
     coverage(item: string, p?: Point3 & { yawDeg?: number }) {
       const node = p ? (current && distance(current, p) <= 1.2 ? current : null) : current;
       return node ? coverage(node.id, item, p?.yawDeg) : { checked: false, missing: ['upper', 'middle', 'lower'] as SearchView[], positive: false, samples: 0 };
     },
     defer(item: string, id = current?.id, ms = 120000) {
-      // Cool down the local shelf stretch, not just one 80 cm waypoint. Walked
-      // distance keeps nearby points on opposite sides of shelving independent.
-      if (id) {
-        const costs = new Map<string, number>([[id, 0]]);
-        const queue = [id];
-        while (queue.length) {
-          const from = queue.shift()!;
-          for (const edge of edges) {
-            const to = edge.from === from ? edge.to : edge.to === from ? edge.from : null;
-            if (!to) continue;
-            const cost = costs.get(from)! + edge.metres;
-            if (cost <= 3 && cost < (costs.get(to) ?? Infinity)) { costs.set(to, cost); queue.push(to); }
-          }
-        }
-        for (const nearby of costs.keys()) deferred.set(`${nearby}:${norm(item)}`, now() + ms);
-      }
-      if (deferred.size > 2000) deferred.delete(deferred.keys().next().value!);
+      if (!id || !places.some(p => p.id === id && p.epoch === epoch)) return;
+      deferRoots.set(`${id}:${norm(item)}`, { id, item: norm(item), until: now() + ms });
+      if (deferRoots.size > 2000) deferRoots.delete(deferRoots.keys().next().value!);
+      refreshDeferred();
+    },
+    revisitDiagnostics(item: string) {
+      const until = current ? deferred.get(`${current.id}:${norm(item)}`) ?? 0 : 0;
+      const trackingReady = ready && !!last && now() - last.timestamp <= 2000;
+      return { ...revisitStats, currentPlace: current?.id ?? null, epoch, trackingReady,
+        deferred: trackingReady && until > now(), remainingMs: Math.max(0, until - now()),
+        activeAnchors: [...deferRoots.values()].filter(r => r.until > now() && r.item === norm(item)).length };
     },
     route(item: string, section: FoodSection, destinationId?: string): TripRoute | null {
       if (!ready || !current) return null;

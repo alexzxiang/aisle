@@ -348,3 +348,64 @@ describe('leaving an area the camera shows nothing in', () => {
     h.task.dispose();
   });
 });
+
+/**
+ * Replays of the 04:31 apartment trace (2026-09-20): the person stood in a doorway with an
+ * unexplored room ahead, asked to explore, and heard "No exit confirmed. Describe its direction,
+ * or ask someone nearby." five times while nothing moved; before that, "The view is blocked or
+ * blurred. Hold the camera steady." nine times in thirty seconds.
+ */
+describe('explore requests move the person when no doorway is confirmed', () => {
+  beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(1700000000000); });
+  afterEach(() => jest.useRealTimers());
+  /** The camera sees a room, not a labelled doorway: the person is standing in the doorway. */
+  const roomAhead = { items: [], sign: null, landmarks: [], quality: 'usable' as const, confidence: 0.9 };
+
+  it('"try to explore a new direction" walks into the unexplored space instead of sweeping forever', async () => {
+    const h = setup('home', 'bananas', true);
+    h.recoverTracking();
+    h.setObservation(roomAhead);
+    await jest.advanceTimersByTimeAsync(2500);
+    expect(h.task.intercept('Try to explore a new direction to find the bananas')).toBe(true);
+    await jest.advanceTimersByTimeAsync(20000);
+    expect(h.said.some((l) => /Walk forward|check the path ahead|check that direction/.test(l))).toBe(true);
+    expect(h.said.some((l) => /ask someone nearby|No exit confirmed/.test(l))).toBe(false);
+    h.task.dispose();
+  });
+
+  it('"there is an opening in front of me, can I go that way" is a request to walk forward', async () => {
+    const h = setup('home', 'bananas', true);
+    h.recoverTracking();
+    h.setObservation(roomAhead);
+    await jest.advanceTimersByTimeAsync(2500);
+    expect(h.task.intercept('There seems to be an opening in front of me can I go in that direction')).toBe(true);
+    await jest.advanceTimersByTimeAsync(12000);
+    expect(h.said.some((l) => /check the path ahead|Walk forward/.test(l))).toBe(true);
+    expect(h.said.some((l) => /May I|Please say yes/.test(l))).toBe(false);
+    h.task.dispose();
+  });
+
+  it('"next room" still keeps the doorway intent, but takes the open floor when no doorway is named', async () => {
+    const h = setup('home', 'bananas', true);
+    h.recoverTracking();
+    h.setObservation(roomAhead);
+    await jest.advanceTimersByTimeAsync(2500);
+    expect(h.task.intercept('Check the next room')).toBe(true);
+    await jest.advanceTimersByTimeAsync(25000);
+    expect(h.said.some((l) => /Walk forward|check the path ahead|check that direction/.test(l))).toBe(true);
+    expect(h.said.filter((l) => /No exit confirmed|ask someone nearby/.test(l))).toHaveLength(0);
+    h.task.dispose();
+  });
+
+  it('a blurred camera earns one hold-still, then new angles and movement, never a loop', async () => {
+    const h = setup('home', 'bananas', true);
+    h.recoverTracking();
+    h.setObservation({ ...roomAhead, quality: 'blurred' });
+    await jest.advanceTimersByTimeAsync(60000);
+    const blur = h.said.filter((l) => /blurred|unclear|Hold the camera steady\./.test(l));
+    expect(blur.length).toBeLessThanOrEqual(3);
+    expect(new Set(blur).size).toBe(blur.length);
+    expect(h.said.some((l) => /Walk forward|check the path ahead|check that direction|Turn the camera slowly|Turn slowly/.test(l))).toBe(true);
+    h.task.dispose();
+  });
+});

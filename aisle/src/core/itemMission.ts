@@ -464,15 +464,22 @@ export function answerRoom(state: MissionState, transcript: string, now: number)
 }
 
 /** "explore", "keep exploring", "look somewhere else", "next aisle", "another room", "move on" → leave this spot. */
-export function exploreRequest(transcript: string): { asked: boolean; prefer: 'aisle' | 'room' | null } {
+export type ExplorePreference = 'aisle' | 'room' | 'forward' | null;
+export function exploreRequest(transcript: string): { asked: boolean; prefer: ExplorePreference } {
   const t = normalizeAnswer(transcript);
   if (/\b(?:do not|don'?t|stop) (?:explor|mov|walk)/.test(t)) return { asked: false, prefer: null };
   if (/\b(?:leave|exit|get out of)\b/.test(t) && !/\b(?:do not|don'?t|not)\b/.test(t)) return { asked: true, prefer: /\baisle\b/.test(t) ? 'aisle' : 'room' };
   if (/\b(?:next|another|other|different) aisle\b/.test(t) || /\baisles?\b/.test(t) && /\b(?:try|check|look|search|move|explore)\b/.test(t)) return { asked: true, prefer: 'aisle' };
   if (/\b(?:next|another|other|different) room\b/.test(t) || /\brooms?\b/.test(t) && /\b(?:try|check|look|search|move|explore)\b/.test(t)) return { asked: true, prefer: 'room' };
+  // Round 19 (04:31 trace): "there seems to be an opening in front of me, can I go in that
+  // direction" — the person is pointing the way. Walk it (the depth veto still applies).
+  if (/\b(?:opening|doorway|door|hallway|gap|space|room) (?:in front of|ahead of|before) me\b/.test(t)
+    || /\b(?:go|walk|move|head|continue|keep going) (?:in )?(?:that|this) (?:direction|way)\b/.test(t)
+    || /\b(?:go|walk|move|head|step) (?:straight|forward|ahead|on)\b/.test(t)
+    || /\b(?:can|could|should|may) (?:i|we) (?:walk|move|go|head|proceed)\b/.test(t)) return { asked: true, prefer: 'forward' };
   if (/^(?:explore|keep exploring|explore more|look around more|look somewhere else|search somewhere else|try somewhere else|move on|keep moving|let'?s move|somewhere else|elsewhere|look elsewhere|search elsewhere)$/.test(t)) return { asked: true, prefer: null };
   if (/^(?:it'?s|its|it is) not here$/.test(t) || /^not here$/.test(t)) return { asked: true, prefer: null };
-  if (/\b(?:explore|exploring)\b/.test(t) || /\b(?:can|should|may) (?:i|we) (?:walk|move|go) (?:forward|on|elsewhere)\b/.test(t)) return { asked: true, prefer: null };
+  if (/\b(?:explore|exploring)\b/.test(t)) return { asked: true, prefer: null };
   return { asked: false, prefer: null };
 }
 
@@ -533,7 +540,7 @@ export interface MissionRunner {
   /** Say the current line again on the next tick ("repeat", a reminder). */
   repeat(): void;
   /** Round 14: the person asked to explore — leave this spot now. Returns the line to say. */
-  explore(prefer?: 'aisle' | 'room' | null): string | null;
+  explore(prefer?: ExplorePreference): string | null;
   /** The freshest box for the item (model's or the detector's), for the hand loop. */
   itemBox(): TargetBox | null;
   /** The hand loop finished touching the item. */
@@ -572,6 +579,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
   /** This very table was scanned for this item already (a mark within ABSENT_RADIUS_M). */
   const checkedHere = (place: string, g: GuideInstruction): boolean => {
     if (!deps.map || !g.targetVisible || place.toLowerCase() === goal.item.toLowerCase()) return false;
+    if (deps.map.trip.deferredHere(goal.item)) return true;
     const at = whereIs(g);
     return at !== null && deps.map.absentNear(goal.item, place, at);
   };
@@ -595,7 +603,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
   const snapshot = (): MissionSnapshot => {
     // Round 18: a tried *name* comes back when a different instance of it is in view — another
     // table across the room, far from every "not here" mark — so a second table gets its turn.
-    if (deps.map && deps.pose && state.tried.length > 0 && !state.working) {
+    if (deps.map && deps.pose && state.tried.length > 0 && !state.working && !deps.map.trip.deferredHere(goal.item)) {
       const again = state.tried.filter((name) => {
         const raw = deps.guide.instructionFor(name, null, deps.search ? { maxAgeMs: 6000 } : undefined);
         if (!raw?.targetVisible) return false;
@@ -625,6 +633,21 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     stepIndex: () => missionStepIndex(state.phase),
     tick() {
       const t = now();
+      // Committed travel owns every tick, including silent ticks and tracking recovery.
+      // Do not run support hypotheses first (not even the snapshot, whose un-try of a place can
+      // resurrect a table from memory). The one thing that outranks travel is the item itself in
+      // view: the explorer yields (null) and the navigator locks on.
+      if (deps.search?.busy()) {
+        const exploration = deps.search.tick(goal.item, look(goal.item));
+        if (exploration) {
+          searchTarget = exploration.target;
+          asking = null;
+          const decision: MissionDecision = { phase: state.phase, text: exploration.text,
+            key: `search:${exploration.phase}`, boxTarget: searchTarget ?? goal.item,
+            haptic: exploration.haptic ?? null, modelMaySpeak: false, asking: null };
+          return { text: decision.text, haptic: decision.haptic, modelMaySpeak: false, decision };
+        }
+      }
       const snap = snapshot();
       // Scene memory first: a remembered bearing for the place is an immediate, free answer
       // ("Table was on your left. Turn left slowly."). decide() times it out (MISSION_MEMORY_MS)
@@ -709,11 +732,13 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       return { text: fitWords(decision.text), haptic: decision.haptic, modelMaySpeak: decision.modelMaySpeak, decision };
     },
     boxTarget() {
+      if (deps.search?.busy()) return deps.search.target() ?? 'opening';
       if (searchTarget) return deps.search?.target() ?? searchTarget;
       const { decision } = decide(goal, state, snapshot());
       return decision.boxTarget;
     },
     userText() {
+      if (deps.search?.busy()) return `Goal: ${goal.goal}. Committed exploration is in progress. Locate openings and the current travel destination in search.landmarks. Do not redirect to tables, containers, remembered supports or item guesses. ${deps.search.context()}`;
       const target = this.boxTarget();
       const place = goal.place ? ` The user says it is on the ${goal.place}.` : '';
       const working = state.working && state.working !== goal.place ? ` Hypothesis: ${goal.item} usually ${/^(?:fridge|freezer|cabinet|drawer|wardrobe)$/.test(state.working) ? 'in' : 'on'} the ${spoken(state.working)}.` : '';
@@ -728,9 +753,8 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       // "explore" / "look somewhere else" / "next aisle" / "another room": leave this spot now.
       const ex = exploreRequest(t);
       if (ex.asked && state.phase !== 'reach' && state.phase !== 'confirm') {
-        if (/\b(?:can|should|may|could) (?:i|we)\b/i.test(t) && deps.search) {
-          return { consumed: true, text: deps.search.exploreNow(ex.prefer, false).text };
-        }
+        // "Can I go that way?" is the person asking to move, not asking to be asked: the
+        // answer is the walk itself, which begins by checking the path.
         return { consumed: true, text: this.explore(ex.prefer) };
       }
       // "try the cabinet" / "it's on the table": the person's word beats every guess.
@@ -779,6 +803,8 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       lastKey = null;
       lastSpokenAt = now();
       if (!deps.search) return 'Okay. Turn slowly all the way around so I can look.';
+      // A bare "explore" is not a request for a doorway: the explorer takes any confirmed
+      // opening, else walks into unvisited ground; only "next room" / "leave" pin the kind.
       const d = deps.search.exploreNow(prefer);
       searchTarget = d.target;
       return d.text ?? 'Okay. Exploring.';
