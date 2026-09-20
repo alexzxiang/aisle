@@ -101,7 +101,7 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1320 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1322 tests
 cd aisle/server && npx tsc --noEmit && npx vitest run   # 215 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
@@ -377,6 +377,27 @@ bearing that never brings the thing into view times out after `MISSION_MEMORY_MS
 ignored for `MISSION_MEMORY_DOUBT_MS` (30 s) and the explorer takes over. The guide also walks
 to a table the detector holds at half confidence (0.5, was 0.6), which is often why the
 "remembered" path was running while the table was in plain view.
+
+## Round 16 (Stream A): reaching without a hand in view; getting out of the wrong aisle
+- **"Hold your hand out" on repeat, never a direction.** Two causes. The reach gate waited for
+  Claude's `search.item` box at ≥ 0.8 with `barrier === 'none'` — Claude often returns the box
+  in `target.box` instead, or leaves `barrier` unknown — so "Let me confirm it is the bananas"
+  never ended. Now `target.box` for the item counts, unknown is not a barrier, and after two
+  asks or three seconds of a steady detector box it reaches anyway. And with the item in view
+  but no hand in the frame the loop said nothing useful; now `reachLine()` (handGuide.ts) says
+  where to reach from the box alone — "Bananas to your left, at chest height. Reach out left."
+  / "… One step closer, then reach." — every four seconds until the hand appears, and a retry
+  says "Still reaching for the bananas" instead of greeting again.
+- **Exploration that actually leaves.** Landmarks are matched between frames by kind and box
+  overlap (names drift: "aisle end", "end of the aisle"), and one confident sighting (≥ 0.75)
+  is enough to propose; the detector's own `door` boxes are doorway candidates (`doorway` dep);
+  in a wrong-section aisle the aisle end outranks any shelf here ("May I take you out of this
+  aisle to look elsewhere?"); at an aisle end the poses read the corridor signs; an unanswered
+  consent question proceeds after ten seconds ("No answer. Heading for the aisle end. Say stop
+  to stay."). In a store the navigator no longer guesses counters and tables: it says where the
+  thing belongs by section ("No bananas in view. They should be in produce.") and hands every
+  tick to the explorer. The task_step prompt now spells out what counts as a landmark and asks
+  for the ways on even at 0.5–0.7 confidence rather than nothing.
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

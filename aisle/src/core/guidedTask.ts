@@ -214,8 +214,12 @@ export interface GuidedTask {
 
 interface RunState {
   itemEvidence?: { seq: number; at: number };
-  /** When "hold the camera on it" was last said while waiting for Claude to confirm the food. */
+  /** When "hold the camera on it" was last said while waiting for Claude to confirm the food, how often, and since when. */
   reachHoldAt?: number;
+  reachHolds?: number;
+  reachFirstHoldAt?: number;
+  /** The hand loop already ran once for this reach (a retry does not greet again). */
+  reachTried?: boolean;
   search: SearchExplorer | null;
   searchTarget: string | null;
   /** Round 8: "find X on the Y" at home runs the item navigator instead of a planner's steps. */
@@ -351,11 +355,16 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const startMissionReach = (r: RunState): void => {
     const m = r.mission;
     if (!m || r.handing) return;
-    // A food the coarse detector can confuse (eggs and oranges) is reached for only once Claude
-    // has boxed the item itself recently; until then, hold the camera on it.
-    if (r.search && foodSection(m.goal.item) !== 'unknown' && !(r.itemEvidence && now() - r.itemEvidence.at <= REACH_CONFIRM_MS)) {
+    // A food the coarse detector can confuse (eggs and oranges) is reached for once Claude has
+    // boxed the item recently — or once the detector has held it steadily for a few seconds, or
+    // after two asks: "hold the camera on it" must never become the whole conversation.
+    const confirmed = (r.itemEvidence && now() - r.itemEvidence.at <= REACH_CONFIRM_MS) || (r.reachHolds ?? 0) >= 2
+      || (m.itemBox() !== null && now() - (r.reachFirstHoldAt ?? now()) >= 3000);
+    if (r.search && foodSection(m.goal.item) !== 'unknown' && !confirmed) {
+      r.reachFirstHoldAt = r.reachFirstHoldAt ?? now();
       if (now() - (r.reachHoldAt ?? -Infinity) >= 5000) {
         r.reachHoldAt = now();
+        r.reachHolds = (r.reachHolds ?? 0) + 1;
         const line = `Hold the camera on it. Let me confirm it is the ${m.goal.item}.`;
         speech.say({ text: line, priority: 'NAV', dedupeKey: 'task-guide', cooldownMs: 0 });
         deps.conversation?.pushAisle(line, 'prompt');
@@ -364,7 +373,9 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     }
     r.handing = true;
     const handStep = r.step;
-    void handGuide.start(m.goal.item, { goal: r.goal, target: m.itemBox() ?? r.modelTarget }).then((res) => {
+    const retry = r.reachTried === true;
+    r.reachTried = true;
+    void handGuide.start(m.goal.item, { goal: r.goal, target: m.itemBox() ?? r.modelTarget, retry }).then((res) => {
       if (run !== r || r.step !== handStep) return;
       r.handing = false;
       if (res.done === 'touching') {
@@ -645,13 +656,16 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
           speakStep(r, false);
           return;
         }
-        if (r.mission && observation?.quality === 'usable' && observation.confidence >= 0.8 && observation.item?.box && observation.item.confidence >= 0.8
-          && observation.barrier === 'none') {
+        const itemBoxed = out.status === 'applied' && !!out.response && (
+          (observation?.item?.box && observation.item.confidence >= 0.6 && observation.barrier !== 'closed_fridge' && observation.barrier !== 'closed_freezer')
+          || (boxTarget === r.mission?.goal.item && out.response.target.box !== null && out.response.target.confidence >= 0.6));
+        if (r.mission && itemBoxed) {
           const previous = r.itemEvidence;
           r.itemEvidence = { seq: out.seq, at: now() };
           // Steering by Claude's box waits for a second sighting (one frame can be a look-alike).
-          if (previous && previous.seq !== out.seq && now() - previous.at <= 15000) {
-            r.mission.onModelBox(r.mission.goal.item, observation.item.box, now() - (out.latencyMs ?? 0));
+          const box = observation?.item?.box ?? out.response!.target.box;
+          if (box && previous && previous.seq !== out.seq && now() - previous.at <= 15000) {
+            r.mission.onModelBox(r.mission.goal.item, box, now() - (out.latencyMs ?? 0));
           }
         } else if (r.search) r.itemEvidence = undefined;
         deps.trace?.('task_step', { step: r.step, geometric, status: out.status, speech: out.response?.speech ?? null, done: out.response?.task ?? null, target: out.response?.target ?? null, latencyMs: out.latencyMs });
@@ -736,9 +750,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         instruction: 'It may be in the fridge. Find the fridge first.',
       };
     }
-    const search = deps.adaptiveSearch && deps.guide && (context === 'home' || context === 'store') ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, pose: deps.pose, path: deps.path, now }) : null;
+    const search = deps.adaptiveSearch && deps.guide && (context === 'home' || context === 'store') ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, pose: deps.pose, path: deps.path, now,
+      doorway: () => { const g = deps.guide!.instructionFor('the doorway'); return g?.targetVisible && g.box ? g.box : null; } }) : null;
     const missionGoal = deps.guide && !fixedFridge && (context === 'home' || (context === 'store' && search)) ? parseMissionGoal(goal) : null;
-    const mission = missionGoal ? createMissionRunner(missionGoal, { guide: deps.guide!, sceneLabel: deps.scene, search: search ?? undefined, now }) : null;
+    const mission = missionGoal ? createMissionRunner(missionGoal, { guide: deps.guide!, sceneLabel: deps.scene, search: search ?? undefined, context: context === 'store' ? 'store' : context === 'street' ? 'street' : 'home', now }) : null;
 
     const fixed = fixedFridge ?? (mission ? { askFirst: MISSION_STEPS[0].instruction, steps: [...MISSION_STEPS] } : null);
     if (!fixed) sayPhrase('let_me_see', 0);

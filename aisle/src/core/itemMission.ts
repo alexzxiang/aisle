@@ -31,6 +31,7 @@ import { classForWords, spokenName } from './sceneMemory';
 import { itemOfGoal, normalizeGoal } from './handGuide';
 import { isAffirmative, isNegative, normalizeAnswer } from './yesNo';
 import { fitWords } from './phrases';
+import { foodSection } from './foodCatalog';
 import type { SearchExplorer } from './searchExplorer';
 import { checkedLine, hypothesisLine, rankHypotheses, spoken, statedPlaceIn, type PlaceEvidence, type PlaceHypothesis } from './hypotheses';
 
@@ -122,6 +123,8 @@ export interface MissionSnapshot {
   candidates?: ReadonlyArray<{ place: string; evidence: PlaceEvidence }>;
   /** Round 14: the explorer is walking somewhere or waiting for consent — hold the guesses. */
   exploring?: boolean;
+  /** Round 16: where the search runs; usual places (counter, table, bowl…) are a home thing. */
+  context?: 'home' | 'store' | 'street';
   /** guide.instructionFor('doorway') with the model's doorway box. */
   door: GuideInstruction | null;
   /** The awareness loop's room label ("in a kitchen"), when it has one. */
@@ -305,6 +308,17 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
     }
   }
   // 1b. No working place yet (nothing stated, or the stated one was ruled out): reason about where it usually is.
+  if (!working && s.context === 'store') {
+    // In a store the reasoning is by section, and the explorer owns the walk between sections:
+    // one line about where the thing belongs, then every tick is the explorer's.
+    if (!state.reasoned) {
+      next.reasoned = true;
+      const sec = foodSection(goal.item);
+      const line = sec !== 'unknown' ? `No ${itemName} in view. ${plural ? 'They' : 'It'} should be in ${sec}.` : `No ${itemName} in view. Let me look around the store.`;
+      return out('find_place', line, 'store-section', goal.item, null, false, null, true);
+    }
+    return out('find_place', `${cap(itemName)} not seen yet. Let me keep looking.`, 'scan', goal.item, null, true, null, true);
+  }
   if (!working) {
     const picked = nextHypothesis();
     if (picked) return picked;
@@ -462,6 +476,8 @@ export function answerOpen(state: MissionState, transcript: string): { consumed:
 
 export interface MissionRunnerDeps {
   search?: SearchExplorer;
+  /** Where the search runs (default home). */
+  context?: 'home' | 'store' | 'street';
   guide: Pick<Guide, 'instructionFor'>;
   sceneLabel?: () => string | null;
   now?: () => number;
@@ -541,7 +557,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
   const evidenceOf = (g: GuideInstruction | null): PlaceEvidence =>
     g?.targetVisible ? 'visible' : g && (g.kind === 'scan_remembered' || g.kind === 'turn' || g.kind === 'turn_around') ? 'remembered' : 'unseen';
   const snapshot = (): MissionSnapshot => {
-    const candidates = state.working ? undefined
+    const candidates = state.working || deps.context === 'store' ? undefined
       : rankHypotheses(goal.item, goal.place, state.tried, () => 'unseen').slice(0, 4).map((h) => ({ place: h.place, evidence: evidenceOf(look(h.place)) }));
     return {
       now: now(),
@@ -550,6 +566,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       door: look('the doorway'),
       sceneLabel: deps.sceneLabel?.() ?? null,
       exploring: deps.search?.busy() ?? false,
+      context: deps.context ?? 'home',
       ...(candidates ? { candidates } : {}),
     };
   };

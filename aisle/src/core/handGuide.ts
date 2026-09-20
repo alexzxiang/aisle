@@ -38,6 +38,24 @@ export const MODEL_TARGET_FRESH_MS = 3500;  // a Claude box lives a little longe
 export const HAND_MAX_STEPS = 12;           // Claude readings without a touch → give up
 export const HAND_GIVE_UP_MS = 30_000;      // …or this long without a target at all
 export const HAND_NOT_SEEN_CAMERA_DOWN = 2;
+/** With the item in view and no hand yet, a "reach that way" line this often. */
+export const HAND_REACH_HINT_MS = 4000;
+
+/**
+ * Where to reach when only the item is in view: side and height from its box, distance from
+ * the depth grid. "Bananas to your left, at chest height. Reach out left." (≤ 12 words)
+ */
+export function reachLine(item: string, box: [number, number, number, number], near?: number): string {
+  const cx = box[0] + box[2] / 2;
+  const cy = box[1] + box[3] / 2;
+  const h = cx < 0.38 ? 'to your left' : cx > 0.62 ? 'to your right' : 'straight ahead';
+  const v = cy < 0.33 ? 'up high' : cy > 0.7 ? 'down low' : 'at chest height';
+  const bare = item.replace(/^(?:the|my|a|an|some)\s+/i, '');
+  const name = bare.charAt(0).toUpperCase() + bare.slice(1);
+  if (typeof near === 'number' && near < 0.45) return `${name} ${h}, ${v}. One step closer, then reach.`;
+  const reach = h === 'straight ahead' ? 'Reach forward.' : `Reach out ${h === 'to your left' ? 'left' : 'right'}.`;
+  return `${name} ${h}, ${v}. ${reach}`;
+}
 export const HAND_NOT_SEEN_MOVE_SLOWLY = 5;
 
 const HINT_PHRASE: Readonly<Record<Exclude<HandHint, 'not_seen' | 'touching'>, PhraseKey>> = {
@@ -71,7 +89,7 @@ export interface HandGuideResult {
 
 export interface HandGuide {
   /** Speaks "Hold out your hand." and runs the loop for `item` until touching / give up / stop. */
-  start(item: string, context?: { goal: string; target: TargetBox | null }): Promise<HandGuideResult>;
+  start(item: string, context?: { goal: string; target: TargetBox | null; retry?: boolean }): Promise<HandGuideResult>;
   stop(): void;
   isRunning(): boolean;
 }
@@ -181,7 +199,11 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
         handWords += 1;
       };
 
-      sayKey('hold_out_hand', 10_000);
+      // A retry inside the same reach does not greet again; it says where to reach.
+      if (context?.retry) sayLive(`Still reaching for the ${item}. Keep your hand in view.`, 'hand-retry', 0);
+      else sayKey('hold_out_hand', 10_000);
+      let lastReachHintAt = -Infinity;
+      let lastHintAt = -Infinity;
       try {
         while (!cancelled && result === null) {
           const t = now();
@@ -216,6 +238,7 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
                     }
                   } else {
                     notSeen = 0;
+                    lastHintAt = now();
                     sayKey(HINT_PHRASE[hint], 1500);
                   }
                   if (result === null && steps >= maxSteps) result = { done: 'gave_up', steps, handWords };
@@ -248,6 +271,11 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
           } else if (freshHand && !target && t - lastWordAt >= HAND_REPEAT_MS * 2) {
             lastWordAt = t;
             sayLive(MISSION_PHRASES.mission_target_missing, 'hand-no-target', 4000);
+          } else if (!freshHand && seen && t - lastReachHintAt >= HAND_REACH_HINT_MS && t - lastHintAt >= HAND_REACH_HINT_MS) {
+            // The thing is in view but the hand is not: say where to reach from the box alone, so
+            // the person's hand comes into the frame where the coach can take over (round 16).
+            lastReachHintAt = t;
+            sayLive(reachLine(item, seen.box, seen.near), 'hand-reach-hint', 0);
           }
 
           if (result === null && t - lastTargetSeenAt >= HAND_GIVE_UP_MS) {

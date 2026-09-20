@@ -820,3 +820,15 @@ dead zone ("Table should be straight ahead. Hold the camera level."), two-tick s
 a twelve-second timeout that doubts a memory leading nowhere and hands over to the explorer,
 and a detector threshold of 0.5 for the place so a visible table is walked to rather than
 "remembered". App 1320 tests. JS only — Metro reload.
+
+### Round 16 (Stream A) — 2026-09-20
+The reach: "hold your hand out" repeated because the confirmation gate could never be
+satisfied (Claude's box arrives in target.box, barrier stays unknown) and because with the item
+in view and no hand in frame nothing was said — now the gate accepts target.box, unknown is not
+a barrier, it proceeds after two asks or a steady detector box, and the loop says where to
+reach from the box ("Bananas to your left, at chest height. Reach out left."). Exploration:
+landmarks matched by kind and overlap across frames, one confident sighting proposes, detector
+doors are doorways, a wrong-section aisle is left by its end, corridor poses read the aisle
+signs, consent auto-proceeds after ten seconds, the store search reasons by section and hands
+the walk to the explorer, and the prompt asks for the ways on explicitly. App 1322 tests, proxy
+217. JS + prompt — Metro reload and a proxy restart.

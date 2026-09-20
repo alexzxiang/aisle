@@ -1,6 +1,6 @@
 import type { Detection, HandPoseEvent, SpeechRequest, VisionResponse } from './contracts';
 import { PHRASES } from './phrases';
-import { HAND_TICK_MS, HAND_WORD_INTERVAL_MS, createHandGuide, itemOfGoal } from './handGuide';
+import { HAND_TICK_MS, HAND_WORD_INTERVAL_MS, createHandGuide, itemOfGoal, reachLine } from './handGuide';
 import type { AskOutcome } from '../perception/semanticVision';
 
 const T0 = 1_700_000_000_000;
@@ -110,5 +110,17 @@ describe('handGuide (round 7: the phone\'s own hand)', () => {
     await jest.advanceTimersByTimeAsync(2000 * 3 + 100);
     expect(r.words()).toEqual([PHRASES.higher, PHRASES.left, PHRASES.mission_hand_aligned]);
     expect(await done).toMatchObject({ done: 'touching', handWords: 0 });
+  });
+
+  it('the item in view but no hand at all: says where to reach from the box, every four seconds (round 16)', async () => {
+    const r = rig(async () => response('not_seen'));
+    const done = r.guide.start('bananas', { goal: 'bananas', target: { box: [0.05, 0.35, 0.25, 0.2], at: Date.now(), near: 0.8 } });
+    await jest.advanceTimersByTimeAsync(4500);
+    expect(r.words()).toContain('Bananas to your left, at chest height. Reach out left.');
+    r.guide.stop();
+    await jest.advanceTimersByTimeAsync(400);
+    await done;
+    expect(reachLine('the milk', [0.4, 0.05, 0.2, 0.2], 0.3)).toBe('Milk straight ahead, up high. One step closer, then reach.');
+    expect(reachLine('eggs', [0.7, 0.75, 0.2, 0.2], 0.9)).toBe('Eggs to your right, down low. Reach out right.');
   });
 });

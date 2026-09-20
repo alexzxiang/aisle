@@ -29,7 +29,7 @@ function setup(context: 'store' | 'home' = 'store') {
 }
 
 describe('active search with trip memory', () => {
-  it('scans first (three poses), asks permission for produce, and never walks on silence', () => {
+  it('scans first (three poses), asks permission for produce, walks on "yes" — or after ten silent seconds, saying so', () => {
     const h = setup(); h.permission();
     // In a store the look-around is along the aisle; at home it is left, right, behind.
     expect(h.said.slice(0, 3)).toEqual(['Face the shelf on your left. Pan slowly top to bottom.', 'Now face the right shelf and pan slowly top to bottom.', 'Turn to look along the aisle for signs and displays.']);
@@ -37,11 +37,33 @@ describe('active search with trip memory', () => {
     expect(home.said.slice(0, 3)).toEqual(['Turn the camera slowly left.', 'Now turn the camera slowly right.', 'Turn around slowly so I can see behind you.']);
     expect(h.said).toContain('May I guide you toward the produce section?');
     expect(h.search.pending()).toBe(true);
-    for (let i = 0; i < 6; i++) h.tick();
     expect(h.guide).not.toHaveBeenCalled();
     expect(h.search.intercept('yes')).toEqual({ consumed: true, text: 'Okay. Heading for the produce display.' });
     expect(h.tick()?.text).toBe('Produce display ahead. Walk forward three steps.');
     expect(h.guide).toHaveBeenLastCalledWith('produce display', expect.any(Object), { modelOnly: true, maxAgeMs: 8000 });
+    // Unanswered: after ten seconds it goes anyway and says so (the person can still say stop).
+    const quiet = setup(); quiet.permission();
+    expect(quiet.said).toContain('May I guide you toward the produce section?');
+    const lines: string[] = [];
+    for (let i = 0; i < 3; i++) { const r = quiet.tick(); if (r?.text) lines.push(r.text); }
+    expect(lines).toContain('No answer. Heading for the produce display. Say stop to stay.');
+    expect(quiet.search.busy()).toBe(true);
+  });
+
+  it('a landmark that comes back under another name, or a door the detector sees, is a candidate too (round 16)', () => {
+    let t = 100000; let seq = 0;
+    const guide = jest.fn((_name, box): GuideInstruction => ({ kind: 'forward', targetVisible: true, text: '', relativeDeg: 0, steps: 3, box }));
+    const search = createSearchExplorer({ item: 'bananas', context: 'store', guide: { instructionFor: guide }, now: () => t });
+    const box: [number, number, number, number] = [0.6, 0.2, 0.2, 0.5];
+    const one = (name: string) => { t += 6000; search.observe(observation({ landmarks: [{ name, kind: 'aisle_end', section: 'unknown', box, confidence: 0.7 }] }), ++seq, t); return search.tick('bananas', null, {}); };
+    one('aisle end'); one('end of the aisle'); one('aisle opening');
+    const asked = one('aisle end ahead');
+    expect(asked?.text).toBe('May I take you out of this aisle to look elsewhere?');
+    expect(asked?.target).toBe('aisle end');                 // the first name sticks
+    const home = createSearchExplorer({ item: 'keys', context: 'home', guide: { instructionFor: guide }, now: () => t, doorway: () => ({ box: [0.7, 0.1, 0.2, 0.7], at: t }) });
+    const lines: string[] = [];
+    for (let i = 0; i < 8; i++) { t += 6000; home.observe(observation({ landmarks: [] }), ++seq, t); const r = home.tick('keys', null, {}); if (r?.text) lines.push(r.text); }
+    expect(lines).toContain('May I guide you through the doorway to search elsewhere?');
   });
 
   it('walks by geometry — "keep going" as the count drops — and inspects the new place on arrival', () => {

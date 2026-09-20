@@ -60,8 +60,9 @@ describe('adaptive search in the actual guided-task loop', () => {
 
   it('narrates dairy, asks to seek produce, remembers visits, then requires identity and pickup confirmation', async () => {
     const h = setup('store');
-    await jest.advanceTimersByTimeAsync(45000);
+    for (let i = 0; i < 60 && !h.said.includes('May I guide you toward the produce section?'); i += 1) await jest.advanceTimersByTimeAsync(1000);
     expect(h.said.some((t) => /Dairy|dairy/.test(t))).toBe(true);
+    expect(h.said).toContain('Bananas should be in produce. Let me find the way.');
     expect(h.said).toContain('May I guide you toward the produce section?');
     expect(h.task.intercept('yes')).toBe(true);
     await jest.advanceTimersByTimeAsync(6000);

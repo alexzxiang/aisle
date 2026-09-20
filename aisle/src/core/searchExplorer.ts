@@ -80,6 +80,8 @@ export interface SearchExplorerDeps {
   pose?: () => Pose | null;
   /** The depth grid's bottom row, fresh: nearness ahead / left / right. */
   path?: () => Openness | null;
+  /** Round 16: a door the detector sees right now (Open Images `door`), as a doorway landmark. */
+  doorway?: () => TargetBox | null;
   map?: ExplorationMap;
   now?: () => number;
 }
@@ -98,6 +100,8 @@ export const MOVE_REPEAT_MS = 4000;
 export const MOVE_LOST_GRACE_MS = 6500;
 /** One relocation may take this long before another landmark is chosen. */
 export const MOVE_GIVE_UP_MS = 45_000;
+/** A consent question unanswered this long is taken as "go ahead" (the person can still say stop). */
+export const CONSENT_MS = 10_000;
 /** With nothing to head for and no position: walk this far, then look again — at most ADVANCE_MAX times. */
 export const ADVANCE_STEPS = 5;
 export const ADVANCE_MAX = 3;
@@ -126,7 +130,23 @@ const AISLE_SCANS = [
   'Now face the right shelf and pan slowly top to bottom.',
   'Turn to look along the aisle for signs and displays.',
 ];
+/** At an aisle end, in the corridor: the signs above the aisles are the map. */
+const CORRIDOR_SCANS = [
+  'Turn slowly left and look up for the aisle signs.',
+  'Now turn slowly right and look up for the aisle signs.',
+  'Look straight along the corridor for section displays.',
+];
 const cap = (s: string): string => (s.length ? s[0]!.toUpperCase() + s.slice(1) : s);
+/** Intersection over union of two [x, y, w, h] boxes. */
+export function overlap(a: [number, number, number, number], b: [number, number, number, number]): number {
+  const x1 = Math.max(a[0], b[0]);
+  const y1 = Math.max(a[1], b[1]);
+  const x2 = Math.min(a[0] + a[2], b[0] + b[2]);
+  const y2 = Math.min(a[1] + a[3], b[1] + b[3]);
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  const union = a[2] * a[3] + b[2] * b[3] - inter;
+  return union > 0 ? inter / union : 0;
+}
 const clean = (s: string): string => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const speakable = (s: string): boolean => !hasDigit(s) && !findForbiddenTerm(s) && countWords(s) <= 12;
 /** A line that ran long (a three-word landmark name) keeps its instruction instead of being dropped. */
@@ -174,6 +194,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   let refused = new Set<string>();
   let lastConfined = false;
   const startedAt = now();
+  let permissionAt = -Infinity;
   /** A tick after a long silence (the navigator spoke instead) must not resume a stale leg. */
   let lastTickAt = -Infinity;
   const STALE_TICK_MS = 8000;
@@ -225,23 +246,39 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   };
   const section = foodSection(deps.item);
   const candidateKey = (l: SearchLandmark): string => `${area.id}:${clean(l.name)}`;
+  /** The detector's own doors (Open Images `door`) are doorways too, whether or not Claude listed them. */
+  const detectorDoorway = (): (SearchLandmark & { at: number; hits: number }) | null => {
+    const box = deps.doorway?.() ?? null;
+    if (!box) return null;
+    return { name: 'doorway', kind: 'doorway', section: 'unknown', box: box.box, confidence: 0.8, at: box.at, hits: 2 };
+  };
+  const candidates = (): Array<SearchLandmark & { at: number; hits: number }> => {
+    const fresh = landmarks.filter((l) => now() - l.at <= FRESH_MS && l.confidence >= LANDMARK_MIN_CONFIDENCE);
+    const door = detectorDoorway();
+    return door && !fresh.some((l) => l.kind === 'doorway' && overlap(l.box, door.box) >= 0.3) ? [...fresh, door] : fresh;
+  };
   const choose = (): SearchLandmark | null => {
     const prior = clean(targetWords);
-    return landmarks.filter((l) => now() - l.at <= FRESH_MS && l.hits >= 2 && l.confidence >= LANDMARK_MIN_CONFIDENCE && !refused.has(candidateKey(l)))
+    // The current aisle is the wrong section: the way out is its end, not another shelf here.
+    const wrongAisle = deps.context === 'store' && section !== 'unknown' && area.section !== 'unknown' && area.section !== section;
+    return candidates().filter((l) => (l.hits >= 2 || l.confidence >= 0.75) && !refused.has(candidateKey(l)))
       .filter((l) => clean(l.name) !== clean(area.landmark ?? ''))
       .filter((l) => !areas.some((a) => a.sign && clean(a.sign) === clean(l.name) && a.outcome === 'not_seen_in_scanned_views'))
+      .filter((l) => !(l.kind === 'surface' && wrongAisle))
       .sort((a, b) => rank(b) - rank(a))[0] ?? null;
     function rank(l: SearchLandmark): number {
-      return (clean(l.name).includes(prior) ? 20 : 0) + (section !== 'unknown' && l.section === section ? 10 : 0)
-        + (deps.context === 'store' ? l.kind === 'aisle_end' ? 5 : 0 : l.kind === 'doorway' ? 4 : 0);
+      return (clean(l.name).includes(prior) ? 20 : 0) + (section !== 'unknown' && l.section === section ? 12 : 0)
+        + (deps.context === 'store' ? (l.kind === 'aisle_end' ? (wrongAisle ? 9 : 5) : l.kind === 'section' ? 6 : 0) : l.kind === 'doorway' ? 4 : 0)
+        + l.confidence;
     }
   };
   const question = (): string => {
     if (deps.context === 'store') {
       if (proposal?.section !== 'unknown' && proposal?.section === section) return `May I guide you toward the ${section} section?`;
+      if (proposal?.kind === 'aisle_end') return 'May I take you out of this aisle to look elsewhere?';
       return 'May I guide you toward another part of the store?';
     }
-    return proposal?.kind === 'doorway' ? 'May I guide you toward the doorway to search elsewhere?' : 'May I guide you toward another visible surface to search?';
+    return proposal?.kind === 'doorway' ? 'May I guide you through the doorway to search elsewhere?' : 'May I guide you toward another visible surface to search?';
   };
   return {
     observe(o, seq, capturedAt) {
@@ -251,7 +288,12 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       quality = o.confidence >= OBSERVATION_MIN_CONFIDENCE ? o.quality : 'occluded';
       if (o.confidence < OBSERVATION_MIN_CONFIDENCE || quality !== 'usable') return;
       const previous = landmarks;
-      landmarks = o.landmarks.filter((l) => l.confidence >= LANDMARK_MIN_CONFIDENCE).map((l) => ({ ...l, at: capturedAt, hits: (previous.find((p) => clean(p.name) === clean(l.name) && capturedAt - p.at <= 15000)?.hits ?? 0) + 1 }));
+      // The same landmark comes back under drifting names ("aisle end", "end of aisle"): match by
+      // kind and overlap first, name second, and keep the first name so the person hears one word.
+      landmarks = o.landmarks.filter((l) => l.confidence >= LANDMARK_MIN_CONFIDENCE).map((l) => {
+        const same = previous.find((p) => capturedAt - p.at <= 15000 && (clean(p.name) === clean(l.name) || (p.kind === l.kind && overlap(p.box, l.box) >= 0.3)));
+        return { ...l, name: same?.name ?? l.name, at: capturedAt, hits: (same?.hits ?? 0) + 1 };
+      });
       // Signs identify the current area only when repeated; merely seeing a distant sign
       // during movement must not teleport the user into that aisle.
       if (phase !== 'move' && o.sign) {
@@ -300,7 +342,14 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       lastTickAt = now();
       // A found target always wins, including while permission is pending.
       if (direct?.targetVisible && !opts.surface) { resetScan(); return null; }
-      if (phase === 'permission') return emit(question(), proposal?.name);
+      if (phase === 'permission') {
+        if (proposal && permissionAt !== -Infinity && now() - permissionAt >= CONSENT_MS) {
+          // No answer: an unanswered question must not become the place we stand forever.
+          phase = 'move'; moveAt = now(); saidAt = now(); moveKey = null; moveSaidAt = -Infinity; lastMoveSteps = null; landmarkSeenAt = now();
+          return { text: fit(`No answer. Heading for the ${proposal.name}. Say stop to stay.`), target: proposal.name, phase, haptic: 'CONFIRM' };
+        }
+        return emit(question(), proposal?.name);
+      }
       if (phase === 'paused') return emit('Search paused. Say search again, or stop.');
       if (phase === 'move' && proposal) {
         const p = landmarks.find((l) => clean(l.name) === clean(proposal!.name) && now() - l.at <= FRESH_MS);
@@ -382,7 +431,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
             return emit('Item still unconfirmed. Say search again for another shelf scan.');
           }
           proposal = choose();
-          if (proposal) { phase = 'permission'; saidAt = -Infinity; return emit(question(), proposal.name); }
+          if (proposal) { phase = 'permission'; permissionAt = now(); saidAt = -Infinity; return emit(question(), proposal.name); }
           if (map && pose) {
             // Round 12: go where we have not been. The depth grid vetoes blocked ways.
             map.markScanned(pose);
@@ -399,7 +448,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           phase = 'paused'; saidAt = -Infinity;
           return emit('No way on from here. Ask someone nearby, or say search again.');
         }
-        const text = (opts.surface || opts.confined || closeMode ? SHELVES : deps.context === 'store' ? AISLE_SCANS : SCANS)[scan]!;
+        const corridor = deps.context === 'store' && /\baisle end|end of (?:the )?aisle|corridor\b/i.test(area.landmark ?? '');
+        const text = (opts.surface || opts.confined || closeMode ? SHELVES : deps.context === 'store' ? (corridor ? CORRIDOR_SCANS : AISLE_SCANS) : SCANS)[scan]!;
         scan += 1; scanAt = now();
         return emit(text);
       }
