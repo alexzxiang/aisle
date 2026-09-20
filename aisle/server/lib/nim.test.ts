@@ -169,3 +169,30 @@ describe('nimChat', () => {
     expect(out.value).toEqual({ ok: false });
   });
 });
+
+describe('rate-limit counting', () => {
+  const rateLimited: CreateStream = async () => { throw Object.assign(new Error('rate limited'), { status: 429 }); };
+
+  it('counts a 429 even when there is nowhere to fail over to', async () => {
+    // The live configuration: one NIM key, no spare, no OpenRouter. onFailover never fires
+    // here, so without its own hook /api/health would report nvidia.http429: 0 forever.
+    const hit: string[] = [];
+    const cfg = testConfig({ nvidiaApiKeyFallback: null, openRouterApiKey: null });
+    await expect(nimChat({ user: 'u', schema }, { config: cfg, createStream: rateLimited, onRateLimited: (t) => hit.push(t.keyLabel) }).result).rejects.toThrow();
+    expect(hit).toEqual(['primary']);
+  });
+
+  it('counts each rate-limited target when it does fail over', async () => {
+    const hit: string[] = [];
+    const cfg = testConfig({ openRouterApiKey: 'or' });
+    await expect(nimChat({ user: 'u', schema }, { config: cfg, createStream: rateLimited, onRateLimited: (t) => hit.push(t.keyLabel) }).result).rejects.toThrow();
+    expect(hit.length).toBeGreaterThan(1);
+  });
+
+  it('does not count failures that are not rate limits', async () => {
+    const hit: string[] = [];
+    const boom: CreateStream = async () => { throw Object.assign(new Error('bad request'), { status: 400 }); };
+    await expect(nimChat({ user: 'u', schema }, { config: testConfig(), createStream: boom, onRateLimited: () => hit.push('x') }).result).rejects.toThrow();
+    expect(hit).toEqual([]);
+  });
+});
