@@ -24,3 +24,5 @@ aisle/models/*.mlmodelc
 aisle/training/export/
 aisle/server/routes/cache/
 aisle/server/data/cache/
+# The Devpost submission text stays local; the README carries the main parts.
+/DEVPOST.md
