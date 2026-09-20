@@ -6,9 +6,6 @@
 <title>Aisle Be There — SteelHacks XIII</title>
 
 <!-- =========================================================================
-     TO FILL IN BEFORE PRESENTING
-       Search for  DEMO_URL  below (two places: the demo slide and the closing
-       slide) and replace the placeholder text and the href with the real link.
      CONTROLS
        arrow keys / space / click ..... next and previous
        o .............................. overview of every slide
@@ -77,17 +74,30 @@
       <aside>Most assistive tools do exactly one of these three. The hard engineering is the seam between them — knowing you have entered the store, knowing you have reached the right shelf, knowing to switch from walking cues to hand cues. Under it sit three tiers: on-device ARKit, CoreML and Vision OCR every frame for anything a haptic depends on; Claude on occasional still frames for the hard visual questions; and Nemotron as the decision layer. Street and store video never leaves the phone.</aside>
     </section>
 
-    <!-- 4 — DEMO_URL ------------------------------------------------------ -->
-    <section class="slide slide--deep slide--center" data-transition="zoom" data-title="Demo video">
+    <!-- 4 ----------------------------------------------------------------- -->
+    <section class="slide slide--deep slide--demo" data-transition="zoom" data-title="Grocery store demo">
       <div class="glow"></div>
-      <div class="play" data-anim="pop"><svg viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></svg></div>
-      <h2 class="big" data-anim style="text-align:center">Aisle Be There, in a real grocery store</h2>
-      <div class="demo-frame" data-anim="pop">
-        <p class="demo-frame__label">Demo video</p>
-        <!-- DEMO_URL — replace both the href and the text below -->
-        <a class="demo-link" href="#" target="_blank" rel="noopener">[paste demo video URL here]</a>
+      <div class="head">
+        <p class="kicker" data-anim>Built, running, field-tested</p>
+        <h2 data-anim>Aisle Be There, in a real grocery store</h2>
       </div>
-      <aside>Play it, or read the link out. Three moments worth pointing at while it runs: the app goes quiet when you are on course, it says the aisle number before you reach it, and the last cue is a reach cue, not a description.</aside>
+      <div class="demo-grid">
+        <figure class="demo-video demo-video--primary" data-anim="pop">
+          <video controls playsinline preload="metadata" poster="media/maindemo-poster.jpg" aria-label="Primary grocery search demo with the shopper and app shown side by side">
+            <source src="media/maindemo.mp4" type="video/mp4">
+            Your browser cannot play this MP4 demo.
+          </video>
+          <figcaption><b>Search from both viewpoints</b><span>The shopper and live app, synchronized</span></figcaption>
+        </figure>
+        <figure class="demo-video demo-video--portrait" data-anim="pop">
+          <video controls playsinline preload="metadata" poster="media/sidedemo-poster.jpg" aria-label="Companion view of a blindfolded shopper using Aisle Be There">
+            <source src="media/sidedemo.mp4" type="video/mp4">
+            Your browser cannot play this MP4 demo.
+          </video>
+          <figcaption><b>The user experience</b><span>One phone, spoken and haptic guidance</span></figcaption>
+        </figure>
+      </div>
+      <aside>Start with the larger video on the left: it keeps the person and the live app visible together. The portrait video is the companion view of the same product being used in the store. Point out that the system explores when bananas are not initially visible, narrows the search with the camera, and guides the user's movement instead of merely describing a frame.</aside>
     </section>
 
     <!-- 5 ----------------------------------------------------------------- -->
@@ -377,15 +387,14 @@
       <aside>The Seed Round slide. The problem is not that nobody tried; it is that every existing answer needs somebody else to install something first — signals the city has not funded, beacons the store has not bought, glasses the user has not got. Ours needs a phone they already own, which is the only distribution story that starts at zero. Who has the problem: blind and low-vision travellers doing ordinary errands, every day, not the lab-visit version. If asked about money, be straight — we have not charged anyone, the honest next step is testing with blind users rather than sighted people with their eyes shut.</aside>
     </section>
 
-    <!-- 8 — DEMO_URL ------------------------------------------------------ -->
+    <!-- 12 ---------------------------------------------------------------- -->
     <section class="slide slide--dark statement" data-transition="fade" data-title="What we hold ourselves to">
       <div class="glow"></div>
       <p class="kicker" data-anim>What we hold ourselves to</p>
       <h2 data-anim>The bar isn't “it described the shelf”. It's “you left with the bananas”.</h2>
       <div class="signoff" data-anim>
         <p class="signoff__mark">Aisle Be There</p>
-        <!-- DEMO_URL — replace the text below -->
-        <p style="font-size:28px; color:var(--on-dark-dim)">Demo video: [paste demo video URL here]</p>
+        <p style="font-size:28px; color:var(--on-dark-dim)">Real store. One phone. One finished errand.</p>
       </div>
       <aside>Narration is easy and we deliberately did not build it. The measure is whether the errand finished. Next up: fusing ARKit scene depth with the model's relative depth so "arm's reach" is a real distance, aisle signs read on the way in becoming the map for the trip, and testing with blind users rather than sighted people with their eyes shut. Then questions.</aside>
     </section>
@@ -469,6 +478,7 @@
   // --- moving between slides ----------------------------------------------
   function go(next, dir) {
     if (next === index || next < 0 || next >= slides.length || animating) return;
+    pauseVideos();
     animating = true;
     deck.classList.toggle('dir-fwd', dir >= 0);
     deck.classList.toggle('dir-back', dir < 0);
@@ -537,6 +547,7 @@
   // --- input ---------------------------------------------------------------
   document.addEventListener('keydown', function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target && e.target.closest && e.target.closest('video, button, a, input, textarea, select')) return;
     switch (e.key) {
       case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
         e.preventDefault(); next(); break;
@@ -558,13 +569,27 @@
   });
 
   deck.addEventListener('click', function (e) {
-    if (e.target.closest('a')) return;
+    if (e.target.closest('video, button, a, input, textarea, select')) return;
     (e.clientX < window.innerWidth * 0.28 ? prev : next)();
   });
 
+  // Only one demo soundtrack should play at a time. Pause both clips when the
+  // presenter advances so video audio cannot continue under the next slide.
+  var videos = Array.prototype.slice.call(stage.querySelectorAll('video'));
+  videos.forEach(function (video) {
+    video.addEventListener('play', function () {
+      videos.forEach(function (other) { if (other !== video) other.pause(); });
+    });
+  });
+  function pauseVideos() { videos.forEach(function (video) { video.pause(); }); }
+
   var touchX = null;
-  deck.addEventListener('touchstart', function (e) { touchX = e.changedTouches[0].clientX; }, { passive: true });
+  deck.addEventListener('touchstart', function (e) {
+    if (e.target.closest('video, button, a, input, textarea, select')) return;
+    touchX = e.changedTouches[0].clientX;
+  }, { passive: true });
   deck.addEventListener('touchend', function (e) {
+    if (e.target.closest('video, button, a, input, textarea, select')) { touchX = null; return; }
     if (touchX === null) return;
     var dx = e.changedTouches[0].clientX - touchX;
     if (Math.abs(dx) > 60) (dx < 0 ? next : prev)();
