@@ -812,3 +812,11 @@ repeat cooldown. Explore on demand ("explore", "next aisle", "another room", "it
 leaves the spot at once — a fresh landmark without asking, else a coverage leg — and the
 explorer keeps the tick while it moves so the navigator no longer hops guesses under it. App
 1319 tests, proxy 217. JS only — Metro reload. Not yet walked.
+
+### Round 15 (Stream A) — 2026-09-20
+"Table on your left, turn left… table on your right, turn right…": a remembered bearing near
+straight ahead flipping sign with head wobble, each flip counted as a new line. Fixed with a
+dead zone ("Table should be straight ahead. Hold the camera level."), two-tick side hysteresis,
+a twelve-second timeout that doubts a memory leading nowhere and hands over to the explorer,
+and a detector threshold of 0.5 for the place so a visible table is walked to rather than
+"remembered". App 1320 tests. JS only — Metro reload.

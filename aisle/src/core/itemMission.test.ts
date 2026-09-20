@@ -327,6 +327,31 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     expect(search.busy()).toBe(false);
   });
 
+  it('a remembered table does not ping-pong "left… right…": dead zone ahead, two ticks to switch sides, and a memory that leads nowhere is doubted (round 15)', () => {
+    let t = T0;
+    let rel = 8;
+    const guide = createGuide({ detections: () => [], memory: { whereIs: () => ({ cls: 'table', relativeDeg: rel, ageMs: 1000, phrase: '' }), facing: () => 0 }, hfovDeg: () => 56, now: () => t });
+    const m = createMissionRunner(goal, { guide, now: () => t });
+    expect(m.tick().text).toBe('Table should be straight ahead. Hold the camera level.');
+    rel = -12; t += 2500;
+    expect(m.tick().text).toBeNull();                       // still inside the dead zone: nothing new
+    rel = 40; t += 2500;
+    expect(m.tick().text).toBe('Table was on your right. Turn right slowly.');
+    rel = -40; t += 500;
+    expect(m.tick().text).toBeNull();                       // a flip needs a second tick
+    t += 500;
+    expect(m.tick().text).toBeNull();                       // …and the change floor
+    t += 2000;
+    expect(m.tick().text).toBe('Table was on your left. Turn left slowly.');
+    // Twelve seconds of turning without a sighting: the memory is doubted and the search looks around instead.
+    t += 12_000;
+    const lost = m.tick();
+    expect(lost.text).toBe('I cannot find the table I remembered. Let me look around.');
+    expect(lost.decision.explore).toBe(true);
+    t += 3000;
+    expect(m.tick().text).toBe('Turn slowly all the way around so I can find the table.');
+  });
+
   it('answers the room question through intercept and repeats on demand', () => {
     let t = T0;
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });

@@ -203,7 +203,8 @@ export function createGuide(deps: GuideDeps): Guide {
       let near: number | undefined;
       let evidenceAt = now();
       if (cls && !options?.modelOnly) {
-        const seen = deps.detections().filter((d) => d.cls === cls && d.score >= 0.6).sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
+        // 0.5: a table at half confidence is a table to walk to; below that the memory bearing steers.
+        const seen = deps.detections().filter((d) => d.cls === cls && d.score >= 0.5).sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
         if (seen) {
           box = seen.box;
           near = seen.near;

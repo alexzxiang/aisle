@@ -101,7 +101,7 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1319 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1320 tests
 cd aisle/server && npx tsc --noEmit && npx vitest run   # 215 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
@@ -366,6 +366,17 @@ redirect), `adaptiveSearch.test.ts`.
   over the navigator's; the navigator holds its guesses (`exploring` in the snapshot) instead of
   hopping hypotheses silently under a moving explorer; when the explorer is quiet the
   navigator's new-guess line still goes out. A leg not ticked for eight seconds is dropped.
+
+## Round 15 (Stream A): the table that was "left… right… left…"
+A remembered bearing within a few degrees of straight ahead flips sign with every head wobble,
+and each flip was "news" to the line pacing. Three guards in `itemMission`: under twenty
+degrees the line is "Table should be straight ahead. Hold the camera level."; a remembered side
+must hold for two ticks before it replaces the other side; and turning toward a remembered
+bearing that never brings the thing into view times out after `MISSION_MEMORY_MS` (12 s) —
+"I cannot find the table I remembered. Let me look around." — after which that memory is
+ignored for `MISSION_MEMORY_DOUBT_MS` (30 s) and the explorer takes over. The guide also walks
+to a table the detector holds at half confidence (0.5, was 0.6), which is often why the
+"remembered" path was running while the table was in plain view.
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

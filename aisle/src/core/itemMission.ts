@@ -167,10 +167,14 @@ export interface MissionState {
   /** At a container: the person was asked to open it; and did. */
   openAsked: boolean;
   opened: boolean;
+  /** Round 15: turning toward a remembered bearing since; after MISSION_MEMORY_MS without a sighting the memory is doubted. */
+  memorySince: number | null;
+  /** Until this time a remembered bearing for the working place is ignored (it led nowhere). */
+  memoryDoubtUntil: number | null;
 }
 
 export function initialMissionState(place: string | null = null): MissionState {
-  return { phase: 'find_place', askedRoom: false, throughDoorAt: null, scanSince: null, lastSeen: null, lastForwardSteps: null, forwardSince: null, working: place, tried: [], reasoned: place !== null, openAsked: false, opened: false };
+  return { phase: 'find_place', askedRoom: false, throughDoorAt: null, scanSince: null, lastSeen: null, lastForwardSteps: null, forwardSince: null, working: place, tried: [], reasoned: place !== null, openAsked: false, opened: false, memorySince: null, memoryDoubtUntil: null };
 }
 /** Scanning a place this long without the item rules it out. */
 export const MISSION_SCAN_GIVE_UP_MS = 15_000;
@@ -201,7 +205,11 @@ export const itemLine = (name: string, g: GuideInstruction): { text: string; key
     case 'turn_little': return line(`${n} ${clock}. Turn ${side} a little, then walk ${steps}.`, `turn_little:${side}:${g.steps}`, 'TURN');
     case 'turn': return line(`${n} ${clock}. Turn ${side} to face it.`, `turn:${side}`, 'TURN');
     case 'turn_around': return line(`${n} behind you. Turn around slowly.`, 'turn_around', 'TURN');
-    case 'scan_remembered': return line(`${n} ${were} on your ${side}. Turn ${side} slowly.`, `remembered:${side}`, 'TURN');
+    case 'scan_remembered':
+      // Within twenty degrees the side flips with every wobble of the head ("left… right… left"):
+      // say ahead, and ask for the camera the detector needs.
+      if (g.relativeDeg !== null && Math.abs(g.relativeDeg) < 20) return line(`${n} should be straight ahead. Hold the camera level.`, 'remembered:ahead', null);
+      return line(`${n} ${were} on your ${side}. Turn ${side} slowly.`, `remembered:${side}`, 'TURN');
     case 'scan_unknown': return line(`${n} not seen yet. Turn slowly all the way around.`, 'unknown', null);
   }
 };
@@ -281,10 +289,20 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
   }
   if (state.phase === 'approach_item' && !s.item?.targetVisible) next.lastForwardSteps = null;
 
-  // 1a. The item itself was seen earlier: its bearing beats any guess.
+  // 1a. The item itself was seen earlier: its bearing beats any guess — for a while.
   if (!working && s.item && !s.item.targetVisible && s.item.kind !== 'scan_unknown') {
-    const l = itemLine(itemName, s.item);
-    return out('approach_item', l.text, l.key, goal.item, l.haptic);
+    const doubted = state.memoryDoubtUntil !== null && s.now < state.memoryDoubtUntil;
+    if (!doubted) {
+      const since = state.memorySince ?? s.now;
+      next.memorySince = since;
+      if (s.now - since > MISSION_MEMORY_MS) {
+        next.memorySince = null;
+        next.memoryDoubtUntil = s.now + MISSION_MEMORY_DOUBT_MS;
+      } else {
+        const l = itemLine(itemName, s.item);
+        return out('approach_item', l.text, l.key, goal.item, l.haptic);
+      }
+    }
   }
   // 1b. No working place yet (nothing stated, or the stated one was ruled out): reason about where it usually is.
   if (!working) {
@@ -337,11 +355,23 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
       const l = itemLine(placeName, s.place);
       return out('approach_place', l.text, l.key, goal.item, l.haptic);
     }
-    // The place is remembered from earlier: turn to it.
-    if (s.place.kind === 'scan_remembered' || s.place.kind === 'turn' || s.place.kind === 'turn_around') {
+    // The place is remembered from earlier: turn to it — for a while. A bearing that never
+    // brings it into view is a stale or wrong memory; then look around instead of turning forever.
+    const rememberedPlace = s.place.kind === 'scan_remembered' || s.place.kind === 'turn' || s.place.kind === 'turn_around';
+    const doubted = state.memoryDoubtUntil !== null && s.now < state.memoryDoubtUntil;
+    if (rememberedPlace && !doubted) {
+      const since = state.memorySince ?? s.now;
+      next.memorySince = since;
+      if (s.now - since > MISSION_MEMORY_MS) {
+        next.memorySince = null;
+        next.memoryDoubtUntil = s.now + MISSION_MEMORY_DOUBT_MS;
+        next.scanSince = s.now;
+        return out('find_place', `I cannot find the ${placeName} I remembered. Let me look around.`, 'memory-lost', working, null, false, null, true);
+      }
       const l = itemLine(placeName, s.place);
       return out('find_place', l.text, l.key, working, l.haptic);
     }
+    if (!rememberedPlace) next.memorySince = null;
   }
 
   // 3. Heading for a doorway because the user said the place is in another room.
@@ -449,6 +479,8 @@ export const MISSION_MODEL_BOX_MS = 3500;
 export const MISSION_STICKY_MS = 1500;
 /** Turning toward a remembered place gets this long before the search explorer takes over. */
 export const MISSION_MEMORY_MS = 12_000;
+/** After a remembered bearing led nowhere, it is ignored for this long (the explorer looks instead). */
+export const MISSION_MEMORY_DOUBT_MS = 30_000;
 
 export interface MissionRunner {
   readonly goal: MissionGoal;
@@ -481,9 +513,10 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
   let state: MissionState = initialMissionState(goal.place);
   let asking: 'room' | 'open' | null = null;
   let lastKey: string | null = null;
+  let pendingSide: string | null = null;
+  let sideStreak = 0;
   let lastSpokenAt = -Infinity;
   let searchTarget: string | null = null;
-  let memorySince: number | null = null;
   const boxes = new Map<string, TargetBox>();
 
   const sticky = new Map<string, TargetBox>();
@@ -529,13 +562,12 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       const t = now();
       const snap = snapshot();
       // Scene memory first: a remembered bearing for the place is an immediate, free answer
-      // ("Table was on your left. Turn left slowly."). If turning there does not bring it into
-      // view within MISSION_MEMORY_MS, the explorer takes over.
+      // ("Table was on your left. Turn left slowly."). decide() times it out (MISSION_MEMORY_MS)
+      // and then doubts it, so the explorer takes over instead of the turn going on forever.
       const remembered = !snap.item?.targetVisible && snap.place !== null && !snap.place.targetVisible
         && (snap.place.kind === 'scan_remembered' || snap.place.kind === 'turn' || snap.place.kind === 'turn_around');
-      if (remembered) memorySince = memorySince ?? t;
-      else memorySince = null;
-      const memoryFresh = remembered && memorySince !== null && t - memorySince <= MISSION_MEMORY_MS;
+      const doubted = state.memoryDoubtUntil !== null && t < state.memoryDoubtUntil;
+      const memoryFresh = remembered && !doubted && (state.memorySince === null || t - state.memorySince <= MISSION_MEMORY_MS);
       // Reasoning first (the stated place, then where such things usually are, with what the
       // phone can act on); the explorer takes the tick only when geometry has nothing to say.
       const reasoned = decide(goal, state, snap);
@@ -566,6 +598,14 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       if (decision.asking) asking = decision.asking;
       if (decision.text === null) return { text: null, haptic: null, modelMaySpeak: decision.modelMaySpeak, decision };
       const slow = /:(?:scan|looking|unknown|ask_room|exhausted|open-wait)$/.test(decision.key);
+      // A remembered side must hold for two ticks before it replaces the other side: "left…
+      // right… left" every two seconds was a head wobble across a bearing, not news.
+      const sideNow = /:remembered:(left|right)$/.exec(decision.key)?.[1] ?? null;
+      if (sideNow && lastKey && /:remembered:(left|right)$/.test(lastKey) && !lastKey.endsWith(`:${sideNow}`)) {
+        sideStreak = sideNow === pendingSide ? sideStreak + 1 : 1;
+        pendingSide = sideNow;
+        if (sideStreak < 2) return { text: null, haptic: null, modelMaySpeak: false, decision: { ...decision, text: null } };
+      } else { pendingSide = null; sideStreak = 0; }
       const news = decision.key !== lastKey;
       const floor = news ? MISSION_CHANGE_FLOOR_MS : slow ? MISSION_SLOW_REPEAT_MS : MISSION_REPEAT_MS;
       if (t - lastSpokenAt < floor && !(news && decision.haptic === 'CONFIRM')) {
