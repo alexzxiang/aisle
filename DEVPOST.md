@@ -111,3 +111,24 @@ NVIDIA Nemotron (through NVIDIA NIM) turns spoken requests into structured tasks
 ElevenLabs gives the app its voice in both directions: low latency speech for the sentences the app composes live, cached clips for the common lines, and speech recognition with the item vocabulary as key terms.
 
 We used generative models because the problem is open world. We constrained them because the user is blind and the model cannot see the consequences of being wrong.
+
+## 6. Technology feedback
+
+**Anthropic Claude (Haiku 4.5 and Sonnet 5).** The strongest piece of our stack, and the one we leaned on hardest. Structured output against a JSON schema is exactly what a safety minded app needs: we could ask for an item box, a barrier, the sign, the section and up to four openings, and get back something code can validate. Two things cost us. First, one unsupported schema keyword (minItems) turned every vision call into a 400 for hours, and the error surfaced only in the proxy log; a schema validation endpoint, or a warmup call that fails loudly, would have saved us an afternoon. Second, latency: Sonnet answered a 768 pixel frame in about five and a half seconds at the median, and Haiku on the same prompt was not much faster (about five seconds), so the time is in the prompt and the output, not the model. For a walking user five seconds is two metres. We would love a mode tuned for short structured answers on small images.
+
+**NVIDIA Nemotron on NIM.** Fast and dependable for turning speech into structured tasks and plans, and free credits made it an easy choice. Rate limits on the free tier arrived without much warning, so we ended up with a second key, a deadline race and a template fallback. A clearer view of remaining quota in the response headers would have let us plan instead of react.
+
+**NVIDIA Brev.** The credits were generous and the setup was simple enough that one of us could prepare an Open Images fine tuning job in an hour. The weekend's hours went to the search logic instead, so the phone still runs the stock export. That is on us; the platform did what it promised.
+
+**ElevenLabs.** The voice is the reason the app feels like a companion rather than a screen reader, and cached clips (we generated about five hundred) play instantly. Scribe's key terms kept item names accurate. Two wishes: streaming recognition that returns a one word answer ("yes") without waiting for silence, and a lighter path for very short live sentences, because a twelve word instruction is still worth several hundred milliseconds of synthesis when the person is mid step.
+
+**Expo SDK 57 with a development build and a local Swift module.** Writing our own perception module in Swift and bridging it through Expo's local modules worked better than we expected, and the development client was the right call. The friction was churn: the SDK has changed enough that every coding assistant on the team kept reaching for last year's APIs, and we had to pin them to the versioned documentation. Native changes need a clean rebuild, which is slow when you are iterating on Core ML models.
+
+**Apple ARKit, Core ML and Vision.** On a plain iPhone 16 we ran pose tracking, two YOLO nano detectors, a depth model, full frame OCR and hand tracking at the same time, and the thermal state only reached serious after long sessions. Vision's OCR reads overhead store signs far better than any cloud call on a downscaled frame. The limits we hit were hardware truths rather than bugs: no metric depth without LiDAR, no ultra wide camera inside an ARKit session on this phone, and tracking that wobbles on featureless surfaces like a white fridge door.
+
+**Ultralytics YOLO and Open Images.** Exporting to Core ML with built in NMS was one command, which is why we could run two detectors at all. The stock Open Images nano is spread thin across six hundred classes, so per class quality on the things a home is made of (doors, countertops, drawers) is modest; the narrowing job we prepared for Brev is the fix.
+
+**GitHub and GitHub Actions.** Five people on one repository for twenty four hours with a small CI kept us honest. The one surprise was the 100 MB file limit rejecting our demo video at the last minute; a friendlier nudge toward LFS before the push would help hackathon teams.
+
+**Claude Code and Codex as teammates.** Both wrote large parts of this codebase overnight. What worked: tracing real failures back to code, writing replay tests from the exact words a tester said, and keeping documentation current. What needed a human: two agents will happily rewrite the same forty lines in opposite directions, and an agent will write a test that blesses its own behaviour. Read the diff, keep the field traces, and make the agents argue with the trace rather than with each other.
+
