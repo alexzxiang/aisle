@@ -78,12 +78,14 @@ describe('active search with trip memory', () => {
     expect(search.memory().some((a) => a.outcome === 'item_seen')).toBe(false);
   });
 
-  it('scans first (three poses), asks permission for produce, walks on "yes"; silence never authorizes walking', () => {
+  it('skims an unpromising view, asks permission for produce, walks on yes; silence never authorizes walking', () => {
     const h = setup(); h.permission();
     // In a store the look-around is along the aisle; at home it is left, right, behind.
-    expect(h.said.slice(0, 3)).toEqual(['Face the shelf on your left. Pan slowly top to bottom.', 'Now face the right shelf and pan slowly top to bottom.', 'Turn to look along the aisle for signs and displays.']);
+    expect(h.said[0]).toBe('Point along the aisle. Hold steady for signs and openings.');
+    expect(h.said[1]).toMatch(/May I guide/);
     const home = setup('home'); home.permission();
-    expect(home.said.slice(0, 3)).toEqual(['Turn the camera slowly left.', 'Now turn the camera slowly right.', 'Turn around slowly so I can see behind you.']);
+    expect(home.said[0]).toBe('Turn the camera slowly left.');
+    expect(home.said[1]).toMatch(/May I guide/);
     expect(h.said).toContain('May I guide you toward the produce section?');
     expect(h.search.pending()).toBe(true);
     expect(h.guide).not.toHaveBeenCalled();
@@ -107,9 +109,9 @@ describe('active search with trip memory', () => {
     const search = createSearchExplorer({ item: 'bananas', context: 'store', guide: { instructionFor: guide }, now: () => t });
     const box: [number, number, number, number] = [0.6, 0.2, 0.2, 0.5];
     const one = (name: string) => { t += 6000; search.observe(observation({ landmarks: [{ name, kind: 'aisle_end', boundary: 'cross_aisle', section: 'unknown', box, confidence: 0.9 }] }), ++seq, t); return search.tick('bananas', null, {}); };
-    one('aisle end'); one('end of the aisle'); one('aisle opening');
+    one('aisle end'); const proposal = one('end of the aisle'); one('aisle opening');
     const asked = one('aisle end ahead');
-    expect(asked?.text).toBe('May I take you out of this aisle to look elsewhere?');
+    expect(proposal?.text).toBe('May I take you out of this aisle to look elsewhere?');
     expect(asked?.target).toBe('aisle end');                 // the first name sticks
     const home = createSearchExplorer({ item: 'keys', context: 'home', guide: { instructionFor: guide }, now: () => t, doorway: () => ({ box: [0.7, 0.1, 0.2, 0.7], at: t }) });
     const lines: string[] = [];
@@ -169,7 +171,7 @@ describe('active search with trip memory', () => {
     const h = setup();
     for (let i = 0; i < 5; i++) h.tick({}, { confined: true });
     expect(h.search.target()).toBeNull();
-    expect(h.said.at(-1)).toMatch(/Item still unconfirmed/);
+    expect(h.said.at(-1)).toMatch(/Not found inside/);
     expect(h.search.intercept('yes').consumed).toBe(false);
     expect(h.search.intercept('search again').consumed).toBe(true);
     expect(h.tick({}, { confined: true })?.text).toMatch(/upper shelf/);
@@ -236,7 +238,7 @@ describe('the right section gets a close search before moving on (round 12)', ()
     const lines: string[] = [];
     for (let i = 0; i < 9; i += 1) { const r = h.tick({ items: ['apples', 'oranges'], landmarks: [] }); if (r?.text) lines.push(r.text); }
     expect(lines).toContain('Apples and oranges here. This seems to be produce.');
-    const close = lines.indexOf('This section looks promising. Let me search these shelves closely.');
+    const close = lines.indexOf('This area looks promising. Let me inspect it more closely.');
     expect(close).toBeGreaterThan(0);
     expect(lines.slice(close + 1, close + 4)).toEqual(['Pan slowly across the upper shelf.', 'Now pan across the middle shelf.', 'Tilt down and scan the lower shelf.']);
     expect(h.search.memory()[0]?.closeSearched).toBe(true);
@@ -273,14 +275,14 @@ describe('exploring a big space by coverage (round 12)', () => {
     expect(h.search.status()).toBe('advance');
     const heading = 0;
     h.pose.yawDeg = heading;
-    expect(h.tick(3000)?.text).toBe('Keep walking forward. I am looking as you walk.');
+    expect(h.tick(3000)?.text).toBe('Walk forward three steps, then stop for another look.');
     // Drifting right of the heading earns a nudge to the left.
     h.pose.yawDeg = heading + 40;
     expect(h.tick(3000)?.text).toBe('Drifting right. A little to the left.');
     h.pose.yawDeg = heading;
-    // Six metres on: the leg is done, look around here.
+    // A short measured segment ends before the old six-metre leg.
     let stop: string | null | undefined;
-    for (let i = 1; i <= 6; i++) { h.pose.z = -i; stop = h.tick(500)?.text; }
+    for (let i = 1; i <= 3; i++) { h.pose.z = -i; stop = h.tick(500)?.text; }
     expect(stop).toBe('Stop here. Let me look around.');
     expect(h.search.status()).toBe('scan');
     expect(h.search.coverage()!.visited).toBeGreaterThan(2);
@@ -434,14 +436,14 @@ describe('grocery aisle dwell and visit memory', () => {
     return { map, search, tick };
   }
 
-  it('moves on after ten seconds without shelf progress but does not clear the aisle', () => {
+  it('bounds a promising area inspection without claiming the whole aisle is clear', () => {
     const h = aisleRig();
     const end = { name: 'aisle end', kind: 'aisle_end' as const, boundary: 'cross_aisle' as const, section: 'unknown' as const,
       confidence: 0.95, box: [0.4, 0.1, 0.2, 0.8] as [number, number, number, number] };
     h.tick(4000, { sign: 'PRODUCE', items: ['apples', 'oranges'], view: 'upper', landmarks: [end] });
     h.tick(4000, { sign: 'PRODUCE', items: ['apples', 'oranges'], view: 'middle', landmarks: [end] });
     let moveOn; const lines: Array<string | null | undefined> = [];
-    for (let i = 0; i < 2 && h.search.status() !== 'permission'; i++) {
+    for (let i = 0; i < 10 && h.search.status() !== 'permission'; i++) {
       moveOn = h.tick(4000, { sign: 'PRODUCE', items: ['apples', 'oranges'], view: 'lower', landmarks: [end] });
       lines.push(moveOn?.text);
     }
