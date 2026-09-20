@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aisle Be There — SteelHacks XIII</title>
+
+<!-- =========================================================================
+     TO FILL IN BEFORE PRESENTING
+       Search for  DEMO_URL  below (two places: the demo slide and the closing
+       slide) and replace the placeholder text and the href with the real link.
+     CONTROLS
+       arrow keys / space / click ..... next and previous
+       o .............................. overview of every slide
+       n .............................. speaker notes drawer
+       f .............................. fullscreen
+     ========================================================================= -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="deck" id="deck">
+  <div class="stage" id="stage">
+
+    <!-- 1 ----------------------------------------------------------------- -->
+    <section class="slide slide--dark" data-transition="zoom" data-title="Aisle Be There">
+      <div class="glow"></div>
+      <p class="kicker" data-anim>SteelHacks XIII &nbsp;·&nbsp; NVIDIA Beyond the Chatbot</p>
+      <div style="display:flex; flex-direction:column; gap:30px">
+        <h1 class="wordmark" data-anim="pop">Aisle<br>Be There</h1>
+        <p class="lede muted" data-anim>Navigation for blind and low-vision people that doesn't stop at the front door.</p>
+      </div>
+      <div class="pills" data-anim>
+        <p>No beacons.</p>
+        <p>No store partnership.</p>
+        <p>No extra hardware.</p>
+        <p class="accent">One phone.</p>
+      </div>
+      <aside>Aisle Be There is not a chatbot and not a smart-glasses demo. It is one iOS app that a blind person can run today on the phone they already own. Everything in this deck is built, running, and field-tested in a real grocery store. Four of us, one weekend.</aside>
+    </section>
+
+    <!-- 2 ----------------------------------------------------------------- -->
+    <section class="slide slide--light statement" data-title="The gap">
+      <div class="glow"></div>
+      <p class="kicker" data-anim>The gap</p>
+      <h2 data-anim>Maps gets you to the address. Then it goes quiet.</h2>
+      <p class="sub muted" data-anim>Aisle Be There covers the last hundred metres and the last arm's length.</p>
+      <aside>The last mile is solved. The last hundred metres and the last arm's length are not. Inside a store there is no map at all, describer apps narrate instead of guiding — "a refrigerator section with several doors" does not tell you which way to walk — and asking a stranger costs the independence that was the point of the errand. That is the whole gap we went after.</aside>
+    </section>
+
+    <!-- 3 ----------------------------------------------------------------- -->
+    <section class="slide slide--light" data-title="One errand, three handoffs">
+      <div class="glow"></div>
+      <h2 data-anim>One errand, three handoffs</h2>
+      <div class="row">
+        <div class="card card--invert" data-anim>
+          <p class="step-no">01</p>
+          <h3>Walk there</h3>
+          <p>Route geometry and haptic nudges.</p>
+        </div>
+        <div class="card card--invert" data-anim>
+          <p class="step-no">02</p>
+          <h3>Find the aisle</h3>
+          <p>The camera reads signs and shelves.</p>
+        </div>
+        <div class="card card--invert" data-anim>
+          <p class="step-no">03</p>
+          <h3>Reach for it</h3>
+          <p>Hand tracking closes the last foot.</p>
+        </div>
+      </div>
+      <p class="footnote">Each handoff is automatic. The user never picks a mode.</p>
+      <aside>Most assistive tools do exactly one of these three. The hard engineering is the seam between them — knowing you have entered the store, knowing you have reached the right shelf, knowing to switch from walking cues to hand cues. Under it sit three tiers: on-device ARKit, CoreML and Vision OCR every frame for anything a haptic depends on; Claude on occasional still frames for the hard visual questions; and Nemotron as the decision layer. Street and store video never leaves the phone.</aside>
+    </section>
+
+    <!-- 4 — DEMO_URL ------------------------------------------------------ -->
+    <section class="slide slide--deep slide--center" data-transition="zoom" data-title="Demo video">
+      <div class="glow"></div>
+      <div class="play" data-anim="pop"><svg viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></svg></div>
+      <h2 class="big" data-anim style="text-align:center">Aisle Be There, in a real grocery store</h2>
+      <div class="demo-frame" data-anim="pop">
+        <p class="demo-frame__label">Demo video</p>
+        <!-- DEMO_URL — replace both the href and the text below -->
+        <a class="demo-link" href="#" target="_blank" rel="noopener">[paste demo video URL here]</a>
+      </div>
+      <aside>Play it, or read the link out. Three moments worth pointing at while it runs: the app goes quiet when you are on course, it says the aisle number before you reach it, and the last cue is a reach cue, not a description.</aside>
+    </section>
+
+    <!-- 5 ----------------------------------------------------------------- -->
+    <section class="slide slide--dark statement" data-title="Silence is the reward">
+      <div class="glow"></div>
+      <p class="kicker" data-anim>The design rule everything else follows from</p>
+      <h2 data-anim>Silence is the reward.</h2>
+      <p class="sub muted" data-anim>On course, it says nothing. Twelve words maximum when it does. Six words are banned outright, and it never decides a crossing.</p>
+      <aside>This is what separates us from a camera wired to an LLM. The banned list — safe, clear, go, cross now, no cars, you can cross — is a real linter in the repo: a build that would speak any of them fails. The twelve-word cap is checked at build time too. That constraint changed the architecture, because if you cannot say "go" you have to be genuinely useful with position and haptics instead. Four haptic patterns carry most of it: COURSE, TURN, STOP, CONFIRM.</aside>
+    </section>
+
+    <!-- 6 ----------------------------------------------------------------- -->
+    <section class="slide slide--dark" data-transition="zoom" data-title="Nemotron never talks to the user">
+      <div class="glow"></div>
+      <div class="head">
+        <p class="kicker" data-anim>Beyond the Chatbot</p>
+        <h2 data-anim>Nemotron never talks to the user.</h2>
+        <p class="sub muted" data-anim>It is the decision layer behind the app: JSON in, JSON out, executed by code rather than read aloud. Six jobs.</p>
+      </div>
+      <div class="tagrow" data-anim>
+        <span>parseIntent</span>
+        <span>routeCompile</span>
+        <span>taskPlan</span>
+        <span>disambiguate</span>
+        <span>crossingAnnounce</span>
+        <span>answer</span>
+      </div>
+      <p class="footnote">nvidia/nemotron-3.5-lightning-30b-a3b &nbsp;·&nbsp; it never sees an image</p>
+      <aside>The track slide. Nemotron is not the thing the user talks to — its output is parsed, schema-validated and executed. If it returned prose the app would break, not degrade. It races a deterministic local template and the first valid answer wins, so a timeout is a slightly plainer cue, never an outage. Nothing time-critical waits on it. It also never touches a pixel: Claude is the one that sees images.</aside>
+    </section>
+
+    <!-- 7 ----------------------------------------------------------------- -->
+    <section class="slide slide--light" data-title="We measured it">
+      <div class="glow"></div>
+      <div class="head">
+        <p class="kicker" data-anim>Evidence</p>
+        <h2 data-anim>We measured it, and we broke it.</h2>
+      </div>
+      <div class="bigrow">
+        <div data-anim="pop">
+          <p class="stat" data-count="60">0</p>
+          <p class="muted">utterance eval: clean, ASR-noisy, off-task</p>
+        </div>
+        <div data-anim="pop">
+          <p class="stat" data-count="98.3" data-decimals="1" data-suffix="%">0</p>
+          <p class="muted">template accuracy, vs 93.3% for the live planner race</p>
+        </div>
+        <div data-anim="pop">
+          <p class="stat" data-count="10313" data-format="comma">0</p>
+          <p class="muted">trace records from one failed grocery run, read line by line</p>
+        </div>
+      </div>
+      <div class="rule-line" data-anim></div>
+      <p class="sub muted" data-anim>Two failures found in the NIM endpoint: <b>guided_json</b> returns HTTP 400, and streaming's first chunk takes ~34 s where the whole non-streamed answer takes ~1 s. Both are dated in our source.</p>
+      <p class="footnote">Full eval, confusion matrices and latency tables live in the repo.</p>
+      <aside>Be honest about the headline: the deterministic template beat the live planner race on raw intent accuracy, 98.3 to 93.3 — which is exactly why the race exists. What Nemotron buys is the grounded multi-step task plan and the phrasings the template has no rule for. The NIM findings are the track's "failure you found": we measured them, dated them in a comment, and shipped non-streaming json_object mode with the schema in the prompt instead of discovering it in a store. The 10,313 records came from a grocery run that went wrong — context defaulting to home, and relative depth used as a hard veto on movement cues. Say plainly which of those are fixed in the build you just demoed.</aside>
+    </section>
+
+    <!-- 8 — DEMO_URL ------------------------------------------------------ -->
+    <section class="slide slide--dark statement" data-transition="fade" data-title="What we hold ourselves to">
+      <div class="glow"></div>
+      <p class="kicker" data-anim>What we hold ourselves to</p>
+      <h2 data-anim>The bar isn't “it described the shelf”. It's “you left with the bananas”.</h2>
+      <div class="signoff" data-anim>
+        <p class="signoff__mark">Aisle Be There</p>
+        <!-- DEMO_URL — replace the text below -->
+        <p style="font-size:28px; color:var(--on-dark-dim)">Demo video: [paste demo video URL here]</p>
+      </div>
+      <aside>Narration is easy and we deliberately did not build it. The measure is whether the errand finished. Next up: fusing ARKit scene depth with the model's relative depth so "arm's reach" is a real distance, aisle signs read on the way in becoming the map for the trip, and testing with blind users rather than sighted people with their eyes shut. Then questions.</aside>
+    </section>
+
+  </div>
+</div>
+
+<div class="chrome">
+  <div class="progress" id="progress"></div>
+  <div class="nav" id="nav"></div>
+  <p class="counter" id="counter">01 / 14</p>
+  <p class="hint" id="hint">← → MOVE &nbsp; O OVERVIEW &nbsp; N NOTES &nbsp; F FULLSCREEN</p>
+</div>
+
+<div class="notes-pane" id="notesPane">
+  <h4>Speaker notes</h4>
+  <p id="notesBody"></p>
+</div>
+
+<div class="overview" id="overview"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var stage    = document.getElementById('stage');
+  var deck     = document.getElementById('deck');
+  var slides   = Array.prototype.slice.call(stage.querySelectorAll('.slide'));
+  var progress = document.getElementById('progress');
+  var counter  = document.getElementById('counter');
+  var hint     = document.getElementById('hint');
+  var navBox   = document.getElementById('nav');
+  var overview = document.getElementById('overview');
+  var notesBody= document.getElementById('notesBody');
+  var index    = 0;
+  var animating= false;
+
+  // Number every [data-anim] child so the CSS can stagger its build-in, and
+  // every table row so the rows deal themselves in.
+  slides.forEach(function (slide) {
+    slide.querySelectorAll('[data-anim]').forEach(function (el, i) {
+      el.style.setProperty('--i', i);
+    });
+    slide.querySelectorAll('tbody tr').forEach(function (tr, i) {
+      tr.style.setProperty('--r', i);
+    });
+  });
+
+  // --- fit the 1920x1080 stage into whatever window this is opened in ------
+  function fit() {
+    var reserved = document.body.classList.contains('notes-open') ? 210 : 0;
+    var scale = Math.min(window.innerWidth / 1920, (window.innerHeight - reserved) / 1080);
+    // translate(-50%,-50%) centres the 1920x1080 box on the viewport centre;
+    // the nudge and the scale are applied inside that, so the deck stays
+    // centred whatever the window size is.
+    stage.style.transform =
+      'translate(-50%, -50%) translateY(' + (-reserved / 2) + 'px) scale(' + scale + ')';
+  }
+  window.addEventListener('resize', fit);
+
+  // --- counters ------------------------------------------------------------
+  function runCounters(slide) {
+    slide.querySelectorAll('[data-count]').forEach(function (el) {
+      var target   = parseFloat(el.dataset.count);
+      var decimals = parseInt(el.dataset.decimals || '0', 10);
+      var suffix   = el.dataset.suffix || '';
+      var comma    = el.dataset.format === 'comma';
+      var start    = performance.now();
+      var dur      = 1000;
+      function frame(now) {
+        var t = Math.min((now - start) / dur, 1);
+        var eased = 1 - Math.pow(1 - t, 3);
+        var v = (target * eased).toFixed(decimals);
+        el.textContent = (comma ? Number(v).toLocaleString('en-US') : v) + suffix;
+        if (t < 1) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  // --- moving between slides ----------------------------------------------
+  function go(next, dir) {
+    if (next === index || next < 0 || next >= slides.length || animating) return;
+    animating = true;
+    deck.classList.toggle('dir-fwd', dir >= 0);
+    deck.classList.toggle('dir-back', dir < 0);
+
+    var out = slides[index];
+    var into = slides[next];
+
+    out.classList.remove('is-active');
+    out.classList.add('is-exit');
+    window.setTimeout(function () { out.classList.remove('is-exit'); }, 620);
+
+    into.classList.add('is-enter');
+    // Force a reflow so the browser sees the entering transform before we
+    // hand it .is-active — otherwise there is nothing to animate from.
+    void into.offsetWidth;
+    into.classList.remove('is-enter');
+    into.classList.add('is-active');
+
+    // Restart the build-ins on the slide we are arriving at.
+    into.querySelectorAll('[data-anim], tbody tr').forEach(function (el) {
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = '';
+    });
+
+    index = next;
+    runCounters(into);
+    sync();
+    window.setTimeout(function () { animating = false; }, 420);
+  }
+
+  function sync() {
+    var n = slides.length;
+    progress.style.width = ((index + 1) / n * 100) + '%';
+    counter.textContent = pad(index + 1) + ' / ' + pad(n);
+    notesBody.textContent = (slides[index].querySelector('aside') || {}).textContent || '—';
+    Array.prototype.forEach.call(navBox.children, function (b, i) {
+      b.classList.toggle('is-on', i === index);
+    });
+    Array.prototype.forEach.call(overview.children, function (b, i) {
+      b.classList.toggle('is-on', i === index);
+    });
+    if (location.hash !== '#' + (index + 1)) history.replaceState(null, '', '#' + (index + 1));
+  }
+
+  function pad(n) { return n < 10 ? '0' + n : String(n); }
+  function next() { go(index + 1, 1); }
+  function prev() { go(index - 1, -1); }
+
+  // --- chrome --------------------------------------------------------------
+  slides.forEach(function (slide, i) {
+    var dot = document.createElement('button');
+    dot.setAttribute('aria-label', 'Slide ' + (i + 1) + ': ' + slide.dataset.title);
+    dot.addEventListener('click', function () { go(i, i > index ? 1 : -1); });
+    navBox.appendChild(dot);
+
+    var item = document.createElement('button');
+    item.innerHTML = '<span>' + pad(i + 1) + '</span>' + slide.dataset.title;
+    item.addEventListener('click', function () {
+      document.body.classList.remove('overview-open');
+      go(i, i > index ? 1 : -1);
+    });
+    overview.appendChild(item);
+  });
+
+  // --- input ---------------------------------------------------------------
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
+        e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+        e.preventDefault(); prev(); break;
+      case 'Home': e.preventDefault(); go(0, -1); break;
+      case 'End':  e.preventDefault(); go(slides.length - 1, 1); break;
+      case 'n': case 'N':
+        document.body.classList.toggle('notes-open'); fit(); break;
+      case 'o': case 'O':
+        document.body.classList.toggle('overview-open'); break;
+      case 'f': case 'F':
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen();
+        break;
+      case 'Escape':
+        document.body.classList.remove('overview-open'); break;
+    }
+  });
+
+  deck.addEventListener('click', function (e) {
+    if (e.target.closest('a')) return;
+    (e.clientX < window.innerWidth * 0.28 ? prev : next)();
+  });
+
+  var touchX = null;
+  deck.addEventListener('touchstart', function (e) { touchX = e.changedTouches[0].clientX; }, { passive: true });
+  deck.addEventListener('touchend', function (e) {
+    if (touchX === null) return;
+    var dx = e.changedTouches[0].clientX - touchX;
+    if (Math.abs(dx) > 60) (dx < 0 ? next : prev)();
+    touchX = null;
+  }, { passive: true });
+
+  // --- start ---------------------------------------------------------------
+  fit();
+  var fromHash = parseInt((location.hash || '').slice(1), 10);
+  index = (fromHash >= 1 && fromHash <= slides.length) ? fromHash - 1 : 0;
+  slides[index].classList.add('is-active');
+  deck.classList.add('dir-fwd');
+  runCounters(slides[index]);
+  sync();
+  window.setTimeout(function () { hint.classList.add('is-faded'); }, 5000);
+})();
+</script>
+
+</body>
+</html>

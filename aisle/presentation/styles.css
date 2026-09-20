@@ -1,0 +1,566 @@
+/* ===========================================================================
+   Aisle — deck styles
+   A fixed 1920x1080 stage, scaled to whatever window it is opened in, so the
+   layout is identical on a laptop, a projector and a screen recording.
+   Motion lives here: slide transitions, per-element build-ins, ambient drift.
+   =========================================================================== */
+
+:root {
+  --ink:        #12181B;
+  --ink-soft:   #1A2327;
+  --ink-line:   #2C3A3E;
+  --paper:      #F7F5F0;
+  --paper-card: #FFFFFF;
+  --paper-line: #DFDCD4;
+  --mint:       #7BE3AF;
+  --deep:       #0E6B4E;
+  --deep-dark:  #0B5540;
+  --rust:       #A8452F;
+  --rust-wash:  #F6EDEA;
+  --on-dark:    #B9C6C2;
+  --on-dark-dim:#8B9A96;
+  --on-light:   #55605C;
+  --on-light-dim:#7A8580;
+  --on-deep:    #DBF2E7;
+  --on-deep-dim:#BDEBD5;
+
+  --display: 'Rubik', Arial, sans-serif;
+  --text:    'IBM Plex Sans', Verdana, sans-serif;
+  --mono:    'JetBrains Mono', 'Courier New', monospace;
+
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-in:  cubic-bezier(.7, 0, .84, 0);
+  --slide-ms: 700ms;
+  --step:     70ms;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: #07090A;
+  font-family: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- the scaled stage ---------------------------------------------------- */
+
+.deck {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  perspective: 2400px;
+  perspective-origin: 50% 50%;
+}
+
+/* Pinned to the exact centre of the viewport rather than centred by a layout
+   mode: the stage is 1920x1080 and is usually LARGER than the window it is
+   being shown in, and an oversized grid/flex item does not reliably stay
+   centred once it overflows. left/top 50% with a -50% translate does, at any
+   window size, before the scale is applied. */
+.stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 50% 50%;
+  transform: translate(-50%, -50%);
+  transform-style: preserve-3d;
+}
+
+/* --- a slide ------------------------------------------------------------- */
+
+.slide {
+  position: absolute;
+  inset: 0;
+  padding: 118px 128px 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+}
+
+.slide.is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+  transition: opacity 440ms var(--ease-out), transform var(--slide-ms) var(--ease-out),
+              filter 440ms var(--ease-out);
+}
+
+/* Incoming, before it is given .is-active — direction aware. */
+.dir-fwd  .slide.is-enter { transform: translate3d(180px, 0, -340px) rotateY(-7deg); filter: blur(6px); opacity: 0; }
+.dir-back .slide.is-enter { transform: translate3d(-180px, 0, -340px) rotateY(7deg);  filter: blur(6px); opacity: 0; }
+
+/* Outgoing. */
+.slide.is-exit {
+  visibility: visible;
+  opacity: 0;
+  transition: opacity 380ms var(--ease-in), transform 560ms var(--ease-in), filter 380ms var(--ease-in);
+}
+.dir-fwd  .slide.is-exit { transform: translate3d(-200px, 0, -420px) rotateY(6deg);  filter: blur(8px); }
+.dir-back .slide.is-exit { transform: translate3d(200px, 0, -420px)  rotateY(-6deg); filter: blur(8px); }
+
+/* Per-slide flavours, set with data-transition. */
+.slide[data-transition="zoom"].is-enter { transform: scale(1.14); filter: blur(10px); }
+.slide[data-transition="zoom"].is-exit  { transform: scale(.88);  filter: blur(10px); }
+.slide[data-transition="fade"].is-enter,
+.slide[data-transition="fade"].is-exit  { transform: none; filter: blur(4px); }
+
+/* --- palettes ------------------------------------------------------------ */
+
+.slide--dark  { background: linear-gradient(160deg, #12181B 0%, #16211D 100%); color: var(--paper); }
+.slide--light { background: var(--paper); color: var(--ink); }
+.slide--deep  { background: linear-gradient(155deg, #0E6B4E 0%, #0A5A42 100%); color: var(--paper); }
+
+/* Ambient drift: one soft light source that never sits still. */
+.glow {
+  position: absolute;
+  width: 1500px;
+  height: 1500px;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: .30;
+  pointer-events: none;
+  top: -520px;
+  right: -420px;
+}
+.slide--dark  .glow { background: radial-gradient(circle, #1E7A58 0%, rgba(30,122,88,0) 68%); }
+.slide--light .glow { background: radial-gradient(circle, #B9DCC9 0%, rgba(185,220,201,0) 68%); opacity: .55; }
+.slide--deep  .glow { background: radial-gradient(circle, #45C795 0%, rgba(69,199,149,0) 68%); opacity: .38; }
+.slide.is-active .glow { animation: drift 22s ease-in-out infinite alternate; }
+
+@keyframes drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-260px, 180px, 0) scale(1.22); }
+}
+
+/* --- build-ins ----------------------------------------------------------- */
+
+[data-anim] { opacity: 0; }
+.slide.is-active [data-anim] {
+  animation: rise 720ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * var(--step) + 140ms);
+}
+.slide.is-active [data-anim="pop"] { animation-name: pop; }
+.slide.is-active [data-anim="slide"] { animation-name: slidein; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(34px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pop {
+  0%   { opacity: 0; transform: scale(.86); }
+  70%  { opacity: 1; transform: scale(1.03); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes slidein {
+  from { opacity: 0; transform: translateX(-46px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* --- typography ---------------------------------------------------------- */
+
+.kicker {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.slide--dark  .kicker { color: var(--mint); }
+.slide--light .kicker { color: var(--deep); }
+.slide--deep  .kicker { color: var(--on-deep-dim); }
+.kicker--warn { color: var(--rust) !important; }
+
+h1 { font-family: var(--display); font-size: 180px; font-weight: 600; line-height: 1; letter-spacing: -5px; }
+h2 { font-family: var(--display); font-size: 72px; font-weight: 500; line-height: 1.15; max-width: 1664px; }
+h2.big { font-size: 84px; }
+h3 { font-size: 34px; font-weight: 600; line-height: 1.25; }
+
+p  { font-size: 28px; line-height: 1.45; }
+.lede { font-size: 44px; line-height: 1.3; max-width: 1300px; }
+.sub  { font-size: 32px; line-height: 1.42; max-width: 1600px; }
+.small { font-size: 27px; line-height: 1.45; }
+
+.slide--dark  p.muted, .slide--dark  .muted { color: var(--on-dark); }
+.slide--light p.muted, .slide--light .muted { color: var(--on-light); }
+.slide--deep  p.muted, .slide--deep  .muted { color: var(--on-deep); }
+
+.head { display: flex; flex-direction: column; gap: 18px; }
+
+.footnote {
+  position: absolute;
+  left: 128px;
+  bottom: 70px;
+  font-size: 24px;
+  line-height: 1.3;
+  max-width: 1500px;
+}
+.slide--dark  .footnote { color: var(--on-dark-dim); }
+.slide--light .footnote { color: var(--on-light-dim); }
+.slide--deep  .footnote { color: var(--on-deep-dim); }
+
+b { font-weight: 600; }
+
+/* --- cards and rows ------------------------------------------------------ */
+
+.row  { display: flex; gap: 32px; align-items: stretch; }
+.row--tight { gap: 24px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+
+.card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 40px;
+  border-radius: 16px;
+  transition: transform 420ms var(--ease-out), box-shadow 420ms var(--ease-out);
+}
+.slide--light .card { background: var(--paper-card); border: 1px solid var(--paper-line); }
+.slide--dark  .card { background: var(--ink-soft); }
+.slide--deep  .card { background: var(--deep-dark); }
+.card--rule   { border-left: 4px solid var(--mint); }
+.card--warn   { border-left: 4px solid var(--rust); }
+.card--invert { background: var(--ink) !important; border: none !important; color: var(--paper); }
+.card--invert p { color: var(--on-dark); }
+
+.slide.is-active .card:hover { transform: translateY(-8px); box-shadow: 0 24px 60px rgba(0,0,0,.22); }
+
+.step-no { font-family: var(--mono); font-size: 24px; letter-spacing: 2px; }
+.slide--dark  .step-no, .card--invert .step-no { color: var(--mint); }
+.slide--light .step-no { color: var(--deep); }
+
+.stat { font-family: var(--display); font-size: 84px; font-weight: 600; line-height: 1; }
+.stat--sm { font-size: 76px; }
+.slide--dark  .stat { color: var(--mint); }
+.slide--light .stat { color: var(--deep); }
+
+.tag {
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--mint);
+}
+
+/* --- tier rows ----------------------------------------------------------- */
+
+.tier {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+  padding: 34px 40px;
+  border-radius: 16px;
+  transition: transform 420ms var(--ease-out);
+}
+.tier--light { background: var(--paper-card); border: 1px solid var(--paper-line); }
+.tier--dark  { background: var(--ink); color: var(--paper); }
+.slide.is-active .tier:hover { transform: translateX(10px); }
+.tier__no   { font-family: var(--mono); font-size: 28px; font-weight: 500; color: var(--deep); width: 170px; flex: none; }
+.tier--dark .tier__no { color: var(--mint); }
+.tier__who  { width: 400px; flex: none; display: flex; flex-direction: column; gap: 6px; }
+.tier__what { flex: 1; }
+.tier--dark .tier__what, .tier--dark .tier__who p { color: var(--on-dark); }
+.tier__who p { font-size: 26px; color: var(--on-light); }
+
+/* --- the race diagram ---------------------------------------------------- */
+
+.race { display: flex; gap: 22px; align-items: stretch; }
+.race__arrow {
+  width: 104px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  color: var(--deep);
+}
+.race__arrow svg { width: 88px; height: 40px; }
+.slide.is-active .race__arrow svg { animation: nudge 1.8s ease-in-out infinite; }
+.race__arrow span { font-size: 24px; font-weight: 600; }
+@keyframes nudge {
+  0%, 100% { transform: translateX(-6px); opacity: .55; }
+  50%      { transform: translateX(6px);  opacity: 1; }
+}
+
+/* --- tables -------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 28px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+th, td { text-align: left; padding: 16px 22px; vertical-align: top; line-height: 1.35; }
+th { font-weight: 600; font-size: 28px; }
+.slide--dark table { color: var(--paper); }
+.slide--dark thead tr { background: var(--ink-soft); }
+.slide--dark tbody tr:nth-child(even) { background: #171F22; }
+.slide--dark td { color: var(--on-dark); border-top: 1px solid var(--ink-line); }
+.slide--light thead tr { background: #EDE9E1; }
+.slide--light tbody tr:nth-child(even) { background: #FBFAF6; }
+.slide--light td { color: var(--on-light); border-top: 1px solid var(--paper-line); }
+.slide.is-active tbody tr {
+  animation: rowin 520ms var(--ease-out) both;
+  animation-delay: calc(var(--r, 0) * 80ms + 420ms);
+}
+@keyframes rowin { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }
+
+td.mono, .mono { font-family: var(--mono); }
+
+/* --- the demo-link slide ------------------------------------------------- */
+
+.slide--center { justify-content: center; align-items: center; text-align: center; gap: 44px; }
+
+.demo-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  padding: 52px 76px;
+  background: var(--deep-dark);
+  border: 2px solid #4FCB9B;
+  border-radius: 22px;
+  position: relative;
+  overflow: hidden;
+}
+.demo-frame::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 220px;
+  background: linear-gradient(100deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.14) 50%, rgba(255,255,255,0) 100%);
+  animation: sheen 3.6s ease-in-out infinite;
+}
+@keyframes sheen { from { left: -260px; } to { left: 110%; } }
+.demo-frame__label { font-size: 24px; letter-spacing: 2px; text-transform: uppercase; color: var(--on-deep-dim); }
+.demo-link {
+  font-family: var(--mono);
+  font-size: 44px;
+  font-weight: 500;
+  color: var(--paper);
+  text-decoration: none;
+  border-bottom: 2px solid rgba(247,245,240,.35);
+  transition: border-color 260ms;
+}
+.demo-link:hover { border-color: var(--mint); }
+
+.play {
+  width: 96px; height: 96px; border-radius: 50%;
+  border: 3px solid var(--mint);
+  display: grid; place-items: center;
+}
+.play svg { width: 34px; height: 34px; fill: var(--mint); margin-left: 6px; }
+.slide.is-active .play { animation: pulse 2.4s ease-out infinite; }
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(123,227,175,.45); }
+  70%  { box-shadow: 0 0 0 32px rgba(123,227,175,0); }
+  100% { box-shadow: 0 0 0 0 rgba(123,227,175,0); }
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 26px;
+  line-height: 1.45;
+  color: var(--rust);
+  background: var(--rust-wash);
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.signoff { display: flex; gap: 40px; align-items: center; }
+.signoff__mark { font-family: var(--display); font-size: 56px; font-weight: 600; color: var(--mint); }
+
+.pills { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
+.pills p { font-size: 24px; color: var(--on-dark-dim); }
+.pills p.accent { color: var(--mint); font-weight: 600; }
+
+/* --- chrome: progress, counter, hints, notes, overview ------------------- */
+
+.chrome {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.progress {
+  position: absolute;
+  left: 0; top: 0;
+  height: 4px;
+  background: var(--mint);
+  width: 0;
+  transition: width 560ms var(--ease-out);
+  box-shadow: 0 0 18px rgba(123,227,175,.7);
+}
+
+.counter {
+  position: absolute;
+  right: 26px; bottom: 20px;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: rgba(247,245,240,.45);
+  mix-blend-mode: difference;
+}
+
+.hint {
+  position: absolute;
+  left: 26px; bottom: 20px;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  color: rgba(247,245,240,.38);
+  mix-blend-mode: difference;
+  transition: opacity 600ms;
+}
+.hint.is-faded { opacity: 0; }
+
+.nav {
+  position: absolute;
+  right: 26px; top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+.nav button {
+  width: 9px; height: 9px;
+  border: none; border-radius: 50%;
+  padding: 0;
+  background: rgba(150,165,160,.35);
+  cursor: pointer;
+  transition: background 300ms, transform 300ms var(--ease-out);
+}
+.nav button:hover { background: rgba(150,165,160,.75); transform: scale(1.4); }
+.nav button.is-on { background: var(--mint); transform: scale(1.5); }
+
+/* Speaker notes drawer */
+.notes-pane {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 0;
+  overflow: hidden;
+  background: #0A0D0F;
+  border-top: 1px solid #26312F;
+  color: #C7D3CF;
+  font-size: 17px;
+  line-height: 1.55;
+  padding: 0 34px;
+  transition: height 420ms var(--ease-out), padding 420ms var(--ease-out);
+  z-index: 50;
+}
+body.notes-open .notes-pane { height: 210px; padding: 24px 34px; overflow-y: auto; }
+.notes-pane h4 {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--mint);
+  margin-bottom: 10px;
+}
+.slide aside { display: none; }
+
+/* Overview */
+.overview {
+  position: fixed;
+  inset: 0;
+  background: rgba(7,9,10,.96);
+  backdrop-filter: blur(10px);
+  z-index: 60;
+  padding: 56px 72px;
+  display: none;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px 28px;
+  align-content: start;
+  overflow-y: auto;
+}
+body.overview-open .overview { display: grid; }
+.overview button {
+  background: none;
+  border: none;
+  border-left: 2px solid #26312F;
+  text-align: left;
+  color: #9FB0AC;
+  font-family: var(--text);
+  font-size: 16px;
+  padding: 12px 18px;
+  cursor: pointer;
+  transition: color 220ms, border-color 220ms, transform 220ms var(--ease-out);
+}
+.overview button:hover { color: var(--paper); border-color: var(--mint); transform: translateX(5px); }
+.overview button.is-on { color: var(--mint); border-color: var(--mint); }
+.overview button span {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  opacity: .55;
+  margin-bottom: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide, .slide.is-active, .slide.is-exit { transition-duration: 1ms !important; }
+  .slide.is-active [data-anim],
+  .slide.is-active tbody tr,
+  .slide.is-active .glow,
+  .slide.is-active .play,
+  .race__arrow svg,
+  .demo-frame::after { animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+
+/* ===========================================================================
+   Statement slides — the deck is an introduction, not a document. Most slides
+   carry one idea at display size and let the presenter do the rest.
+   =========================================================================== */
+
+.statement { justify-content: center; gap: 44px; }
+.statement h2 { font-size: 104px; font-weight: 500; line-height: 1.08; max-width: 1560px; }
+.statement .sub { font-size: 36px; max-width: 1280px; }
+
+.tagrow { display: flex; flex-wrap: wrap; gap: 16px; }
+.tagrow span {
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  padding: 14px 26px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-line);
+  color: var(--mint);
+  transition: transform 340ms var(--ease-out), border-color 340ms;
+}
+.slide.is-active .tagrow span:hover { transform: translateY(-5px); border-color: var(--mint); }
+
+.slide--light .tagrow span { border-color: var(--paper-line); color: var(--deep); background: var(--paper-card); }
+
+.bigrow { display: flex; gap: 72px; }
+.bigrow > div { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.bigrow .stat { font-size: 108px; }
+.bigrow p.muted { font-size: 30px; }
+
+.rule-line {
+  height: 1px;
+  background: var(--ink-line);
+  width: 100%;
+}
+.slide--light .rule-line { background: var(--paper-line); }
+
+
+/* The wordmark sets on two lines, so "Aisle Be There" reads as a mark rather
+   than a very long line of display type. */
+.wordmark { font-size: 156px; line-height: .94; letter-spacing: -4px; }
+.signoff__mark { white-space: nowrap; }
