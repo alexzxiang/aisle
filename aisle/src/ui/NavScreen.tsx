@@ -25,6 +25,7 @@ import { Backdrop } from './Glass';
 import { AWARENESS_STRIP_MODES, awarenessSlots, bandSignal, heroText, needsClock, showSceneLine, stripSlots } from './derive';
 import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useScreenReader, useStoreSlice, useUiFacts, useDetections } from './hooks';
 import { assertUtterance } from './copy';
+import { parseMissionGoal } from '../core/itemMission';
 import type { ConversationLogPort, DescribeNow, VoicePort } from './ports';
 import { accentFor, cameraMaxHeight, colors, sizes, space } from './theme';
 
@@ -48,18 +49,16 @@ export const FINISH_LABEL = 'Finish';
 /** The whole log, scrollable (record keeping): the conversation keeps fifty lines. */
 export const NAV_TRANSCRIPT_MAX = 50;
 /**
- * The camera panel never takes more than this share of the window. Portrait since round 5;
- * 0.46 squeezed the transcript to its minimum during guided tasks ("can't see the chat"), so
- * the camera now stops at a third and the transcript keeps at least eight lines (round 6c).
+ * Larger viewfinder in the upper scroll area; the talk/chat dock remains independent.
  */
-export const CAMERA_MAX_HEIGHT_SHARE = 0.34;
+export const CAMERA_MAX_HEIGHT_SHARE = 0.5;
 /**
  * Points the trip screen needs below the camera whatever the phone: the band,
  * the transcript at its minimum, the talk button and the two secondary
  * targets. On a short window the camera gives this back rather than pushing
  * the talk button off the bottom.
  */
-export const CAMERA_RESERVE_PT = 550;
+export const CAMERA_RESERVE_PT = 360;
 
 export interface NavScreenProps {
   onOpenDebug?: () => void;
@@ -152,6 +151,8 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   const controls = (
     <View style={styles.controls}>
       <TalkButton voice={voice} reduceMotion={reduceMotion} />
+      <TranscriptPanel entries={entries} max={NAV_TRANSCRIPT_MAX} onDescribe={describeNow}
+        narration={narration} onSetNarration={setNarration} reduceMotion={reduceMotion} style={styles.transcript} />
       <View style={styles.row}>
         <Button label={REPEAT_LABEL} onPress={repeat} hint="Says the current instruction again" reduceMotion={reduceMotion} style={styles.half} />
         <Button
@@ -178,14 +179,14 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
     <View style={styles.screen}>
       <Backdrop accent={accent} reduceMotion={reduceMotion} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="guidance-scroll" nestedScrollEnabled>
-      <StateBand
+      {mode !== 'GUIDED_TASK' ? <StateBand
         mode={mode}
         hero={hero}
         signal={signal}
         onLongPressMode={onOpenDebug}
         reduceMotion={reduceMotion}
         style={styles.band}
-      />
+      /> : null}
       <CameraPanel
         slots={slots}
         accent={accent}
@@ -193,16 +194,10 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
         reduceMotion={reduceMotion}
         style={styles.camera}
       />
+      {mode === 'GUIDED_TASK' ? <StateBand mode={mode} modeWord="Task"
+        hero={parseMissionGoal(taskGoal ?? '')?.item ?? taskGoal ?? item ?? 'Find an item'}
+        instruction={hero} onLongPressMode={onOpenDebug} reduceMotion={reduceMotion} style={styles.band} /> : null}
       {showSceneLine(mode, scene) ? <ScenePanel scene={scene} reduceMotion={reduceMotion} style={styles.scene} /> : null}
-      <TranscriptPanel
-        entries={entries}
-        max={NAV_TRANSCRIPT_MAX}
-        onDescribe={describeNow}
-        narration={narration}
-        onSetNarration={setNarration}
-        reduceMotion={reduceMotion}
-        style={styles.transcript}
-      />
       {scrollControls ? controls : null}
       </ScrollView>
       {scrollControls ? null : controls}
@@ -229,7 +224,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   transcript: {
-    height: 300,
+    height: 160,
+    marginHorizontal: 0,
     flexShrink: 0,
   },
   scroll: {

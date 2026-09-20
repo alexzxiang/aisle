@@ -8,7 +8,7 @@ import type { TaskContext, VisionQuestion } from './contracts';
 import { createExplorationMap } from './explorationMap';
 import { GIVE_UP_PULSE_MS, OPENING_EXHAUSTED, OPENING_SWEEP, OPENING_SWEEP_MS } from './searchExplorer';
 
-function setup(context: TaskContext, goal = 'bananas', track = false) {
+function setup(context: TaskContext, goal = 'bananas', track = false, pathCenter: number | null = 0.1) {
   const bus = createEventBus();
   const store = createAppStore({ bus, warn: () => undefined, initial: { firstRun: false } });
   bindStoreToBus(store, bus);
@@ -39,6 +39,7 @@ function setup(context: TaskContext, goal = 'bananas', track = false) {
   const hand = { start: jest.fn(async () => ({ done: 'touching' as const, steps: 1 })), stop: jest.fn(), isRunning: () => false };
   const task = createGuidedTask({
     bus, store, guide, adaptiveSearch: true, steps: () => steps, heading: () => 0,
+    path: () => pathCenter === null ? null : ({ center: pathCenter }),
     ...(track ? { map, pose: () => {
       if (!tracking) return null;
       const p = { x: 0, y: 1.4, z: 0, yawDeg: 0, timestamp: Date.now(), trackingState: 'NORMAL' as const };
@@ -190,6 +191,61 @@ describe('leaving an area the camera shows nothing in', () => {
   // The reported failure: unrelated shelves and two empty bowls, no bananas anywhere near.
   const barren = { items: ['bowl', 'bowl'], sign: undefined, landmarks: [], quality: 'usable' as const, confidence: 0.9 };
 
+  it.each(['home', 'store', 'classroom'] as const)('keeps delayed model narration coherent in %s', async context => {
+    const h = setup(context, 'red scarf');
+    h.setObservation(barren);
+    const original = h.ask.getMockImplementation()!;
+    const line = 'Let me inspect another camera angle for an opening.';
+    h.ask.mockImplementation(async (q, opts) => {
+      const result = await original(q, opts);
+      await new Promise(resolve => setTimeout(resolve, 6000));
+      result.response!.speech = line;
+      result.latencyMs = 6000;
+      return result;
+    });
+    await jest.advanceTimersByTimeAsync(23000);
+    expect(h.said).toContain(line);
+    expect(h.said.filter(s => s.includes('I need a current view.')).length).toBeLessThanOrEqual(1);
+    expect(h.said).not.toContain('Waiting for camera analysis. Hold steady; I am retrying.');
+    h.task.dispose();
+  });
+
+  it('does not speak exploration from a rejected stale response', async () => {
+    const h = setup('store');
+    h.setObservation(barren);
+    const original = h.ask.getMockImplementation()!;
+    h.ask.mockImplementation(async (q, opts) => {
+      const result = await original(q, opts);
+      result.capturedAt = Date.now() - 20000;
+      result.response!.speech = 'Walk forward toward the doorway.';
+      return result;
+    });
+    await jest.advanceTimersByTimeAsync(20000);
+    expect(h.said).not.toContain('Walk forward toward the doorway.');
+    expect(h.said.filter(s => s.includes('I need a current view.'))).toHaveLength(1);
+    h.task.dispose();
+  });
+
+  it('discards an in-flight reply when the user requests a different view', async () => {
+    const h = setup('store');
+    h.setObservation(barren);
+    const original = h.ask.getMockImplementation()!;
+    let release!: (result: AskOutcome) => void;
+    let result!: AskOutcome;
+    h.ask.mockImplementationOnce(async (q, opts) => {
+      result = await original(q, opts);
+      result.response!.speech = 'The old view has a doorway on your right.';
+      return new Promise(resolve => { release = resolve; });
+    });
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(h.task.intercept('explore a different view')).toBe(true);
+    release(result);
+    await jest.advanceTimersByTimeAsync(500);
+    expect(h.said).not.toContain('The old view has a doorway on your right.');
+    expect(h.said).toContain('Stay here. Turn the camera slowly left for another view.');
+    h.task.dispose();
+  });
+
   it('proposes moving on inside the weak-area budget instead of studying the containers', async () => {
     const h = setup('store', 'bananas');
     h.setObservation(barren);
@@ -229,6 +285,21 @@ describe('leaving an area the camera shows nothing in', () => {
     });
     await jest.advanceTimersByTimeAsync(5000);
     expect(h.said).toContain(fourteen);
+    h.task.dispose();
+  });
+
+  it.each([null, 0.9, NaN])('withholds model walking suggestions without usable path evidence (%s)', async pathCenter => {
+    const h = setup('store', 'bananas', false, pathCenter);
+    h.setObservation(barren);
+    const original = h.ask.getMockImplementation()!;
+    h.ask.mockImplementation(async (q, opts) => {
+      const result = await original(q, opts);
+      result.response!.speech = 'Walk forward toward produce.';
+      return result;
+    });
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(h.said).not.toContain('Walk forward toward produce.');
+    expect(h.said).toContain('Hold still while I check the path ahead.');
     h.task.dispose();
   });
 

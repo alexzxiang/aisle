@@ -260,14 +260,14 @@ public struct HazardConfig: Equatable, Sendable {
   public var minArea: Double = 0.04
   public var minCenterY: Double = 1.0 / 3.0
   public var cooldownSeconds: Double = 3.0
-  /// Cart heuristic (09 §3): a wide, low box beside or below a person.
+  /// Legacy configuration retained for compatibility; shape-only cart relabeling is disabled.
   public var cartMinAspect: Double = 1.2
   public var cartMinBottom: Double = 0.6
 
   public init() {}
 }
 
-/// COCO `person` (and the `cart` heuristic) with box centre in the lower
+/// Detector-identified `person` / `cart` with box centre in the lower
 /// two-thirds and area above a size threshold → `onHazard`, ≤ 1 per 3 s. INFO
 /// semantics in JS; never STOP from this pipeline (09 §5.4).
 public struct HazardFilter {
@@ -279,23 +279,9 @@ public struct HazardFilter {
     self.limiter = RateLimiter(intervalSeconds: config.cooldownSeconds)
   }
 
-  /// Cart is not a COCO class. Relabel a wide, low box that sits next to a
-  /// person as `cart` so `Detection.cls` carries the heuristic honestly.
+  /// Preserve detector identity. Shape and proximity to a person do not identify a cart.
   public func applyCartHeuristic(_ detections: [DetectionPayload]) -> [DetectionPayload] {
-    let people = detections.filter { $0.cls == .person }
-    guard !people.isEmpty else { return detections }
-    return detections.map { det in
-      guard det.cls != .person, det.box.h > 0 else { return det }
-      let aspect = det.box.w / det.box.h
-      let isWideLow = aspect >= config.cartMinAspect && det.box.bottom >= config.cartMinBottom
-      let nearPerson = people.contains { person in
-        abs(person.box.centerX - det.box.centerX) < max(person.box.w, det.box.w)
-      }
-      if isWideLow && nearPerson {
-        return DetectionPayload(cls: .cart, box: det.box, score: det.score, trackId: det.trackId)
-      }
-      return det
-    }
+    detections
   }
 
   public mutating func evaluate(_ detections: [DetectionPayload], at t: Double) -> HazardPayload? {
@@ -340,6 +326,9 @@ public enum CocoLabels {
 public enum OpenImagesLabels {
   public static let kept: [String: DetectionClass] = [
     // Food classes actually present in Open Images. Containers do not identify contents.
+    "pastry": .pastry, "croissant": .pastry, "baked goods": .pastry,
+    "picnic basket": .basket, "strawberry": .strawberry, "watermelon": .watermelon,
+    "grapefruit": .grapefruit, "shellfish": .seafood, "shrimp": .seafood,
     "cheese": .cheese, "cream": .cream, "dairy product": .dairy, "seafood": .seafood,
     "pasta": .pasta, "juice": .juice, "ice cream": .iceCream, "cucumber": .cucumber,
     "bell pepper": .pepper, "grape": .grape, "lemon": .lemon, "pear": .pear, "peach": .peach,

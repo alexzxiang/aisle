@@ -95,8 +95,8 @@ export const SNAPSHOT_WIDTH: Readonly<Record<VisionQuestion, SnapshotWidth | nul
   hand_guidance: 640,
   curb_crop: 1024,
   free: null,
-  task_step: 768,   // read labels, door signs, fridge contents — a 384×512 frame could not
-  situate: 768,     // the room, floor to shelf
+  task_step: 1280,  // full portrait scene, preserving small product labels
+  situate: 1280,
 });
 
 const CROSSING_QUESTIONS: ReadonlySet<VisionQuestion> = new Set<VisionQuestion>(['scan_left', 'scan_right', 'curb_crop']);

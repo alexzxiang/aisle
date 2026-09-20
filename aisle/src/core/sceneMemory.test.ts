@@ -15,6 +15,14 @@ import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit } from './
 const det = (cls: Detection['cls'], cx: number, w = 0.3, h = 0.4, trackId = 1): Detection => ({ cls, box: [cx - w / 2, 0.3, w, h], score: 0.8, trackId });
 const pose = (yawDeg: number): Pose => ({ yawDeg, x: 0, y: 0, z: 0, trackingState: 'NORMAL', timestamp: 0 });
 
+it.each([
+  ['teacher desk', 'desk'], ['student desks', 'desk'], ['kitchen island', 'countertop'],
+  ['produce bin', 'food_container'], ['display shelves', 'shelf'], ['display table', 'table'],
+  ['bedside table', 'nightstand'], ['classroom chairs', 'chair'],
+])('preserves the supporting structure in %s', (words, cls) => {
+  expect(classForWords(words)).toBe(cls);
+});
+
 function rig(now: () => number) {
   const dets = new Set<(d: Detection[]) => void>();
   const poses = new Set<(p: Pose) => void>();

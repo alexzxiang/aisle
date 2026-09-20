@@ -376,6 +376,14 @@ describe('SpeechService', () => {
     expect(svc.getStats().textRepaired).toBe(2);
   });
 
+  it.each(['GUIDED_TASK', 'OUTDOOR_NAV'] as const)('preserves longer exploration speech only in guided tasks (%s)', mode => {
+    make(mode, { isDev: false });
+    const text = 'Produce is at the very back of the store, so keep walking straight forward.';
+    svc.say({ text, priority: 'NAV', searchNarration: true });
+    expect(svc.getStats().textRepaired).toBe(mode === 'GUIDED_TASK' ? 0 : 1);
+    if (mode === 'GUIDED_TASK') expect(svc.getStats().lastText).toBe(text);
+  });
+
   it('validateText applies the 6-word cap to Tier-1 prompts', () => {
     expect(validateText('Tilt the camera up a little please', { allowLong: false, isPrompt: true, isDev: false }).problems).toEqual(['7 words (max 6)']);
     expect(validateText('Tilt the camera up.', { allowLong: false, isPrompt: true, isDev: true }).problems).toEqual([]);

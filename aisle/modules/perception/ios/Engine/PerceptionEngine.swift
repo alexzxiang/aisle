@@ -383,7 +383,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
           tracked[own].cls = .hand
         }
         if indoor {
-          tracked = hazards.applyCartHeuristic(tracked)
+          // Only detector identities reach hazards and overlays; no shape-based relabeling.
           if let hazard = hazards.evaluate(tracked, at: frameTime) {
             emit(.hazard, hazard.dictionary, frameTime: frameTime)
           }

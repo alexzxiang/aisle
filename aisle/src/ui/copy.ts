@@ -93,7 +93,7 @@ export const SAY_CARD_EXAMPLES: readonly string[] = [
   'Find the eggs in my fridge',
   'What is around me',
 ];
-export const SAY_CARD_NOTE = 'Hold the talk button, or type it above.';
+export const SAY_CARD_NOTE = 'Hold the talk button, or type it below.';
 
 // ---------------------------------------------------------------------------
 // Typed input (the zero-risk keyboard path, 02 Task 7)

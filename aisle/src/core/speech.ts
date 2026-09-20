@@ -41,6 +41,7 @@ import {
   LONG_PHRASE_ALLOWLIST,
   MAX_PROMPT_WORDS,
   MAX_UTTERANCE_WORDS,
+  MAX_SEARCH_SPEECH_WORDS,
   PHRASES,
   PHRASE_CATEGORY,
   TIER1_PROMPT_KEYS,
@@ -145,10 +146,10 @@ export interface ValidatedText {
   drop: boolean;
 }
 
-export function validateText(text: string, opts: { allowLong: boolean; isPrompt: boolean; isDev: boolean }): ValidatedText {
+export function validateText(text: string, opts: { allowLong: boolean; isPrompt: boolean; isDev: boolean; searchNarration?: boolean }): ValidatedText {
   const violations = checkPhrase(text, {
     allowLong: opts.allowLong,
-    maxWords: opts.isPrompt ? MAX_PROMPT_WORDS : MAX_UTTERANCE_WORDS,
+    maxWords: opts.isPrompt ? MAX_PROMPT_WORDS : opts.searchNarration ? MAX_SEARCH_SPEECH_WORDS : MAX_UTTERANCE_WORDS,
   });
   if (violations.length === 0) return { text, problems: [], drop: false };
   const problems = violations.map((v) =>
@@ -539,7 +540,7 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
     const isPrompt = cls === 'prompt' || (cacheKey !== undefined && TIER1_PROMPT_KEYS.has(cacheKey));
 
     // Text guard: dev throws, prod repairs and reports (forbidden words drop).
-    const v = validateText(resolved.text, { allowLong, isPrompt, isDev });
+    const v = validateText(resolved.text, { allowLong, isPrompt, isDev, searchNarration: req.searchNarration === true && mode() === 'GUIDED_TASK' && req.priority === 'NAV' });
     if (v.problems.length > 0) {
       stats.textRepaired += 1;
       report(`say("${resolved.text}"): ${v.problems.join('; ')}${v.drop ? ' — dropped' : ' — truncated'}`);

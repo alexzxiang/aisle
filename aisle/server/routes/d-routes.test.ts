@@ -28,10 +28,11 @@ describe('POST /api/vision', () => {
     expect(deps.latency.stats('vision.storefront').n).toBe(1);
   });
 
-  it('rejects a bad question, a 1280-wide image and a missing seq with 400', async () => {
+  it('accepts 1280-wide frames but rejects oversized images and malformed requests', async () => {
     srv = await startTestServer(fakeDeps());
     expect((await post(`${srv.url}/api/vision`, sampleRequest({ question: 'describe' as never }))).status).toBe(400);
-    expect((await post(`${srv.url}/api/vision`, sampleRequest({ image: { base64: 'x'.repeat(64), width: 1280, height: 960 } }))).status).toBe(400);
+    expect((await post(`${srv.url}/api/vision`, sampleRequest({ image: { base64: 'x'.repeat(64), width: 1280, height: 960 } }))).status).toBe(200);
+    expect((await post(`${srv.url}/api/vision`, sampleRequest({ image: { base64: 'x'.repeat(64), width: 1600, height: 1200 } }))).status).toBe(400);
     const r = await post(`${srv.url}/api/vision`, { question: 'storefront', mode: 'OUTDOOR_NAV', facts: { detections: [], ocr: [] } });
     expect(r.status).toBe(400);
   });

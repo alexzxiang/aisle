@@ -116,7 +116,7 @@ export function createNativePerceptionService(native: PerceptionNativeModule): P
     },
     async snapshotJPEG(maxWidth): Promise<Snapshot> {
       if (!isSnapshotWidth(maxWidth)) {
-        throw new Error(`[perception] snapshotJPEG width must be 512 | 640 | 768 | 1024, got ${String(maxWidth)}`);
+        throw new Error(`[perception] snapshotJPEG width must be 512 | 640 | 768 | 1024 | 1280, got ${String(maxWidth)}`);
       }
       return native.snapshotJPEG(maxWidth);
     },

@@ -67,7 +67,7 @@ export function setCameraPreviewForTests(impl: CameraPreviewComponent | null): v
 export interface CameraPanelProps {
   slots: StripSlot[];
   accent?: string;
-  /** Caps the panel height on short screens; width still rules the 4:3 shape. */
+  /** Explicit responsive height; keep the full available width instead of shrinking by aspect ratio. */
   maxHeight?: number;
   style?: StyleProp<ViewStyle>;
   reduceMotion?: boolean;
@@ -78,7 +78,7 @@ export function CameraPanel({ slots, accent, maxHeight, style, reduceMotion }: C
   return (
     <GlassPanel
       reduceMotion={reduceMotion}
-      style={[styles.panel, maxHeight !== undefined && { maxHeight }, style]}
+      style={[styles.panel, maxHeight !== undefined && { height: maxHeight, aspectRatio: undefined }, style]}
       contentStyle={styles.content}
       testID="camera-panel"
     >

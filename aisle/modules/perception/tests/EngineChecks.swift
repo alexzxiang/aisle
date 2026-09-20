@@ -256,7 +256,15 @@ func trackerChecks() {
   check("hazard: person ahead → PERSON_AHEAD CENTER, then ≤ 1 per 3 s", h1?.kind == .personAhead && h1?.direction == .center && h2 == nil && h3 != nil)
   let wideLow = DetectionPayload(cls: .bicycle, box: NormalizedBox(x: 0.35, y: 0.65, w: 0.30, h: 0.15), score: 0.8, trackId: 2)
   let relabeled = hazards.applyCartHeuristic([person, wideLow])
-  check("hazard: a wide low box beside a person is relabelled cart", relabeled.contains { $0.cls == .cart && $0.trackId == 2 })
+  check("hazard: a wide low bicycle stays a bicycle beside a person", relabeled.contains { $0.cls == .bicycle && $0.trackId == 2 } && !relabeled.contains { $0.cls == .cart })
+  for cls: DetectionClass in [.bowl, .chair, .table, .basket, .bottle] {
+    var object = wideLow
+    object.cls = cls
+    let result = hazards.applyCartHeuristic([person, object])
+    check("hazard: wide low \(cls.rawValue) retains its identity beside a person",
+          result.contains { $0.cls == cls && $0.trackId == object.trackId } && !result.contains { $0.cls == .cart })
+  }
+  check("additional supported grocery classes map", OpenImagesLabels.detectionClass(for: "Pastry") == .pastry && OpenImagesLabels.detectionClass(for: "Picnic basket") == .basket && OpenImagesLabels.detectionClass(for: "Strawberry") == .strawberry)
   let tiny = DetectionPayload(cls: .person, box: box(cx: 0.5, cy: 0.6, w: 0.05, h: 0.1), score: 0.9, trackId: 3)
   check("hazard: a small (far) person is not a hazard", hazards.evaluate([tiny], at: 20) == nil)
 }
@@ -564,8 +572,8 @@ func snapshotChecks() {
         SnapshotEncoder.scaleToLongEdge(small, maxWidth: 768).extent.width == 320)
 
   check("snapshot: expectedSize matches a 4:3 sensor", SnapshotEncoder.expectedSize(maxWidth: 768) == (768, 576))
-  check("snapshot: the allowed widths are the four the contract names",
-        SnapshotEncoder.allowedWidths == [512, 640, 768, 1024])
+  check("snapshot: the allowed widths match the contract",
+        SnapshotEncoder.allowedWidths == [512, 640, 768, 1024, 1280])
 
   // --- the reason Lanczos is here: a 4x reduction must not alias detail away ---
   // One-pixel stripes reduced 4x. Bilinear point-samples and returns near-flat

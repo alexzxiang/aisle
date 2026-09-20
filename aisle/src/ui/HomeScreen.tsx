@@ -1,13 +1,10 @@
 /**
  * Home: one question, "What do you need?", answered by voice or by a text
- * field (keyboard dictation is the zero-risk fallback that always ships,
- * 02 Task 7). Below it, practice and settings, then either the conversation so
- * far or -- before the first line -- the card of things to say, then the three
- * sentences the first launch owes the user: disclaimer, privacy,
- * walking-routes beta.
+ * field. Camera and task sit above a thumb-accessible talk/chat/type dock.
+ * Small screens and large text use a single scroll surface.
  */
 import React, { useCallback, useState } from 'react';
-import { Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { CameraPanel, isCameraLive } from './CameraPanel';
 import { ScenePanel } from './ScenePanel';
 import { StateBand } from './StateBand';
@@ -52,25 +49,23 @@ export interface HomeScreenProps {
   reduceMotion?: boolean;
 }
 
-/** The Home camera is a viewfinder, not the page: about a quarter of the window at most. */
-export const HOME_CAMERA_MAX_HEIGHT_SHARE = 0.42;
+/** Large viewfinder in the scroll area above the independent talk/chat/type dock. */
+export const HOME_CAMERA_MAX_HEIGHT_SHARE = 0.5;
 /**
- * Points Home keeps below the camera: the scene line, the item field, the talk
- * button and the two buttons under it. Home scrolls, so this is about what the
- * user sees without scrolling, not about fitting.
+ * Reserve room on short windows; the upper area scrolls independently of the dock.
  */
-export const HOME_CAMERA_RESERVE_PT = 420;
+export const HOME_CAMERA_RESERVE_PT = 360;
 
 export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
-  const { onOpenDebug, onOpenSettings, voice, conversation, betaNotice = WALKING_BETA_FALLBACK, now: nowOverride } = props;
+  const { onOpenDebug, voice, conversation, betaNotice = WALKING_BETA_FALLBACK, now: nowOverride } = props;
   const reduceMotion = useResolvedReduceMotion(props.reduceMotion);
   const mode = useMode();
-  const setMode = useStoreSlice((s) => s.setMode);
   const abort = useStoreSlice((s) => s.abort);
   const targetItem = useStoreSlice((s) => s.targetItem);
   const destinationOnly = useStoreSlice((s) => s.destinationOnly);
   const scene = useStoreSlice((s) => s.scene);
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
+  const scrollControls = windowHeight < 600 || fontScale > 1.3;
   const bus = useBus();
   const haptics = useOptionalService('haptics');
   const speech = useOptionalService('speech');
@@ -99,10 +94,6 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
     if (ack && speech) speech.say({ text: ack, priority: 'NAV', dedupeKey: 'ui_item_ack', cooldownMs: 1000 });
   }, [draft, bus, haptics, speech, voice]);
 
-  const practice = useCallback(() => {
-    setMode('ONBOARDING');
-  }, [setMode]);
-
   // A request is in flight: the store holds the item while we wait for ROUTE_READY.
   const pending = mode === 'IDLE' && targetItem !== null;
   const hero = heroText(mode, facts, now, { item: targetItem, side: null, destinationOnly });
@@ -111,10 +102,26 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const detections = useDetections();
   const slots = awarenessSlots({ scene, cameraLive: isCameraLive(), detections });
 
+  const controls = (
+    <View style={styles.controls}>
+      <TalkButton voice={voice} reduceMotion={reduceMotion} />
+      <TranscriptPanel entries={entries} max={HOME_TRANSCRIPT_MAX} showDescribe={false} reduceMotion={reduceMotion} style={styles.transcript} />
+      <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.sectionLabel}>Type your request</Text>
+      <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.fieldRow}>
+        <TextInput value={draft} onChangeText={setDraft} onSubmitEditing={submit}
+          placeholder={ITEM_FIELD_PLACEHOLDER} placeholderTextColor={colors.placeholder}
+          returnKeyType="done" autoCapitalize="none" autoCorrect
+          accessibilityLabel={ITEM_FIELD_LABEL} accessibilityHint="Type or dictate the item you are looking for"
+          allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.field} />
+        <Button label={FIND_LABEL} onPress={submit} size="compact" primary
+          disabled={normalizeTypedItem(draft) === null} reduceMotion={reduceMotion} style={styles.find} />
+      </GlassPanel>
+    </View>
+  );
+
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Backdrop accent={accent} reduceMotion={reduceMotion} />
-      <StateBand mode={mode} hero={hero} onLongPressMode={onOpenDebug} reduceMotion={reduceMotion} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -122,28 +129,12 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
         keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets
       >
-        <TalkButton voice={voice} reduceMotion={reduceMotion} />
-        <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.sectionLabel}>
-          Or type your request
-        </Text>
-        <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.fieldRow}>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            onSubmitEditing={submit}
-            placeholder={ITEM_FIELD_PLACEHOLDER}
-            placeholderTextColor={colors.placeholder}
-            returnKeyType="done"
-            autoCapitalize="none"
-            autoCorrect
-            accessibilityLabel={ITEM_FIELD_LABEL}
-            accessibilityHint="Type or dictate the item you are looking for"
-            allowFontScaling
-            maxFontSizeMultiplier={fontScaleCap.body}
-            style={styles.field}
-          />
-          <Button label={FIND_LABEL} onPress={submit} size="compact" primary disabled={normalizeTypedItem(draft) === null} reduceMotion={reduceMotion} style={styles.find} />
-        </GlassPanel>
+        <CameraPanel slots={slots} accent={accent}
+          maxHeight={cameraMaxHeight(windowHeight, HOME_CAMERA_MAX_HEIGHT_SHARE, HOME_CAMERA_RESERVE_PT)}
+          reduceMotion={reduceMotion} style={styles.camera} />
+        <StateBand mode={mode} modeWord="Task" hero={targetItem ?? 'Choose an item'}
+          instruction={hero} onLongPressMode={onOpenDebug} reduceMotion={reduceMotion} style={styles.scene} />
+        <ScenePanel scene={scene} reduceMotion={reduceMotion} style={styles.scene} />
 
         {error ? (
           <Text accessibilityRole="alert" allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.error}>
@@ -160,26 +151,7 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
           </GlassPanel>
         ) : null}
 
-        <View style={styles.row}>
-          <Button label={PRACTICE_LABEL} onPress={practice} hint="Replays the one-minute vibration lesson" reduceMotion={reduceMotion} style={styles.half} />
-          <Button label={SETTINGS_LABEL} onPress={onOpenSettings} hint="Speaking rate, training mode, describing, headphones" reduceMotion={reduceMotion} style={styles.half} />
-        </View>
-
-        <Text accessibilityRole="header" allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.sectionLabel}>
-          Your surroundings
-        </Text>
-        <CameraPanel
-          slots={slots}
-          accent={accent}
-          maxHeight={cameraMaxHeight(windowHeight, HOME_CAMERA_MAX_HEIGHT_SHARE, HOME_CAMERA_RESERVE_PT)}
-          reduceMotion={reduceMotion}
-          style={styles.camera}
-        />
-        <ScenePanel scene={scene} reduceMotion={reduceMotion} style={styles.scene} />
-
-        {entries.length > 0 ? (
-          <TranscriptPanel entries={entries} max={HOME_TRANSCRIPT_MAX} showDescribe={false} reduceMotion={reduceMotion} style={styles.transcript} />
-        ) : (
+        {entries.length === 0 ? (
           <GlassPanel
             reduceMotion={reduceMotion}
             contentStyle={styles.sayCard}
@@ -200,7 +172,7 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
               {SAY_CARD_NOTE}
             </Text>
           </GlassPanel>
-        )}
+        ) : null}
 
         <View style={styles.notes} accessibilityRole="summary">
           <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.note}>
@@ -213,8 +185,10 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
             {betaNotice}
           </Text>
         </View>
+        {scrollControls ? controls : null}
       </ScrollView>
-    </View>
+      {scrollControls ? null : controls}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -228,6 +202,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
+    flexGrow: 1,
     paddingHorizontal: sizes.gutter,
     paddingTop: space.m,
     paddingBottom: space.xxl,
@@ -271,7 +246,12 @@ const styles = StyleSheet.create({
   },
   transcript: {
     marginHorizontal: 0,
-    height: 300,
+    height: 160,
+  },
+  controls: {
+    paddingHorizontal: sizes.gutter,
+    paddingBottom: space.l,
+    gap: space.s,
   },
   sectionLabel: {
     ...type.meta,

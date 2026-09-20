@@ -4802,6 +4802,158 @@
       "generatedAt": "2026-09-19T18:40:01.316Z",
       "normalizationVersion": "speech-compressed-lufs-v2",
       "normalizedSha256": "aa5c57da10baae6512fbad0d2c9f5f24e5d407408fdecaa6b874a78bce8d0619"
+    },
+    "mission_search_resume": {
+      "key": "mission_search_resume",
+      "file": "mission_search_resume.mp3",
+      "textSha1": "468e0ce56cb1e27744333cbee1bf8f3fbd449401",
+      "bytes": 17598,
+      "estimatedMs": 2200,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_path": {
+      "key": "mission_search_path",
+      "file": "mission_search_path.mp3",
+      "textSha1": "03cc2fad3e367b0a9c39bcb69fe7ae5fc238238d",
+      "bytes": 16135,
+      "estimatedMs": 2017,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_opening": {
+      "key": "mission_search_opening",
+      "file": "mission_search_opening.mp3",
+      "textSha1": "3ab46aee7ed380b83444a2b63bc07f3f4849dd8b",
+      "bytes": 18434,
+      "estimatedMs": 2304,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_position": {
+      "key": "mission_search_position",
+      "file": "mission_search_position.mp3",
+      "textSha1": "4f7c0cda9a1968531ea4d9fe186486bf59817c9c",
+      "bytes": 20315,
+      "estimatedMs": 2539,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_recheck": {
+      "key": "mission_search_recheck",
+      "file": "mission_search_recheck.mp3",
+      "textSha1": "275d6dd32db63bcb47b904db4ea2a0af2b81ecf0",
+      "bytes": 16971,
+      "estimatedMs": 2121,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_stop": {
+      "key": "mission_search_stop",
+      "file": "mission_search_stop.mp3",
+      "textSha1": "824cc4d74e17a32c1912088ef313e7c96c594987",
+      "bytes": 15090,
+      "estimatedMs": 1886,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_inspect": {
+      "key": "mission_search_inspect",
+      "file": "mission_search_inspect.mp3",
+      "textSha1": "47b45c501a46ee73636f5c8a53ae8edb4b6820f9",
+      "bytes": 23240,
+      "estimatedMs": 2905,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_shelves": {
+      "key": "mission_search_shelves",
+      "file": "mission_search_shelves.mp3",
+      "textSha1": "89e2ec7b874ea67bf82e17c5b94bb263f6efd9d3",
+      "bytes": 26166,
+      "estimatedMs": 3271,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_sign": {
+      "key": "mission_search_sign",
+      "file": "mission_search_sign.mp3",
+      "textSha1": "47240b85a9fe56a9fdffc75b6dad171a8d208e89",
+      "bytes": 28047,
+      "estimatedMs": 3506,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_stalled": {
+      "key": "mission_search_stalled",
+      "file": "mission_search_stalled.mp3",
+      "textSha1": "55e8844d02a6a20fbb89f4c345d38536049043af",
+      "bytes": 27211,
+      "estimatedMs": 3401,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_timeout": {
+      "key": "mission_search_timeout",
+      "file": "mission_search_timeout.mp3",
+      "textSha1": "7d4b6bbb3f7928fbf8d423fab7baa34e534b0020",
+      "bytes": 16971,
+      "estimatedMs": 2121,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_view": {
+      "key": "mission_search_view",
+      "file": "mission_search_view.mp3",
+      "textSha1": "896602592f53b287669faa729aed3e7b27b53f43",
+      "bytes": 17598,
+      "estimatedMs": 2200,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_dark": {
+      "key": "mission_search_dark",
+      "file": "mission_search_dark.mp3",
+      "textSha1": "a0703a054eae7f6b91990cfc21a4162a93e8dcac",
+      "bytes": 18434,
+      "estimatedMs": 2304,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_consent": {
+      "key": "mission_search_consent",
+      "file": "mission_search_consent.mp3",
+      "textSha1": "b7c410dfb6e6463ba74de6a4829d2a8fbda90c26",
+      "bytes": 15508,
+      "estimatedMs": 1939,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_stay": {
+      "key": "mission_search_stay",
+      "file": "mission_search_stay.mp3",
+      "textSha1": "03c84d0d9d1afbf1566aaa5e57d6452541d98fff",
+      "bytes": 16553,
+      "estimatedMs": 2069,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_blur": {
+      "key": "mission_search_blur",
+      "file": "mission_search_blur.mp3",
+      "textSha1": "c8ae054e38a95e82bf6df2c81720ebd5ede5af19",
+      "bytes": 28047,
+      "estimatedMs": 3506,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_upper": {
+      "key": "mission_search_upper",
+      "file": "mission_search_upper.mp3",
+      "textSha1": "11bcece16de4a9ac41b9406ec11f2e6dc6c8f14b",
+      "bytes": 14254,
+      "estimatedMs": 1782,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_middle": {
+      "key": "mission_search_middle",
+      "file": "mission_search_middle.mp3",
+      "textSha1": "4abdcedac70811c360a96c8bef10601c8df76777",
+      "bytes": 12373,
+      "estimatedMs": 1547,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
+    },
+    "mission_search_lower": {
+      "key": "mission_search_lower",
+      "file": "mission_search_lower.mp3",
+      "textSha1": "84b2f4373b047aa2a0cf06a239950c1425b9271f",
+      "bytes": 15090,
+      "estimatedMs": 1886,
+      "generatedAt": "2026-09-20T05:44:19.979Z"
     }
   }
 }

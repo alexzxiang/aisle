@@ -59,7 +59,9 @@ export interface SearchDirective {
 }
 export interface SearchExplorer {
   analyzing?(pending: boolean): void;
-  observe(observation: SearchObservation | undefined, seq: number, capturedAt: number): void;
+  observe(observation: SearchObservation | undefined, seq: number, capturedAt: number): boolean;
+  /** A model sentence owns this scan turn; do not immediately follow it with canned choreography. */
+  narrated(): void;
   tick(target: string, direct: GuideInstruction | null, opts?: { surface?: boolean; confined?: boolean }): SearchDirective | null;
   intercept(text: string): { consumed: boolean; text: string | null };
   target(): string | null;
@@ -74,7 +76,7 @@ export interface SearchExplorer {
   /** The explorer is walking or waiting for consent (round 14): the navigator holds its guesses. */
   busy(): boolean;
   /**
-   * A generic store look-around with the target not yet nearby: the model owns the words this
+   * A generic look-around in any environment with the target not yet nearby: the model owns the words this
    * turn (it can say where the item likely is and which way to explore). False the moment the
    * area looks promising, a close-shelf inspection starts, or the explorer moves/asks consent —
    * then the computer-vision geometry owns the words and zeroes the user in.
@@ -211,6 +213,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   let lastSeq = -1;
   let observedAt = -Infinity;
   let analyzing = false;
+  let cameraWaitAt = -Infinity;
+  let modelNarratedAt = -Infinity;
   let strategy: SearchObservation['strategy'];
   let explained = '';
   let quality: SearchObservation['quality'] = 'occluded';
@@ -352,6 +356,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   // including explicit "explore" requests, so a fallback cannot reintroduce them.
   const groceryDestination = (l: SearchLandmark): boolean => deps.context === 'store'
     ? !/\b(bowls?|countertops?|desks?|tables?)\b/i.test(l.name)
+      || /\b(?:display|merchandise|produce|bakery) tables?\b/i.test(l.name)
     : deps.context === 'classroom' ? !/\b(fridge|freezer|produce|pantry|bedroom)\b/i.test(l.name) : true;
   const promisingHere = (): boolean => quality === 'usable' && (
     (strategy?.confidence !== undefined && strategy.confidence >= 0.8 && strategy.relevance === 'promising' && strategy.action === 'inspect')
@@ -458,15 +463,18 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   };
   return {
     observe(o, seq, capturedAt) {
-      if (!o || seq <= lastSeq || capturedAt > now() || now() - capturedAt > FRESH_MS) return;
+      if (!o || seq <= lastSeq || capturedAt > now() || now() - capturedAt > FRESH_MS) {
+        deps.trace?.('search_rejected', { reason: !o ? 'missing_search' : 'stale_or_duplicate', seq, capturedAt });
+        return false;
+      }
       const currentPose = deps.pose?.() ?? null;
       if (currentPose) map?.ingestPose(currentPose);
       map?.trip.observe(o, deps.item, capturedAt);
       // A delayed frame describes its capture viewpoint, not where the camera faces now.
       const capturePose = map?.trip.poseAt(capturedAt);
-      if (map && deps.pose && !capturePose) { deps.trace?.('search_rejected', { reason: 'capture_pose_missing', seq }); return; }
+      if (map && deps.pose && !capturePose) { deps.trace?.('search_rejected', { reason: 'capture_pose_missing', seq }); return false; }
       if (capturePose && currentPose && (Math.hypot(capturePose.x - currentPose.x, capturePose.z - currentPose.z) > 1
-        || Math.abs(((capturePose.yawDeg - currentPose.yawDeg + 540) % 360) - 180) > 25)) { deps.trace?.('search_rejected', { reason: 'viewpoint_changed', seq }); return; }
+        || Math.abs(((capturePose.yawDeg - currentPose.yawDeg + 540) % 360) - 180) > 25)) { deps.trace?.('search_rejected', { reason: 'viewpoint_changed', seq }); return false; }
       lastSeq = seq;
       observedAt = capturedAt;
       quality = o.confidence >= OBSERVATION_MIN_CONFIDENCE ? o.quality : 'occluded';
@@ -478,7 +486,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       unusableStreak = quality === 'usable' ? 0 : unusableStreak + 1;
       // "blurred" and "occluded" are Claude's words for a cluttered kitchen at arm's length; the
       // landmarks it lists in such a frame are still ways on. Only very low confidence is discarded.
-      if (o.confidence < 0.5) return;
+      if (o.confidence < 0.5) return false;
       const previous = landmarks;
       // The same landmark comes back under drifting names ("aisle end", "end of aisle"): match by
       // kind and overlap first, name second, and keep the first name so the person hears one word.
@@ -538,6 +546,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
             || !!currentPose && !!map?.bestHeading(currentPose, currentPose.yawDeg, deps.path?.() ?? null))))))) {
         resumeScan(false);
       }
+      return quality === 'usable';
     },
     tick(target, direct, opts = {}) {
       targetWords = target;
@@ -701,7 +710,13 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         if (now() - Math.max(startedAt, observedAt) > 30000) {
           return pause('Waiting for camera analysis. Hold steady; I am retrying.', 'camera');
         }
-        return emit('Hold the camera steady. I need a current view.');
+        // A normal model round trip is not a new camera failure on every tick.
+        // Keep the last instruction while analysis is pending; announce a real
+        // outage once, then the paused-state retry uses its own slow cadence.
+        if (analyzing || now() - cameraWaitAt < 30000) return { text: null, target, phase };
+        const wait = emit('Hold the camera steady. I need a current view.');
+        if (wait.text) cameraWaitAt = now();
+        return wait;
       }
       if (unusableStreak >= 3 && landmarks.length === 0 && now() - localScanAt < 45000) return emit(quality === 'dark' ? 'The view is dark. Aim toward a brighter area.' : 'The view is blocked or blurred. Hold the camera steady.');
       if (unusableStreak >= 3 && landmarks.length === 0 && now() - localScanAt >= 45000) {
@@ -759,15 +774,21 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           return pause('No opening seen. Turn slowly; I am checking for another way.', 'opening');
         }
         const corridor = deps.context === 'store' && /\baisle end|end of (?:the )?aisle|corridor\b/i.test(area.landmark ?? '');
-        // A generic store look-around is the model's turn to narrate; close-shelf inspection is geometry's.
-        const generic = deps.context === 'store' && !(opts.confined || closeMode || (opts.surface && promisingHere()));
+        // Generic exploration can use model narration in every environment; close inspection stays deterministic.
+        const generic = !(opts.confined || closeMode || (opts.surface && promisingHere()));
         const text = (opts.confined || closeMode || (opts.surface && promisingHere()) ? (deps.context === 'store' || opts.confined ? SHELVES : SURFACES) : deps.context === 'store' ? (corridor ? CORRIDOR_SCANS : AISLE_SCANS) : SCANS)[scan]!;
         scan += 1; scanAt = now();
-        return emit(text, targetWords, generic);
+        // Keep a deterministic fallback if the model supplies no usable speech.
+        return emit(text, targetWords, generic && now() - modelNarratedAt < 15000);
       }
       return { text: null, target, phase };
     },
     intercept(text) {
+      if (/\b(?:explore|look at|show|try|check|scan) (?:a |the )?(?:different|another|new) (?:view|angle)\b/i.test(text)) {
+        resumeScan(true);
+        scan = 1; scanAt = now(); saidAt = now();
+        return { consumed: true, text: 'Stay here. Turn the camera slowly left for another view.' };
+      }
       if (/^(?:please )?(?:search(?: again)?|resume(?: searching| search| the search)?|continue(?: trying to)?(?: searching| search| the search)?|keep (?:looking|searching)|scan again|try again|look again)(?: for (?:the )?.+)?[.!]?$/i.test(text.trim())) { resumeScan(true); return { consumed: true, text: 'Resuming the search. Hold the camera steady.' }; }
       if (/^(?:where have we (?:looked|been)|what have we checked)[?!.]?$/i.test(text.trim())) {
         return { consumed: true, text: areas.some((a) => a.outcome === 'not_seen_in_scanned_views') ? 'We checked several views. Hidden items may still be there.' : 'We have only partly inspected this area.' };
@@ -815,7 +836,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     repeat: () => { saidAt = -Infinity; },
     restart: () => resumeScan(true),
     busy: () => phase === 'move' || phase === 'advance' || phase === 'permission',
-    narrating: () => phase === 'scan' && deps.context === 'store' && !closeMode && !lastConfined && !promisingHere(),
+    narrating: () => phase === 'scan' && quality === 'usable' && now() - observedAt <= FRESH_MS && !trackingStopped && !closeMode && !lastConfined && !promisingHere(),
+    narrated: () => { modelNarratedAt = now(); saidAt = now(); pendingNarration = null; followUp = null; },
     exploreNow(prefer = null, consent = true) {
       gaveUpAt = -Infinity; startedAt = now(); localScanAt = now();
       map?.trip.defer(deps.item);

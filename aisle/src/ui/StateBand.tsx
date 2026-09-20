@@ -98,6 +98,8 @@ export interface StateBandProps {
   mode: AppMode;
   /** The one instruction, at most twelve words. */
   hero: string;
+  /** Current guidance below a stable task/item title. */
+  instruction?: string;
   /** Only read at the curb and while crossing; pass the last known state. */
   signal?: SignalState;
   /** 1.5 s long-press on the mode word. */
@@ -122,7 +124,7 @@ export function StateBand(props: StateBandProps): React.JSX.Element {
   const systemScreenReader = useScreenReader();
   const screenReader = props.screenReader ?? systemScreenReader;
   const speech = useOptionalService('speech') as SpeechCarrier | undefined;
-  useHeroAnnouncement(hero, { screenReader, speech, announce: props.announce });
+  useHeroAnnouncement(props.instruction ?? hero, { screenReader, speech, announce: props.announce });
 
   return (
     <GlassPanel tint={accent} reduceMotion={reduceMotion} style={[styles.band, style]} contentStyle={styles.content} testID="state-band">
@@ -148,7 +150,7 @@ export function StateBand(props: StateBandProps): React.JSX.Element {
 
       <Text
         accessibilityRole="header"
-        accessibilityLiveRegion="polite"
+        accessibilityLiveRegion={props.instruction ? undefined : 'polite'}
         accessible
         allowFontScaling
         maxFontSizeMultiplier={fontScaleCap.hero}
@@ -156,6 +158,8 @@ export function StateBand(props: StateBandProps): React.JSX.Element {
       >
         {hero}
       </Text>
+      {props.instruction ? <Text accessibilityLiveRegion="polite" allowFontScaling
+        maxFontSizeMultiplier={fontScaleCap.body} style={styles.instruction}>{props.instruction}</Text> : null}
     </GlassPanel>
   );
 }
@@ -200,5 +204,10 @@ const styles = StyleSheet.create({
     ...type.hero,
     color: colors.text,
     textAlign: 'left',
+  },
+  instruction: {
+    ...type.body,
+    color: colors.secondary,
+    marginTop: space.s,
   },
 });

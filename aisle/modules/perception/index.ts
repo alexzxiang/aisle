@@ -284,7 +284,7 @@ export function subscribePerceptionEvent<K extends PerceptionEventName>(
   }
 }
 
-export const SNAPSHOT_WIDTHS = [512, 640, 768, 1024] as const;
+export const SNAPSHOT_WIDTHS = [512, 640, 768, 1024, 1280] as const;
 export type SnapshotWidth = (typeof SNAPSHOT_WIDTHS)[number];
 
 export function isSnapshotWidth(w: number): w is SnapshotWidth {

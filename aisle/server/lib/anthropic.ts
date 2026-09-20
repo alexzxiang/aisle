@@ -34,7 +34,7 @@ export function visionTimeoutFor(question: string): number {
   if (question === 'task_step') return 10_000;
   return question === 'curb_crop' ? VISION_TIMEOUT_MS : VISION_TIMEOUT_SLACK_MS;
 }
-export const MAX_IMAGE_LONG_EDGE = 1024;
+export const MAX_IMAGE_LONG_EDGE = 1280;
 
 export type VisionModel = typeof MODELS.haiku | typeof MODELS.sonnet;
 

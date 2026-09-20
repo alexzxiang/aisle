@@ -23,6 +23,46 @@ it.each(['Should I go forward or explore some other area', 'Can I go forward to 
   expect(exploreRequest(text).asked).toBe(true);
 });
 
+it.each(['home', 'store', 'classroom'] as const)('coordinates analysis, narration and another view in %s', context => {
+  let t = 100000;
+  const search = createSearchExplorer({ item: 'keys', context, now: () => t, guide: { instructionFor: () => null } });
+  const waits: string[] = [];
+  search.analyzing!(true);
+  for (let i = 0; i < 10; i++) {
+    t += 1000;
+    const text = search.tick('keys', null)?.text;
+    if (text) waits.push(text);
+  }
+  expect(waits).toEqual([]);
+  expect(search.observe(view({ landmarks: [] }), 1, t - 6000)).toBe(true);
+  search.analyzing!(false);
+  expect(search.narrating()).toBe(true);
+  search.narrated();
+  expect(search.tick('keys', null)?.text).toBeNull();
+  expect(search.intercept('explore a different view')).toEqual({ consumed: true, text: 'Stay here. Turn the camera slowly left for another view.' });
+  expect(search.status()).toBe('scan');
+});
+
+it('throttles camera-wait prompts and rejects stale speech evidence', () => {
+  let t = 100000;
+  const search = createSearchExplorer({ item: 'keys', context: 'home', now: () => t, guide: { instructionFor: () => null } });
+  const lines: string[] = [];
+  for (let i = 0; i < 29; i++) {
+    t += 1000;
+    const text = search.tick('keys', null)?.text;
+    if (text) lines.push(text);
+  }
+  expect(lines).toEqual(['Hold the camera steady. I need a current view.']);
+  expect(search.observe(view(), 1, t - 20000)).toBe(false);
+  expect(search.narrating()).toBe(false);
+});
+
+it.each(['produce display table', 'produce island', 'display bin'])('accepts observed store supports: %s', name => {
+  const search = createSearchExplorer({ item: 'bananas', context: 'store', now: () => 100000, guide: { instructionFor: () => null } });
+  search.observe(view({ landmarks: [{ name, kind: 'surface', section: 'produce', box: [0.1, 0.2, 0.3, 0.4], confidence: 0.9 }] }), 1, 100000);
+  expect(search.exploreNow(null, false)).toMatchObject({ phase: 'permission', target: name });
+});
+
 it.each(['classroom', 'unknown'] as const)('does not introduce household priors in %s', context => {
   const mission = createMissionRunner(parseMissionGoal('bananas')!, { context, guide: { instructionFor: () => null } });
   expect(mission.tick().decision.explore).toBe(true);

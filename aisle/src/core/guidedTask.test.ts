@@ -129,7 +129,7 @@ describe('createGuidedTask', () => {
       return { status: 'applied', seq: ++seq, capturedAt: Date.now(), response, streamed: false, latencyMs: 0 };
     } });
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => Date.now() });
-    const task = createGuidedTask({ ...h.deps, guide, adaptiveSearch: true });
+    const task = createGuidedTask({ ...h.deps, guide, adaptiveSearch: true, path: () => ({ center: 0.1 }) });
     h.bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas', context: 'store', source: 'keyboard' });
     await flush(35000);
     expect(h.said.some(r => r.text.includes('Waiting for camera analysis'))).toBe(true);

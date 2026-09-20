@@ -74,12 +74,20 @@ export function bearingFor(yawDeg: number, box: Detection['box'], hfovDeg: numbe
 export function classForWords(words: string): DetectionClass | null {
   const w = words.toLowerCase();
   const table: ReadonlyArray<[RegExp, DetectionClass]> = [
+    // Specific supports before their contents or generic "table" / waste "bin".
+    [/\b(?:kitchen island|breakfast bar|work ?top|counter ?top)\b/, 'countertop'],
+    [/\b(?:produce|display|food|storage) (?:bin|bins|container|containers)\b/, 'food_container'],
+    [/\b(?:display|merchandise|grocery) (?:shelf|shelves|rack|racks)\b/, 'shelf'],
+    [/\bdesks?\b/, 'desk'],
+    [/\b(?:bedside table|night table|nightstand)\b/, 'nightstand'],
     [/\b(cheese|cheddar|mozzarella)\b/, 'cheese'], [/\bice cream\b/, 'ice_cream'], [/\bcream\b/, 'cream'],
     [/\bdairy(?: products?)?\b/, 'dairy'], [/\bseafood\b/, 'seafood'], [/\bpasta\b/, 'pasta'], [/\bjuice\b/, 'juice'],
     [/\bcucumbers?\b/, 'cucumber'], [/\b(?:bell )?peppers?\b/, 'pepper'], [/\bgrapes?\b/, 'grape'],
     [/\blemons?\b/, 'lemon'], [/\bpears?\b/, 'pear'], [/\bpeach(?:es)?\b/, 'peach'], [/\bfood containers?\b/, 'food_container'],
+    [/\bpastr(?:y|ies)|\bcroissants?\b/, 'pastry'], [/\bbaskets?\b/, 'basket'],
+    [/\bstrawberr(?:y|ies)\b/, 'strawberry'], [/\bwatermelons?\b/, 'watermelon'], [/\bgrapefruits?\b/, 'grapefruit'],
     [/\b(fridge|refrigerator|freezer)\b/, 'fridge'], [/\b(couch|sofa|settee)\b/, 'couch'], [/\b(tv|television|telly|screen)\b/, 'tv'],
-    [/\b(table|dining table|desk)\b/, 'table'], [/\b(chair|seat|stool)\b/, 'chair'], [/\b(bed)\b/, 'bed'],
+    [/\b(tables?|dining table)\b/, 'table'], [/\b(chairs?|seat|stool)\b/, 'chair'], [/\b(bed)\b/, 'bed'],
     [/\b(sink|faucet|tap)\b/, 'sink'], [/\b(oven|stove|cooker|range)\b/, 'oven'], [/\b(microwave)\b/, 'microwave'],
     [/\b(toilet|loo)\b/, 'toilet'], [/\b(laptop|computer)\b/, 'laptop'], [/\b(bottle|water)\b/, 'bottle'],
     [/\b(cup|mug|glass)\b/, 'cup'], [/\b(bowl)\b/, 'bowl'], [/\b(plant|flowers?)\b/, 'plant'], [/\b(book)\b/, 'book'],

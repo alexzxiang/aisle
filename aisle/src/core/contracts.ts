@@ -92,6 +92,8 @@ export interface SpeechRequest {
   interrupt?: boolean;     // CRITICAL only
   /** Round 17: a live-text hazard line ("Chair ahead, close. Stop.") declares its class so CRITICAL may carry it. */
   hazardClass?: 'obstacle';
+  /** Fifteen-word limit only in GUIDED_TASK for model exploration narration. */
+  searchNarration?: boolean;
 }
 
 export interface SpeechService {
@@ -268,6 +270,7 @@ export const SELF_DETECTION_CLASSES = ['hand'] as const;
 export const FOOD_DETECTION_CLASSES = ['banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'pizza', 'donut', 'cake', 'wine_glass', 'fork', 'knife', 'spoon', 'remote', 'keyboard', 'cell_phone', 'toaster', 'vase', 'scissors', 'teddy_bear', 'toothbrush', 'hair_drier', 'mouse', 'tie'] as const;
 /** Round 9: what a home is made of, and the small things people ask for — from the Open Images detector (`oiv7-yolo-nano`, alternate frames indoors). */
 export const HOME_DETECTION_CLASSES = [
+  'pastry', 'basket', 'strawberry', 'watermelon', 'grapefruit',
   'cheese', 'cream', 'dairy', 'seafood', 'pasta', 'juice', 'ice_cream', 'cucumber', 'pepper', 'grape', 'lemon', 'pear', 'peach', 'food_container',
   'door', 'door_handle', 'countertop', 'cabinet', 'drawer', 'light_switch', 'stairs', 'shelf', 'window', 'mirror', 'pillow', 'towel',
   'trash_can', 'lamp', 'plate', 'mug', 'kettle', 'can', 'box', 'egg', 'milk', 'bread', 'glasses', 'shoe', 'washing_machine', 'dishwasher',
@@ -321,8 +324,8 @@ export interface DepthSummary {
   rightBottomRel?: number;
 }
 
-/** Long edge of a `snapshotJPEG`: 512 scans, 640 signs/labels, 768 the room (awareness, guided steps), 1024 the curb crop. */
-export type SnapshotWidth = 512 | 640 | 768 | 1024;
+/** Long edge: 512 scans, 640 signs/labels, 768 legacy room, 1024 curb crop, 1280 full-scene exploration. */
+export type SnapshotWidth = 512 | 640 | 768 | 1024 | 1280;
 
 export interface Snapshot {
   base64: string; width: number; height: number; seq: number; timestamp: number;

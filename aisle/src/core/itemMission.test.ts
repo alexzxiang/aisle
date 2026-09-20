@@ -255,7 +255,8 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
     const m = createMissionRunner(goal, { guide, now: () => t });
     const text = m.userText();
-    expect(text).toMatch(/suggest which way to move|which way to explore/i);
+    expect(text).toMatch(/Propose observed destinations in search.strategy/i);
+    expect(text).toMatch(/validates movement, asks consent/i);
     expect(text).not.toMatch(/keep speech to what you see/i);
     expect(text).toMatch(/obstacle|stops you|owns/i);
   });

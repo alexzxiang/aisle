@@ -651,7 +651,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
           asking = null;
           state = { ...reasoned.next, phase: scanningSurface ? 'scan_place' : 'find_place' };
           const haptic = exploration.haptic ?? null;
-          // A generic store look-around with the item not yet nearby is the model's turn: it owns
+          // A generic look-around in any environment is the model's turn: it owns
           // the words (where the item likely is, which way to explore). Every other explorer state —
           // a promising area, close-shelf inspection, a move or a consent request — hands the words
           // back to geometry. Read it fresh each tick so the cloud sentence, which lands on a later
@@ -661,7 +661,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
             // Only the generic camera-choreography line ("point along the aisle") is handed to the
             // model; informative narration and geometry lines are still spoken. modelMaySpeak tracks
             // the whole look-around so the cloud sentence, landing a tick late, is not lost to the race.
-            if (exploration.narratable) {
+            if (exploration.narratable && narrating) {
               const decision: MissionDecision = { phase: state.phase, text: null, key: `search:${exploration.phase}`, boxTarget: exploration.target, haptic, modelMaySpeak: true, asking: null };
               lastKey = decision.key; lastSpokenAt = t;
               return { text: null, haptic, modelMaySpeak: true, decision };
@@ -717,7 +717,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       const place = goal.place ? ` The user says it is on the ${goal.place}.` : '';
       const working = state.working && state.working !== goal.place ? ` Hypothesis: ${goal.item} usually ${/^(?:fridge|freezer|cabinet|drawer|wardrobe)$/.test(state.working) ? 'in' : 'on'} the ${spoken(state.working)}.` : '';
       const checked = state.tried.length ? ` Checked without finding it: ${state.tried.map(spoken).join(', ')}.` : '';
-      return `Goal: ${goal.goal}. Phase: ${state.phase}.${place}${working}${checked} Look for: ${target}. Return the box of ${target} in target.box when visible, else null. Also box the ${goal.item} in search.item if you can see it anywhere. When the item is not in view you may suggest which way to move to explore ("walk forward", "turn left"), using what you see to steer around obstacles; the app still stops you for obstacles and owns the reach.`;
+      return `Goal: ${goal.goal}. Phase: ${state.phase}.${place}${working}${checked} Look for: ${target}. Return the box of ${target} in target.box when visible, else null. Also box the ${goal.item} in search.item if you can see it anywhere. When the item is unseen, narrate an observed clue or a camera action. Propose observed destinations in search.strategy; the app validates movement, asks consent and owns the reach. Typical supports are hypotheses, never restrictions on where the item may be.`;
     },
     onModelBox(words, box, at) {
       boxes.set(words.toLowerCase(), { box, at });

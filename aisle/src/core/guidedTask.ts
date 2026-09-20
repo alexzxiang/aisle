@@ -261,6 +261,8 @@ interface RunState {
   modelTarget: TargetBox | null;
   /** Round 8: the navigator had nothing geometric to say this tick, so the model's sentence may be spoken. */
   missionModelMaySpeak: boolean;
+  /** Invalidates pending model replies when the user changes the search direction. */
+  searchRevision?: number;
 }
 
 export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
@@ -636,6 +638,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       r.search?.analyzing?.(true);
       r.lastVisionAt = now();
       const askedStep = r.step;
+      const searchRevision = r.searchRevision;
       const captureSteps = deps.steps?.();
       const captureHeading = deps.heading?.();
       const boxTarget = r.mission?.boxTarget() ?? r.searchTarget ?? '';
@@ -644,7 +647,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       try {
         if (r.check && now() - r.check.at > checkTtlMs) r.check = null; // no answer: back to watching
         const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: true, force: true });
-        if (run !== r || r.step !== askedStep || mode() !== 'GUIDED_TASK') return;
+        if (run !== r || r.step !== askedStep || r.searchRevision !== searchRevision || mode() !== 'GUIDED_TASK') return;
         const scene = out.response?.scene;
         const inferredContext = scene ? contextForSetting(scene.setting) : 'unknown';
         if ((out.status === 'applied' || out.status === 'low_confidence') && scene && scene.confidence >= 0.8 && inferredContext !== 'unknown' && inferredContext !== 'street'
@@ -656,7 +659,8 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
             return;
           }
         } else r.sceneVote = undefined;
-        if ((out.status === 'applied' || out.status === 'low_confidence') && out.capturedAt !== null) r.search?.observe(out.response?.search, out.seq, out.capturedAt ?? now() - (out.latencyMs ?? 0));
+        const acceptedSearch = (out.status === 'applied' || out.status === 'low_confidence') && out.capturedAt !== null
+          ? r.search?.observe(out.response?.search, out.seq, out.capturedAt ?? now() - (out.latencyMs ?? 0)) : false;
         deps.trace?.('search_observation', { status: out.status, seq: out.seq, capturedAt: out.capturedAt, latencyMs: out.latencyMs, trackingBlocked, search: out.response?.search ?? null });
         if (trackingBlocked) return;
         if (r.search?.status() === 'paused') return;
@@ -707,10 +711,15 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         }
         if (r.mission) {
           // Geometry owns the words; the model's sentence only fills a silence it cannot.
-          if (r.missionModelMaySpeak && out.status === 'applied' && out.response?.speech) {
-            const text = out.response.speech;
+          if (r.missionModelMaySpeak && (!r.search || acceptedSearch && r.search.narrating()) && !itemBoxed && out.status === 'applied' && out.response?.speech) {
+            const proposed = out.response.speech;
+            const walking = /\b(?:walk|walking|step|steps|move|moving|proceed|head toward|head towards)\b/i.test(proposed);
+            const path = deps.path?.();
+            const text = walking && (!path || !Number.isFinite(path.center) || path.center >= 0.7)
+              ? 'Hold still while I check the path ahead.' : proposed;
             if (!hasDigit(text) && !findForbiddenTerm(text) && countWords(text) <= MAX_SEARCH_SPEECH_WORDS) {
-              speech.say({ text, priority: 'NAV', dedupeKey: 'task-model', cooldownMs: 6000 });
+              speech.say({ text, priority: 'NAV', searchNarration: true, dedupeKey: 'task-model', cooldownMs: 6000 });
+              r.search?.narrated();
             }
           }
           return;
@@ -867,6 +876,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       }
       // "Explore" / "next aisle" while looking for the fridge itself: leave this spot now.
       if (r.fridge && r.search && r.step === 0 && exploreRequest(t).asked) {
+        r.searchRevision = (r.searchRevision ?? 0) + 1;
         const d = r.search.exploreNow(exploreRequest(t).prefer, !/\b(?:can|should|may|could) (?:i|we)\b/i.test(t));
         r.searchTarget = d.target;
         if (d.haptic) deps.haptics.play(d.haptic);
@@ -879,6 +889,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       if (r.step === 0 || (r.fridge && r.step === 2)) {
         const answer = r.search?.intercept(t);
         if (answer?.consumed) {
+          r.searchRevision = (r.searchRevision ?? 0) + 1;
           if (answer.text) {
             speech.say({ text: answer.text, priority: 'NAV', dedupeKey: 'task-search-answer', cooldownMs: 0 });
             deps.conversation?.pushAisle(answer.text, 'prompt');
@@ -892,6 +903,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         if (r.step !== 2) {
           const a = r.mission.intercept(t);
           if (a.consumed) {
+            r.searchRevision = (r.searchRevision ?? 0) + 1;
             if (a.text) {
               speech.say({ text: a.text, priority: 'NAV', dedupeKey: 'task-guide', cooldownMs: 0 });
               deps.conversation?.pushAisle(a.text, 'prompt');

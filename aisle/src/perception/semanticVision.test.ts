@@ -34,7 +34,7 @@ function fakePerception() {
     widths,
     emitDetections: (d: Detection[]) => dets.forEach((cb) => cb(d)),
     emitOcr: (texts: string[]) => ocr.forEach((cb) => cb(texts.map((t) => ({ text: t, box: [0.4, 0.1, 0.2, 0.05] as [number, number, number, number], confidence: 0.9, timestamp: 0 })))),
-    async snapshotJPEG(w: 512 | 640 | 768 | 1024) {
+    async snapshotJPEG(w: 512 | 640 | 768 | 1024 | 1280) {
       snapshots += 1;
       widths.push(w);
       return { base64: 'AAAA', width: w, height: Math.round((w * 3) / 4), seq: snapshots, timestamp: 0 };

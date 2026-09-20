@@ -239,9 +239,15 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
   case tablet
   case pen
   case coin
+  case pastry
+  case basket
+  case strawberry
+  case watermelon
+  case grapefruit
 
   /// Round 9 additions, as one set so the scenery set below stays readable.
   public static let homeClasses: Set<DetectionClass> = [
+    .pastry, .basket, .strawberry, .watermelon, .grapefruit,
     .cheese, .cream, .dairy, .seafood, .pasta, .juice, .iceCream, .cucumber, .pepper, .grape, .lemon, .pear, .peach, .foodContainer,
     .door, .doorHandle, .countertop, .cabinet, .drawer, .lightSwitch, .stairs, .shelf, .window, .mirror, .pillow, .towel,
     .trashCan, .lamp, .plate, .mug, .kettle, .can, .box, .egg, .milk, .bread, .glasses, .shoe, .washingMachine, .dishwasher,

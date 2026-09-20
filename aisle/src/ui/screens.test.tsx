@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-import { AccessibilityInfo, Dimensions, ScrollView } from 'react-native';
+import { AccessibilityInfo, Dimensions, ScrollView, StyleSheet } from 'react-native';
 import { services } from '../core/services';
 import { bindStoreToBus, createAppStore, type AppStore } from '../core/store';
 import { createStubServices, type StubServices } from '../core/stubs';
@@ -132,24 +132,24 @@ function scene(label: string, confirmed = true): SceneHypothesis {
 // ---------------------------------------------------------------------------
 
 describe('HomeScreen', () => {
-  it('puts both request methods before the camera in reading order', async () => {
+  it('puts the camera before talk and typing last in reading order', async () => {
     setup('IDLE');
     const r = await render(<HomeScreen reduceMotion />);
     const labels = labelsOf(r);
-    expect(labels.indexOf(TALK_LABEL)).toBeLessThan(labels.indexOf(CAMERA_LABEL));
-    expect(labels.indexOf(ITEM_FIELD_LABEL)).toBeLessThan(labels.indexOf(CAMERA_LABEL));
+    expect(labels.indexOf(CAMERA_LABEL)).toBeLessThan(labels.indexOf(TALK_LABEL));
+    expect(labels.indexOf(TALK_LABEL)).toBeLessThan(labels.indexOf(FIND_LABEL));
   });
   it('asks one question, labels every control, renders the three notices, no forbidden words', async () => {
     setup('IDLE');
     const r = await render(<HomeScreen reduceMotion />);
     const strings = renderedStrings(r);
     expect(strings).toContain('What do you need?');
-    expect(strings).toContain('Ready');
+    expect(strings).toContain('Task');
     expect(strings.some((s) => s.startsWith('Aisle is a prototype'))).toBe(true);
     expect(strings.some((s) => s.includes('video stays on this phone'))).toBe(true);
     expect(strings.some((s) => s.toLowerCase().includes('beta'))).toBe(true);
     const labels = labelsOf(r);
-    expect(labels).toEqual(expect.arrayContaining([TALK_LABEL, PRACTICE_LABEL, SETTINGS_LABEL, FIND_LABEL, 'Mode: Ready']));
+    expect(labels).toEqual(expect.arrayContaining([TALK_LABEL, FIND_LABEL, 'Mode: Task']));
     expect(r.root.findAll((n: ReactTestInstance) => n.props.accessibilityLabel === ITEM_FIELD_LABEL && typeof n.type === 'string')).toHaveLength(1);
     expectClean(r);
   });
@@ -223,11 +223,11 @@ describe('HomeScreen', () => {
     expectClean(r);
   });
 
-  it('"Practice the vibrations" enters ONBOARDING', async () => {
+  it('does not show practice or settings shortcuts on Home', async () => {
     setup('IDLE', { initial: { firstRun: false } });
     const r = await render(<HomeScreen reduceMotion />);
-    await press(byLabel(r, PRACTICE_LABEL));
-    expect(store.getState().mode).toBe('ONBOARDING');
+    expect(labelsOf(r)).not.toContain(PRACTICE_LABEL);
+    expect(labelsOf(r)).not.toContain(SETTINGS_LABEL);
   });
 
   it('holding the talk button says Listening and drives the voice port', async () => {
@@ -898,12 +898,10 @@ describe('Root', () => {
     expectClean(r);
   });
 
-  it('opens and closes settings from Home', async () => {
+  it('keeps settings closed on Home without a settings shortcut', async () => {
     setup('IDLE');
     const r = await render(<Root reduceMotion />);
-    await press(byLabel(r, SETTINGS_LABEL));
-    expect(labelsOf(r)).toContain(CLOSE_LABEL);
-    await press(byLabel(r, CLOSE_LABEL));
+    expect(labelsOf(r)).not.toContain(SETTINGS_LABEL);
     expect(labelsOf(r)).not.toContain(CLOSE_LABEL);
   });
 });
@@ -1109,6 +1107,15 @@ describe('TranscriptPanel', () => {
 });
 
 describe('CameraPanel', () => {
+  it('uses the requested larger height without narrowing the preview by aspect ratio', async () => {
+    setup('IDLE');
+    const r = await render(<CameraPanel slots={stripSlots(EMPTY_FACTS, T0)} maxHeight={400} reduceMotion />);
+    const panel = r.root.findByType(GlassPanel);
+    const style = StyleSheet.flatten(panel.props.style);
+    expect(style.height).toBe(400);
+    expect(style.aspectRatio).toBeUndefined();
+  });
+
   afterEach(() => setCameraPreviewForTests(null));
 
   it('renders the placeholder when no preview module is in the build, with the three strip sentences over it', async () => {
@@ -1140,13 +1147,24 @@ describe('CameraPanel', () => {
 });
 
 describe('NavScreen with the conversation and the describer', () => {
+  it('puts the guided task below the camera and the chat below talk', async () => {
+    setup('GUIDED_TASK', { initial: { targetItem: 'eggs', taskGoal: 'eggs' } });
+    const log = fakeLog([you('1', 'Find eggs')]);
+    const r = await render(<NavScreen reduceMotion now={T0} conversation={log} />);
+    const labels = labelsOf(r);
+    expect(labels.indexOf(CAMERA_LABEL)).toBeLessThan(labels.indexOf('Mode: Task'));
+    expect(labels.indexOf('Mode: Task')).toBeLessThan(labels.indexOf(TALK_LABEL));
+    expect(labels.indexOf(TALK_LABEL)).toBeLessThan(labels.indexOf('You: Find eggs'));
+    expect(renderedStrings(r)).toContain('eggs');
+  });
+
   it('renders the transcript from the log, follows new lines, and keeps the reading order band > camera > transcript > talk', async () => {
     setup('INDOOR_NAV', { initial: { targetItem: 'eggs' } });
     const log = fakeLog([you('1', 'I need eggs'), aisle('2', 'Eggs. Planning the route.')]);
     const describeNow = jest.fn(async () => 'Shelves on both sides');
     const r = await render(<NavScreen reduceMotion now={T0} conversation={log} describeNow={describeNow} />);
     let labels = labelsOf(r);
-    const order = ['Mode: In the store', CAMERA_LABEL, 'Signal: not seen', 'You: I need eggs', 'Aisle: Eggs. Planning the route.', DESCRIBE_LABEL, TALK_LABEL, REPEAT_LABEL, STOP_LABEL];
+    const order = ['Mode: In the store', CAMERA_LABEL, 'Signal: not seen', TALK_LABEL, 'You: I need eggs', 'Aisle: Eggs. Planning the route.', DESCRIBE_LABEL, REPEAT_LABEL, STOP_LABEL];
     const idx = order.map((l) => labels.indexOf(l));
     expect(idx.every((i) => i >= 0)).toBe(true);
     expect(idx).toEqual([...idx].sort((a, b) => a - b));
@@ -1182,7 +1200,7 @@ describe('HomeScreen transcript', () => {
     setup('IDLE', { initial: { firstRun: false } });
     const log = fakeLog([]);
     const r = await render(<HomeScreen reduceMotion now={T0} conversation={log} />);
-    expect(renderedStrings(r)).not.toContain(TRANSCRIPT_EMPTY);
+    expect(renderedStrings(r)).toContain(TRANSCRIPT_EMPTY);
     await act(async () => {
       log.push(you('1', 'I need eggs'));
       log.push(aisle('2', 'Eggs. Planning the route.'));
