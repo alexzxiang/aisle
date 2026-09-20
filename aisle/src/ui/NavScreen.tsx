@@ -1,64 +1,26 @@
-/**
- * The trip screen (DESIGN.md, Layout): state band / camera panel with the
- * perception strip / transcript with "Describe surroundings" / hold-to-talk /
- * Repeat + Stop guidance. It shows every mode from OUTDOOR_NAV to DONE; the
- * accent and hero come from the store's mode and the bus.
- *
- * "Stop guidance" is two taps or one two-second hold, never a single stray
- * tap -- it aborts the trip (02 Task 2: "big button hold 2 s"). With a screen
- * reader running the hold is gone (VoiceOver's activate delivers press-in and
- * press-out together), so the armed window is longer and announced.
- *
- * The conversation log and the describer arrive as props from the
- * composition root (`Root` forwards them); without them the transcript shows
- * its empty line and the pill is hidden.
- */
-import React, { useCallback, useEffect, useState } from 'react';
-import { AccessibilityInfo, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+/** Camera-first guidance with conversation below and a hold-to-talk dock. */
+import React from 'react';
+import { Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { StateBand } from './StateBand';
 import { CameraPanel, isCameraLive } from './CameraPanel';
 import { ScenePanel } from './ScenePanel';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TalkButton } from './TalkButton';
-import { Button } from './Button';
 import { Backdrop } from './Glass';
 import { AWARENESS_STRIP_MODES, awarenessSlots, bandSignal, heroText, needsClock, showSceneLine, stripSlots } from './derive';
-import { useBus, useConversationEntries, useMode, useNow, useOptionalService, useResolvedReduceMotion, useScreenReader, useStoreSlice, useUiFacts, useDetections } from './hooks';
-import { assertUtterance } from './copy';
+import { useConversationEntries, useMode, useNow, useResolvedReduceMotion, useStoreSlice, useUiFacts, useDetections } from './hooks';
 import { parseMissionGoal } from '../core/itemMission';
 import type { ConversationLogPort, DescribeNow, VoicePort } from './ports';
 import { accentFor, cameraMaxHeight, colors, sizes, space } from './theme';
 
-export const STOP_HOLD_MS = 2000;
-/** A first "Stop guidance" tap arms for this long; a second tap inside it aborts. */
-export const STOP_ARM_MS = 5000;
-/**
- * Armed window with a screen reader on. VoiceOver navigation between the two
- * taps costs swipes and a focus change, so five seconds disarms under the
- * user; the confirmation is explicit either way, so waiting longer is safe.
- */
-export const STOP_ARM_SCREEN_READER_MS = 12000;
-export const STOP_LABEL = 'Stop guidance';
-export const STOP_ARMED_LABEL = 'Tap again to stop';
-export const STOP_HINT = 'Tap twice, or hold for two seconds, to end guidance';
-/** VoiceOver delivers press-in and press-out together, so hold never arrives: say so. */
-export const STOP_HINT_SCREEN_READER = 'Double-tap, then double-tap again to end guidance';
-export const REPEAT_LABEL = 'Repeat';
-export const FINISH_LABEL = 'Finish';
-/** Transcript lines on the trip screen. */
-/** The whole log, scrollable (record keeping): the conversation keeps fifty lines. */
+/** The whole conversation remains available by scrolling. */
 export const NAV_TRANSCRIPT_MAX = 50;
 /**
  * Larger viewfinder in the upper scroll area; the talk/chat dock remains independent.
  */
-export const CAMERA_MAX_HEIGHT_SHARE = 0.5;
-/**
- * Points the trip screen needs below the camera whatever the phone: the band,
- * the transcript at its minimum, the talk button and the two secondary
- * targets. On a short window the camera gives this back rather than pushing
- * the talk button off the bottom.
- */
-export const CAMERA_RESERVE_PT = 360;
+export const CAMERA_MAX_HEIGHT_SHARE = 0.6;
+/** Reserve space for the task header and talk dock. */
+export const CAMERA_RESERVE_PT = 280;
 
 export interface NavScreenProps {
   onOpenDebug?: () => void;
@@ -83,7 +45,6 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   const destinationOnly = useStoreSlice((s) => s.destinationOnly);
   const taskGoal = useStoreSlice((s) => s.taskGoal);
   const scene = useStoreSlice((s) => s.scene);
-  const abort = useStoreSlice((s) => s.abort);
   const narration = useStoreSlice((s) => s.describeSurroundings);
   const setNarration = useStoreSlice((s) => s.setDescribeSurroundings);
   const facts = useUiFacts();
@@ -91,9 +52,6 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   // nothing to advance unless a transient hero is waiting to expire.
   const showsAwareness = AWARENESS_STRIP_MODES.has(mode);
   const now = useNow(1000, nowOverride, (t) => needsClock(mode, facts, t, !showsAwareness));
-  const bus = useBus();
-  const speech = useOptionalService('speech');
-  const haptics = useOptionalService('haptics');
   const entries = useConversationEntries(conversation);
   const { height: windowHeight, fontScale } = useWindowDimensions();
   // Large text and landscape need one scroll surface, including the controls.
@@ -108,70 +66,9 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   // Walking and in the store the strip reports signal / vehicles / aisle; otherwise the room and the camera.
   const slots = showsAwareness ? awarenessSlots({ scene, cameraLive: isCameraLive(), detections }) : stripSlots(facts, now);
 
-  // ---- Repeat: say the hero again, through the queue like everything else ----
-  const repeat = useCallback(() => {
-    if (!speech) return;
-    try {
-      assertUtterance(hero, 'NavScreen.repeat');
-      speech.say({ text: hero, priority: 'NAV', dedupeKey: 'ui_repeat', cooldownMs: 1000 });
-    } catch (err) {
-      bus.emit({ type: 'ERROR', scope: 'ui', message: err instanceof Error ? err.message : String(err) });
-    }
-  }, [speech, hero, bus]);
-
-  // ---- Stop guidance: arm, then confirm (or hold two seconds) ----
-  // With VoiceOver on there is no hold gesture and the armed label is not
-  // re-read on its own, so the window is longer and the change is announced.
-  const systemScreenReader = useScreenReader();
-  const screenReader = props.screenReader ?? systemScreenReader;
-  const [armed, setArmed] = useState(false);
-  useEffect(() => {
-    if (!armed) return undefined;
-    if (screenReader) AccessibilityInfo.announceForAccessibility(STOP_ARMED_LABEL);
-    const id = setTimeout(() => setArmed(false), screenReader ? STOP_ARM_SCREEN_READER_MS : STOP_ARM_MS);
-    return () => clearTimeout(id);
-  }, [armed, screenReader]);
-
-  const stopNow = useCallback(() => {
-    setArmed(false);
-    haptics?.play('CONFIRM');
-    abort();
-  }, [abort, haptics]);
-
-  const onStopPress = useCallback(() => {
-    if (armed) {
-      stopNow();
-      return;
-    }
-    setArmed(true);
-  }, [armed, stopNow]);
-
-  const isDone = mode === 'DONE';
-
   const controls = (
     <View style={styles.controls}>
       <TalkButton voice={voice} reduceMotion={reduceMotion} />
-      <TranscriptPanel entries={entries} max={NAV_TRANSCRIPT_MAX} onDescribe={describeNow}
-        narration={narration} onSetNarration={setNarration} reduceMotion={reduceMotion} style={styles.transcript} />
-      <View style={styles.row}>
-        <Button label={REPEAT_LABEL} onPress={repeat} hint="Says the current instruction again" reduceMotion={reduceMotion} style={styles.half} />
-        <Button
-          label={isDone ? FINISH_LABEL : armed ? STOP_ARMED_LABEL : STOP_LABEL}
-          onPress={isDone ? stopNow : onStopPress}
-          onLongPress={screenReader ? undefined : stopNow}
-          delayLongPress={screenReader ? undefined : STOP_HOLD_MS}
-          hint={isDone ? 'Ends the trip' : screenReader ? STOP_HINT_SCREEN_READER : STOP_HINT}
-          selected={armed}
-          reduceMotion={reduceMotion}
-          style={styles.half}
-        />
-      </View>
-      <View style={styles.row}>
-        {mode === 'GUIDED_TASK' && voice?.submitText ? <Button label="Search again" size="compact" quiet onPress={() => {
-          void Promise.resolve(voice.submitText?.('search again')).catch((err: unknown) => bus.emit({ type: 'ERROR', scope: 'voice', message: err instanceof Error ? err.message : String(err) }));
-        }} hint="Resumes a paused search from this area" reduceMotion={reduceMotion} style={styles.half} /> : null}
-        <Button label="Stop speaking" size="compact" quiet onPress={() => speech?.clearQueue()} hint="Stops the current spoken message" reduceMotion={reduceMotion} style={styles.half} />
-      </View>
     </View>
   );
 
@@ -179,6 +76,11 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
     <View style={styles.screen}>
       <Backdrop accent={accent} reduceMotion={reduceMotion} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="guidance-scroll" nestedScrollEnabled>
+      <View style={{ minHeight: Math.max(280, windowHeight - (scrollControls ? 80 : 370)), gap: space.m }} testID="search-overview">
+      {mode === 'GUIDED_TASK' ? <StateBand mode={mode} modeWord="Task"
+        hero={parseMissionGoal(taskGoal ?? '')?.item ?? taskGoal ?? item ?? 'Find an item'}
+        instruction={hero} onLongPressMode={onOpenDebug} reduceMotion={reduceMotion} style={styles.band} /> : null}
+      {showSceneLine(mode, scene) ? <ScenePanel scene={scene} reduceMotion={reduceMotion} style={styles.scene} /> : null}
       {mode !== 'GUIDED_TASK' ? <StateBand
         mode={mode}
         hero={hero}
@@ -194,11 +96,10 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
         reduceMotion={reduceMotion}
         style={styles.camera}
       />
-      {mode === 'GUIDED_TASK' ? <StateBand mode={mode} modeWord="Task"
-        hero={parseMissionGoal(taskGoal ?? '')?.item ?? taskGoal ?? item ?? 'Find an item'}
-        instruction={hero} onLongPressMode={onOpenDebug} reduceMotion={reduceMotion} style={styles.band} /> : null}
-      {showSceneLine(mode, scene) ? <ScenePanel scene={scene} reduceMotion={reduceMotion} style={styles.scene} /> : null}
       {scrollControls ? controls : null}
+      </View>
+      <TranscriptPanel entries={entries} max={NAV_TRANSCRIPT_MAX} onDescribe={describeNow}
+        narration={narration} onSetNarration={setNarration} reduceMotion={reduceMotion} style={styles.transcript} />
       </ScrollView>
       {scrollControls ? null : controls}
     </View>

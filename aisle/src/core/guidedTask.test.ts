@@ -230,7 +230,7 @@ describe('createGuidedTask', () => {
       PHRASES.task_step_done, PLAN.steps[1].instruction,
       PHRASES.task_step_done, PLAN.steps[2].instruction,
       PHRASES.hold_out_hand, PHRASES.mission_hand_aligned,
-      PHRASES.task_done,
+      PHRASES.mission_search_next,
     ]);
     expect(h.haptic).toEqual(['CONFIRM', 'CONFIRM', 'CONFIRM', 'CONFIRM']);   // two step closes, the touch, the completion
     expect(task.isActive()).toBe(false);
@@ -446,7 +446,7 @@ describe('createGuidedTask', () => {
     await flush(TASK_TICK_MS * 2);
     expect(h.deps.store.getState().mode).toBe('DONE');
     expect(h.bus.history().filter((r) => r.event.type === 'TASK_COMPLETED')).toHaveLength(1);
-    expect(h.said[h.said.length - 1].text).toBe(PHRASES.task_done);
+    expect(h.said.at(-1)?.text).toBe(PHRASES.mission_search_next);
     task.dispose();
   });
 
@@ -538,7 +538,7 @@ describe('createGuidedTask', () => {
     expect(task.getDebugState()).toMatchObject({ stage: 'confirm', step: 2 });
     expect(h.said.map((s) => s.text)).toContain('Have you picked it up? Say yes when you have it.');
     expect(task.intercept('yes I have them')).toBe(true);
-    expect(h.said[h.said.length - 1].text).toBe(PHRASES.task_done);
+    expect(h.said.at(-1)?.text).toBe(PHRASES.mission_search_next);
     task.dispose();
   });
 

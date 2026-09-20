@@ -225,7 +225,7 @@ describe('composeApp (mock mode)', () => {
     expect(store.getState().mode).toBe('DONE');
     expect(app.guidedTask.isActive()).toBe(false);
     await jest.advanceTimersByTimeAsync(5000);
-    expect(platform.spoken[platform.spoken.length - 1]).toBe('Done. Task complete.');
+    expect(platform.spoken.at(-1)).toBe('Task complete. Search for another item, or tell me your new environment.');
     store.getState().abort();
     await jest.advanceTimersByTimeAsync(50);
     expect(store.getState().mode).toBe('IDLE');

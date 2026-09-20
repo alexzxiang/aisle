@@ -52,7 +52,7 @@ it('throttles camera-wait prompts and rejects stale speech evidence', () => {
     const text = search.tick('keys', null)?.text;
     if (text) lines.push(text);
   }
-  expect(lines).toEqual(['Hold the camera steady. I need a current view.']);
+  expect(lines).toEqual(['Hold the camera steady while I process this view.']);
   expect(search.observe(view(), 1, t - 20000)).toBe(false);
   expect(search.narrating()).toBe(false);
 });

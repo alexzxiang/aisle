@@ -43,6 +43,7 @@ import { MISSION_PHRASES } from './preparedGuidance';
 import { MISSION_STEPS, createMissionRunner, exploreRequest, parseMissionGoal, type MissionPhase, type MissionRunner } from './itemMission';
 import { isAffirmative, isNegative } from './yesNo';
 import { createSearchExplorer, type SearchExplorer } from './searchExplorer';
+import type { DetectorFrame } from './detectorSearchEvidence';
 import { foodSection } from './foodCatalog';
 
 export const TASK_TICK_MS = 3000;
@@ -134,6 +135,8 @@ export function stepCheckQuestion(lookFor: string): string | null {
 }
 
 export interface GuidedTaskDeps {
+  automaticExploration?: boolean;
+  detectorFrame?: () => DetectorFrame | null;
   adaptiveSearch?: boolean;
   heading?: () => number | null;
   steps?: () => number;
@@ -147,7 +150,7 @@ export interface GuidedTaskDeps {
   signs?: () => ReadonlyArray<{ text: string; box: [number, number, number, number]; at: number }>;
   bus: Pick<AppEventBus, 'on' | 'emit'>;
   store: Pick<AppStore, 'getState' | 'subscribe'>;
-  speech: Pick<SpeechService, 'say'>;
+  speech: Pick<SpeechService, 'say'> & Partial<Pick<SpeechService, 'clearQueue'>>;
   haptics: Pick<HapticService, 'play'>;
   /** `ask` for the step loop; `getFacts` feeds the planner what the camera already sees. */
   vision: Pick<SemanticVision, 'ask'> & Partial<Pick<SemanticVision, 'getFacts'>>;
@@ -233,6 +236,8 @@ interface RunState {
   fridge: boolean;
   leftContainer?: boolean;
   lastVisionAt: number;
+  verifyNext?: boolean;
+  lastVerificationAt?: number;
   gen: number;
   goal: string;
   context: TaskContext;
@@ -518,9 +523,13 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   const complete = (r: RunState): void => {
     if (run !== r) return;
     stop();
+    // One bundled clip avoids the newest-wins speech queue dropping completion.
+    speech.clearQueue?.('NAV');
     deps.haptics.play('CONFIRM');
-    sayPhrase('task_done', 0);
+    deps.conversation?.pushAisle(phraseText('task_done'), 'prompt');
     bus.emit({ type: 'TASK_COMPLETED', goal: r.goal });
+    speech.say({ text: MISSION_PHRASES.mission_search_next, priority: 'NAV' });
+    deps.conversation?.pushAisle(MISSION_PHRASES.mission_search_next, 'prompt');
   };
 
   const advanceRun = (r: RunState, byUser: boolean): void => {
@@ -639,15 +648,30 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
       r.lastVisionAt = now();
       const askedStep = r.step;
       const searchRevision = r.searchRevision;
-      const captureSteps = deps.steps?.();
-      const captureHeading = deps.heading?.();
       const boxTarget = r.mission?.boxTarget() ?? r.searchTarget ?? '';
       asks += 1;
       lastAskAt = now();
       try {
         if (r.check && now() - r.check.at > checkTtlMs) r.check = null; // no answer: back to watching
-        const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: true, force: true });
+        const fast = !!r.search && !!r.mission && r.step === 0 && !r.verifyNext
+          && now() - (r.lastVerificationAt ?? r.stepAt) < 20000;
+        if (!fast) { r.verifyNext = false; r.lastVerificationAt = now(); }
+        const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: true, force: true,
+          ...(fast ? { searchMode: 'explore' as const } : {}) });
         if (run !== r || r.step !== askedStep || r.searchRevision !== searchRevision || mode() !== 'GUIDED_TASK') return;
+        if (!fast) r.search?.verificationPending?.(false);
+        const candidate = out.response?.search?.item;
+        if (fast && (out.status === 'applied' || out.status === 'low_confidence')
+          && ((candidate?.box && candidate.confidence >= 0.6)
+            || out.response?.search?.barrier === 'closed_fridge' || out.response?.search?.barrier === 'closed_freezer'
+            || (out.response?.search?.strategy?.relevance === 'promising' && now() - (r.lastVerificationAt ?? -Infinity) >= 10000))) {
+          r.verifyNext = true;
+          if (candidate?.box && candidate.confidence >= 0.6) {
+            r.itemEvidence = { seq: out.seq, at: now() };
+            r.search?.verificationPending?.(true);
+          }
+        }
+        deps.trace?.('search_lane', { seq: out.seq, lane: fast ? 'explore' : 'verify', latencyMs: out.latencyMs, verifyNext: r.verifyNext ?? false });
         const scene = out.response?.scene;
         const inferredContext = scene ? contextForSetting(scene.setting) : 'unknown';
         if ((out.status === 'applied' || out.status === 'low_confidence') && scene && scene.confidence >= 0.8 && inferredContext !== 'unknown' && inferredContext !== 'street'
@@ -659,27 +683,35 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
             return;
           }
         } else r.sceneVote = undefined;
+        const searchObservation = out.response?.search;
+        const targetClass = classForWords(r.mission?.goal.item ?? r.goal);
+        // The fast lane supplies hypotheses and landmarks, not verified item
+        // presence or cleared shelf bands. Otherwise a rejected candidate can
+        // remain "present" in memory and prevent relocation indefinitely.
+        const memoryObservation = fast && searchObservation ? { ...searchObservation,
+          items: searchObservation.items.filter(item => item.toLowerCase() !== (r.mission?.goal.item ?? r.goal).toLowerCase()
+            && (!targetClass || classForWords(item) !== targetClass)),
+          item: { box: null, confidence: 0 },
+          inspection: { target: r.goal, assessed: false, confidence: 0 },
+        } : searchObservation;
         const acceptedSearch = (out.status === 'applied' || out.status === 'low_confidence') && out.capturedAt !== null
-          ? r.search?.observe(out.response?.search, out.seq, out.capturedAt ?? now() - (out.latencyMs ?? 0)) : false;
+          ? r.search?.observe(memoryObservation, out.seq, out.capturedAt ?? now() - (out.latencyMs ?? 0)) : false;
         deps.trace?.('search_observation', { status: out.status, seq: out.seq, capturedAt: out.capturedAt, latencyMs: out.latencyMs, trackingBlocked, search: out.response?.search ?? null });
         if (trackingBlocked) return;
         if (r.search?.status() === 'paused') return;
-        if (r.search) {
-          const currentHeading = deps.heading?.();
-          const turned = typeof captureHeading === 'number' && typeof currentHeading === 'number'
-            && Math.abs(((currentHeading - captureHeading + 540) % 360) - 180) > 15;
-          if (turned || (captureSteps !== undefined && captureSteps !== deps.steps?.())) return;
-        }
+        // Search owns capture-pose validation. Do not add a second, stricter
+        // heading/pedometer gate after it accepted the current viewpoint.
+        if (r.search && !acceptedSearch) return;
         const observation = out.status === 'applied' ? out.response?.search : undefined;
         // Round 11: Claude's landmarks are evidence for the navigator's hypotheses too — a counter it
         // boxed is a counter the phone can walk to, even when the detector has no box for it.
-        if (r.mission && observation && observation.quality === 'usable') {
+        if (!fast && r.mission && observation && observation.quality === 'usable') {
           for (const l of observation.landmarks) {
             const cls = classForWords(l.name);
             if (cls && l.confidence >= 0.6) r.mission.onModelBox(cls, l.box, now() - (out.latencyMs ?? 0));
           }
         }
-        if (r.context === 'home' && !r.leftContainer && r.search && r.mission && observation && observation.confidence >= 0.8 && observation.quality === 'usable'
+        if (!fast && r.context === 'home' && !r.leftContainer && r.search && r.mission && observation && observation.confidence >= 0.8 && observation.quality === 'usable'
           && (observation.barrier === 'closed_fridge' || observation.barrier === 'closed_freezer')
           && observation.landmarks.some((l) => l.kind === 'appliance' && l.confidence >= 0.8 && /fridge|refrigerator|freezer/i.test(l.name))) {
           // Discovering a closed container inserts prerequisites before item approach.
@@ -691,7 +723,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
           speakStep(r, false);
           return;
         }
-        const itemBoxed = out.status === 'applied' && !!out.response && (
+        const itemBoxed = !fast && out.status === 'applied' && !!out.response && (
           (observation?.item?.box && observation.item.confidence >= 0.6 && observation.barrier !== 'closed_fridge' && observation.barrier !== 'closed_freezer')
           || (boxTarget === r.mission?.goal.item && out.response.target.box !== null && out.response.target.confidence >= 0.6));
         if (r.mission && itemBoxed) {
@@ -702,9 +734,9 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
           if (box && previous && previous.seq !== out.seq && now() - previous.at <= 15000) {
             r.mission.onModelBox(r.mission.goal.item, box, now() - (out.latencyMs ?? 0));
           }
-        } else if (r.search) r.itemEvidence = undefined;
+        } else if (r.search && !fast) r.itemEvidence = undefined;
         deps.trace?.('task_step', { step: r.step, geometric, status: out.status, speech: out.response?.speech ?? null, done: out.response?.task ?? null, target: out.response?.target ?? null, latencyMs: out.latencyMs });
-        if (run === r && out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= (r.search || (r.fridge && r.step === 2) ? doneConfidence : 0.4)) {
+        if (!fast && run === r && out.status === 'applied' && out.response?.target.box && out.response.target.confidence >= (r.search || (r.fridge && r.step === 2) ? doneConfidence : 0.4)) {
           // A relocation landmark is never evidence that the fridge or item was found.
           if (!r.fridge || !r.searchTarget || r.searchTarget === (r.step === 2 ? itemOfGoal(r.goal) : /\bfreezer\b/i.test(r.goal) ? 'freezer' : 'fridge')) r.modelTarget = { box: out.response.target.box, at: now() - (out.latencyMs ?? 0) };
           if (r.mission && (!r.search || boxTarget !== r.mission.goal.item)) r.mission.onModelBox(boxTarget, out.response.target.box, now() - (out.latencyMs ?? 0));
@@ -715,7 +747,9 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
             const proposed = out.response.speech;
             const walking = /\b(?:walk|walking|step|steps|move|moving|proceed|head toward|head towards)\b/i.test(proposed);
             const path = deps.path?.();
-            const text = walking && (!path || !Number.isFinite(path.center) || path.center >= 0.7)
+            const text = fast && /\b(?:reach|grab|pick up)\b/i.test(proposed)
+              ? 'I see a possible match. Let me confirm it.'
+              : walking && (!path || !Number.isFinite(path.center) || path.center >= 0.7)
               ? 'Hold still while I check the path ahead.' : proposed;
             if (!hasDigit(text) && !findForbiddenTerm(text) && countWords(text) <= MAX_SEARCH_SPEECH_WORDS) {
               speech.say({ text, priority: 'NAV', searchNarration: true, dedupeKey: 'task-model', cooldownMs: 6000 });
@@ -791,7 +825,8 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         instruction: 'It may be in the fridge. Find the fridge first.',
       };
     }
-    const search = deps.adaptiveSearch && deps.guide && context !== 'street' ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, pose: deps.pose, path: deps.path, hfovDeg: deps.hfovDeg, signs: deps.signs, map: deps.map, now, trace: deps.trace,
+    const search = deps.adaptiveSearch && deps.guide && context !== 'street' ? createSearchExplorer({ item: itemOfGoal(goal), context, guide: deps.guide, heading: deps.heading, steps: deps.steps, pose: deps.pose, path: deps.path, hfovDeg: deps.hfovDeg, signs: deps.signs, map: deps.map, now, trace: deps.trace, detectorFrame: deps.detectorFrame,
+      automaticExploration: deps.automaticExploration,
       doorway: () => { const g = deps.guide!.instructionFor('the doorway'); return g?.targetVisible && g.box ? g.box : null; } }) : null;
     const missionGoal = deps.guide && !fixedFridge && (context === 'home' || search) ? parseMissionGoal(goal) : null;
     const mission = missionGoal ? createMissionRunner(missionGoal, { guide: deps.guide!, sceneLabel: deps.scene, search: search ?? undefined, context, map: deps.map, pose: deps.pose, now, ...(leaveContainer ? { initialTried: ['fridge', 'freezer'] } : {}) }) : null;

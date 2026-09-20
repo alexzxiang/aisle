@@ -93,7 +93,7 @@ export const VIEW_RANGE_M = 4.5;
 
 export function createExplorationMap(now: () => number = Date.now): ExplorationMap {
   const trip = createTripMemory(now);
-  let generation = 0;
+  let coordinateEpoch = '';
   const visited = new Map<string, number>();
   const scanned = new Set<string>();
   const seen = new Map<string, number>();
@@ -121,8 +121,8 @@ export function createExplorationMap(now: () => number = Date.now): ExplorationM
     trip,
     ingestPose(p) {
       trip.ingest(p);
-      if (trip.generation() !== generation) {
-        generation = trip.generation();
+      if (trip.coordinateEpoch() !== coordinateEpoch) {
+        coordinateEpoch = trip.coordinateEpoch();
         visited.clear(); scanned.clear(); seen.clear(); blocked.clear(); absent.length = 0;
       }
     },

@@ -59,13 +59,15 @@ export type VisionModel = typeof MODELS.haiku | typeof MODELS.sonnet;
  */
 const STRONG_MODEL_QUESTIONS: ReadonlySet<string> = new Set(['curb_crop', 'task_step']);
 
-export function modelFor(question: VisionRequest['question']): VisionModel {
+export function modelFor(question: VisionRequest['question'], searchMode?: VisionRequest['searchMode']): VisionModel {
+  if (question === 'task_step' && searchMode === 'explore') return MODELS.haiku;
   return STRONG_MODEL_QUESTIONS.has(question) ? MODELS.sonnet : MODELS.haiku;
 }
 
 /** Build the Messages params. Exported for the tests and the warm-up. */
-export function buildVisionParams(req: VisionRequest, model: VisionModel = modelFor(req.question)): Anthropic.MessageStreamParams {
-  const system = systemPromptFor(req);
+export function buildVisionParams(req: VisionRequest, model: VisionModel = modelFor(req.question, req.searchMode)): Anthropic.MessageStreamParams {
+  const system = systemPromptFor(req) + (req.question === 'task_step' && req.searchMode === 'explore'
+    ? ' Fast exploration observation: prioritize visible target candidates, traversable landmarks and one brief factual narration. Set task.done false. A candidate is not verified identity or arrival. Do not claim absence from opaque or unreadable packaging. Use compact values and at most two landmarks.' : '');
   const content: Anthropic.ContentBlockParam[] = [];
   if (req.image) {
     content.push({

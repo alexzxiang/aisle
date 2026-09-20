@@ -11,6 +11,11 @@ function rig(opts: { detections?: Detection[]; where?: unknown; hfov?: number; n
 }
 
 describe('guide (pure)', () => {
+  it('requires appearance confirmation for a neon green metal bottle, while generic bottles retain CV guidance', () => {
+    const guide = rig({ detections: [det('bottle', 0.5, 0.4)] }).guide;
+    expect(guide.instructionFor('water bottle')?.targetVisible).toBe(true);
+    expect(guide.instructionFor('neon green metal water bottle')?.targetVisible).not.toBe(true);
+  });
   it('relative depth alone cannot declare a small distant fridge within reach', () => {
     expect(rig({ detections: [det('fridge', 0.5, 0.3, 0.95)] }).guide.instructionFor('fridge')?.kind).not.toBe('arrived');
   });

@@ -37,6 +37,7 @@ const OPENS = new Set(['fridge', 'freezer', 'cabinet', 'drawer', 'wardrobe', 'di
 
 /** Item words → usual places, best first. The first regex that matches wins. */
 const USUAL: ReadonlyArray<[RegExp, Usual]> = [
+  [/\b(?:thermos|flask|(?:metal|steel|insulated|reusable) (?:water )?bottle)\b/, [['table', 0.35], ['desk', 0.35], ['shelf', 0.3]]],
   [/\b(?:ice ?cream|frozen|popsicles?)\b/, [['freezer', 0.9], ['fridge', 0.5]]],
   [/\b(?:eggs?|milk|cheese|yogu?rt|butter|cream|juice|leftovers?|soda|beer|wine|jam|ketchup|mustard|sauce|salad|meat|chicken|fish|deli)\b/, [['fridge', 0.9], ['countertop', 0.2], ['table', 0.15]]],
   [/\b(?:bananas?|apples?|oranges?|pears?|peach(?:es)?|grapes?|lemons?|limes?|fruit|avocados?|tomato(?:es)?)\b/, [['countertop', 0.5], ['table', 0.45], ['bowl', 0.4], ['fridge', 0.25]]],

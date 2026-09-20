@@ -70,6 +70,7 @@ export function createTripMemory(now: () => number = Date.now) {
   let lastObservation = -Infinity;
   const nearest = (p: Point3, radius = 0.8) => places.filter(n => n.epoch === epoch && distance(n, p) <= radius)
     .sort((a, b) => distance(a, p) - distance(b, p))[0] ?? null;
+  let lastNormal: Pose | null = null;
   const invalidate = () => { ready = false; stable = 0; current = null; currentAisle = null; lastPortal = null; walkedSincePortal = 0; history = []; poseNodes.clear(); generation++; };
   const at = (time: number): Pose | null => {
     if (!ready) return null;
@@ -111,17 +112,21 @@ export function createTripMemory(now: () => number = Date.now) {
       if (![p.x, p.y, p.z, p.yawDeg, p.timestamp].every(Number.isFinite) || p.timestamp > now() + 1000 || now() - p.timestamp > 2000) return;
       const nextEpoch = p.worldSessionId ?? 'legacy';
       const changed = nativeEpoch !== nextEpoch;
-      if (changed) { nativeEpoch = nextEpoch; epoch = nextEpoch; invalidate(); last = null; voxels.clear(); }
+      if (changed) { nativeEpoch = nextEpoch; epoch = nextEpoch; invalidate(); last = null; lastNormal = null; voxels.clear(); }
       if (last && p.timestamp <= last.timestamp) return;
       if (p.trackingState !== 'NORMAL') { if (ready || stable) invalidate(); last = p; return; }
       const dt = last ? (p.timestamp - last.timestamp) / 1000 : 0;
-      if (last && (dt > 2 || distance(last, p) > Math.max(1.5, dt * 3))) {
+      const lostContinuity = last?.trackingState !== 'NORMAL' && lastNormal
+        && (p.timestamp - lastNormal.timestamp > 2000 || distance(lastNormal, p) > 1.5
+          || Math.abs(((lastNormal.yawDeg - p.yawDeg + 540) % 360) - 180) > 30);
+      if (last && (lostContinuity || dt > 2 || distance(last, p) > Math.max(1.5, dt * 3))) {
         // Even a NORMAL pose can jump after relocalization. Disconnect rather than draw a route through it.
         invalidate(); epoch = `${nextEpoch}:break:${++serial}`; voxels.clear();
         // Keep the native ID separate so the next frame stays in this new segment.
       }
       if (ready && last && last.trackingState === 'NORMAL') walkedSincePortal += distance(last, p);
       last = p;
+      lastNormal = p;
       stable++;
       ready = stable >= 3;
       history.push(p);
@@ -156,6 +161,7 @@ export function createTripMemory(now: () => number = Date.now) {
     loseTracking() { if (ready || stable) invalidate(); },
     ready: () => ready && !!last && now() - last.timestamp <= 2000,
     generation: () => generation,
+    coordinateEpoch: () => epoch,
     poseAt: at,
     observe(o: SearchObservation, item: string, capturedAt: number) {
       if (capturedAt <= lastObservation) return;

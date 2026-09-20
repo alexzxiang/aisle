@@ -390,6 +390,8 @@ export interface SceneHypothesis {
 }
 
 export interface VisionRequest {
+  /** Fast observations only; never authoritative for task completion. */
+  searchMode?: 'explore';
   seq: number;
   question: VisionQuestion;
   mode: AppMode;

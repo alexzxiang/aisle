@@ -65,6 +65,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
   private var detectorParity = false
   private var looming = LoomingFilter()
   private var hazards = HazardFilter()
+  private var cartEvidence = CartEvidenceFilter()
   private var obstacles = ObstacleEstimator()
   /// The latest depth grid, for per-detection nearness (round 6b); stale after `depthGridFreshSeconds`.
   private var lastDepthGrid: DepthGrid?
@@ -275,6 +276,7 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
     tracker.reset()
     looming.reset()
     hazards.reset()
+    cartEvidence.reset()
     obstacles.reset()
     ocr.reset()
     lateralArbiter.reset()
@@ -375,7 +377,10 @@ public final class PerceptionEngine: ARSessionManagerDelegate {
       session.frameQueue.async { [self] in
         throttles[.detector]?.markIdle()
         fpsMeters[.detector]?.tick(at: frameTime)
-        var tracked = extra != nil ? mergedAfterUpdate(raw, at: frameTime) : tracker.update(raw, at: frameTime)
+        // COCO has no cart class. Only update cart evidence on Open Images
+        // frames so alternating COCO misses do not erase a genuine sighting.
+        let accepted = useExtra ? cartEvidence.apply(raw, at: frameTime) : raw
+        var tracked = extra != nil ? mergedAfterUpdate(accepted, at: frameTime) : tracker.update(accepted, at: frameTime)
         // Round 7: the user's own arm is not a person ahead. With a fresh hand pose, the person
         // box that holds the hand and reaches the frame's bottom edge becomes `hand`.
         let freshHand = (frameTime - lastHandAt) <= handFreshSeconds ? lastHand : nil

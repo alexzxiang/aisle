@@ -89,7 +89,7 @@ export function classForWords(words: string): DetectionClass | null {
     [/\b(fridge|refrigerator|freezer)\b/, 'fridge'], [/\b(couch|sofa|settee)\b/, 'couch'], [/\b(tv|television|telly|screen)\b/, 'tv'],
     [/\b(tables?|dining table)\b/, 'table'], [/\b(chairs?|seat|stool)\b/, 'chair'], [/\b(bed)\b/, 'bed'],
     [/\b(sink|faucet|tap)\b/, 'sink'], [/\b(oven|stove|cooker|range)\b/, 'oven'], [/\b(microwave)\b/, 'microwave'],
-    [/\b(toilet|loo)\b/, 'toilet'], [/\b(laptop|computer)\b/, 'laptop'], [/\b(bottle|water)\b/, 'bottle'],
+    [/\b(toilet|loo)\b/, 'toilet'], [/\b(laptop|computer)\b/, 'laptop'], [/\b(bottle|water|thermos|flask)\b/, 'bottle'],
     [/\b(cup|mug|glass)\b/, 'cup'], [/\b(bowl)\b/, 'bowl'], [/\b(plant|flowers?)\b/, 'plant'], [/\b(book)\b/, 'book'],
     [/\b(clock)\b/, 'clock'], [/\b(dog|puppy)\b/, 'dog'], [/\b(cat|kitten)\b/, 'cat'], [/\b(backpack|bag|rucksack)\b/, 'backpack'],
     [/\b(handbag|purse)\b/, 'handbag'], [/\b(suitcase|luggage)\b/, 'suitcase'], [/\b(umbrella)\b/, 'umbrella'],

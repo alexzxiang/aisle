@@ -3,12 +3,30 @@ import { createSearchExplorer } from './searchExplorer';
 import type { SearchObservation } from './searchObservation';
 import { coerceSearchObservation } from './searchObservation';
 import { foodSection, sectionFromFoods } from './foodCatalog';
+import { exploreRequest } from './itemMission';
 import type { GuideInstruction } from './guide';
 import { checkPhrase } from './phrases';
 
 const observation = (patch: Partial<SearchObservation> = {}): SearchObservation => ({
   sign: null, items: [], view: 'overview', quality: 'usable', confidence: 0.9, barrier: 'none',
   landmarks: [{ name: 'produce display', kind: 'section', section: 'produce', box: [0.4, 0.2, 0.2, 0.4], confidence: 0.9 }], ...patch,
+});
+
+it('leaves a detector-inspected viewpoint even while the cloud is pending, without marking absence', () => {
+  let t = 100000;
+  const map = createExplorationMap(() => t);
+  const pose = () => ({ x: 0, y: 1.4, z: 0, yawDeg: 0, timestamp: t, trackingState: 'NORMAL' as const, worldSessionId: 'one' });
+  for (let i = 0; i < 3; i++) { t += 100; map.ingestPose(pose()); }
+  const guide = jest.fn(() => null);
+  const search = createSearchExplorer({ item: 'bananas', context: 'store', map, pose, now: () => t,
+    guide: { instructionFor: guide }, path: () => ({ center: 0.1 }),
+    detectorFrame: () => ({ at: t, detections: [{ cls: 'shelf', score: 0.95, trackId: 1, box: [0.1, 0.1, 0.8, 0.8] }] }) });
+  search.analyzing?.(true);
+  for (let i = 0; i < 9; i++) { t += 500; search.tick('bananas', null); }
+  expect(search.status()).toBe('permission');
+  expect(map.trip.coverage('bananas').checked).toBe(false);
+  expect(map.trip.snapshot().evidence).toHaveLength(0);
+  expect(guide).not.toHaveBeenCalled();
 });
 
 function setup(context: 'store' | 'home' = 'store') {
@@ -30,6 +48,38 @@ function setup(context: 'store' | 'home' = 'store') {
 }
 
 describe('active search with trip memory', () => {
+  it('keeps an explicit room exit ahead of tables, and acquires a confirmed doorless opening', () => {
+    expect(exploreRequest('please exit the room')).toEqual({ asked: true, prefer: 'room' });
+    expect(exploreRequest('leave this aisle')).toEqual({ asked: true, prefer: 'aisle' });
+    const h = setup('home');
+    const table = { name: 'table', kind: 'surface' as const, section: 'unknown' as const, box: [0.2, 0.2, 0.5, 0.5] as [number, number, number, number], confidence: 0.99 };
+    h.tick({ landmarks: [table] });
+    expect(h.search.exploreNow('room').target).not.toBe('table');
+    expect(h.search.busy()).toBe(true);
+    for (let i = 0; i < 3; i++) expect(h.tick({ landmarks: [table] })?.target).not.toBe('table');
+    expect(h.search.context()).toContain('Active objective: leave this room');
+    const opening = { ...table, name: 'hall opening', kind: 'doorway' as const, boundary: 'open_passage' as const };
+    h.tick({ landmarks: [table, opening] });
+    h.tick({ landmarks: [table, opening] });
+    expect(h.search.target()).toBe('hall opening');
+  });
+  it('announces automatic exploration, allows objection, and stops an active leg on wait', () => {
+    let t = 100000; let seq = 0;
+    const search = createSearchExplorer({ item: 'bananas', context: 'store', automaticExploration: true,
+      now: () => t, guide: { instructionFor: () => null } });
+    const tick = () => { t += 1000; search.observe(observation(), ++seq, t); return search.tick('bananas', null); };
+    let announcement = '';
+    for (let i = 0; i < 30 && search.status() !== 'permission'; i++) announcement = tick()?.text ?? announcement;
+    expect(search.status()).toBe('permission');
+    expect(announcement).toBe('I will explore a new direction now. Say stop anytime.');
+    tick(); expect(search.status()).toBe('permission');
+    for (let i = 0; i < 4; i++) tick();
+    expect(search.status()).toBe('move');
+    expect(search.intercept('wait').consumed).toBe(true);
+    expect(search.status()).toBe('paused');
+    for (let i = 0; i < 10; i++) tick();
+    expect(search.status()).toBe('paused');
+  });
   it('does not alternate between bowls or tables in a grocery search, including explicit exploration', () => {
     const h = setup();
     const landmarks: SearchObservation['landmarks'] = [
@@ -203,7 +253,7 @@ describe('paused search recovery', () => {
     expect(h.search.tick('bananas', null)?.text).toContain('Waiting for camera analysis');
     expect(h.search.status()).toBe('paused');
     expect(h.search.intercept(command).consumed).toBe(true);
-    expect(h.search.tick('bananas', null)?.text).toBe('Hold the camera steady. I need a current view.');
+    expect(h.search.tick('bananas', null)?.text).toBe('Hold the camera steady while I process this view.');
     expect(h.search.status()).toBe('scan');
   });
 

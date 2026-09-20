@@ -523,6 +523,8 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   };
   const guidedTask = createGuidedTask({
     adaptiveSearch: !mocks,
+    automaticExploration: true,
+    detectorFrame: () => ({ at: latestDetectionAt, detections: latestDetections }),
     heading: () => sceneMemory.facing(),
     steps: () => searchSteps,
     pose: () => (latestPose && now() - latestPose.timestamp <= 2000 && latestPose.trackingState === 'NORMAL' ? latestPose : null),

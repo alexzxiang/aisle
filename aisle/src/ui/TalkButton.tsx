@@ -196,7 +196,8 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: space.m,
+    padding: space.l,
+    minHeight: 140,
     gap: space.m,
     backgroundColor: colors.text,
     borderRadius: sizes.radius,

@@ -1,4 +1,24 @@
 import { CELL_M, createExplorationMap } from './explorationMap';
+import type { Pose } from './contracts';
+
+it('preserves visited geometry across brief continuous tracking loss, but discards it after a reset or gap', () => {
+  let t = 1000;
+  const m = createExplorationMap(() => t);
+  let p: Pose = { x: 0, y: 1, z: 0, yawDeg: 0, timestamp: t, trackingState: 'NORMAL', worldSessionId: 'one' };
+  const feed = (patch: Partial<Pose> = {}) => { t += 100; p = { ...p, ...patch, timestamp: t }; m.ingestPose(p); };
+  feed(); feed(); feed(); m.visit(p); m.markBlocked(p, 0);
+  feed({ trackingState: 'LIMITED' });
+  expect(m.trip.ready()).toBe(false);
+  feed({ trackingState: 'NORMAL' }); feed(); feed();
+  expect(m.trip.ready()).toBe(true);
+  expect(m.visitedCells()).toBe(1);
+  expect(m.bestHeading(p, 0, null)?.turn).not.toBe('ahead');
+  feed({ trackingState: 'LIMITED' }); t += 3000;
+  feed({ trackingState: 'NORMAL' }); feed(); feed();
+  expect(m.visitedCells()).toBe(0);
+  m.visit(p); feed({ worldSessionId: 'two' });
+  expect(m.visitedCells()).toBe(0);
+});
 
 describe('exploration map (round 12): go where we have not been', () => {
   it('prefers unvisited ground ahead, then a turn; the depth grid vetoes a blocked way; visited ground is skipped', () => {

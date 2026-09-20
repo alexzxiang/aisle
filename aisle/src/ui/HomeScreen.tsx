@@ -15,12 +15,10 @@ import { Backdrop, GlassPanel } from './Glass';
 import { awarenessSlots, heroText, needsClock, visibleError } from './derive';
 import { useBus, useConversationEntries, useDetections, useMode, useNow, useOptionalService, useResolvedReduceMotion, useStoreSlice, useUiFacts } from './hooks';
 import {
-  DISCLAIMER_TEXT,
   PRIVACY_TEXT,
   SAY_CARD_EXAMPLES,
   SAY_CARD_NOTE,
   SAY_CARD_TITLE,
-  WALKING_BETA_FALLBACK,
   itemAcknowledgement,
   normalizeTypedItem,
 } from './copy';
@@ -50,14 +48,14 @@ export interface HomeScreenProps {
 }
 
 /** Large viewfinder in the scroll area above the independent talk/chat/type dock. */
-export const HOME_CAMERA_MAX_HEIGHT_SHARE = 0.5;
+export const HOME_CAMERA_MAX_HEIGHT_SHARE = 0.6;
 /**
  * Reserve room on short windows; the upper area scrolls independently of the dock.
  */
-export const HOME_CAMERA_RESERVE_PT = 360;
+export const HOME_CAMERA_RESERVE_PT = 280;
 
 export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
-  const { onOpenDebug, voice, conversation, betaNotice = WALKING_BETA_FALLBACK, now: nowOverride } = props;
+  const { onOpenDebug, voice, conversation, now: nowOverride } = props;
   const reduceMotion = useResolvedReduceMotion(props.reduceMotion);
   const mode = useMode();
   const abort = useStoreSlice((s) => s.abort);
@@ -102,10 +100,8 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
   const detections = useDetections();
   const slots = awarenessSlots({ scene, cameraLive: isCameraLive(), detections });
 
-  const controls = (
+  const typedRequest = (
     <View style={styles.controls}>
-      <TalkButton voice={voice} reduceMotion={reduceMotion} />
-      <TranscriptPanel entries={entries} max={HOME_TRANSCRIPT_MAX} showDescribe={false} reduceMotion={reduceMotion} style={styles.transcript} />
       <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.sectionLabel}>Type your request</Text>
       <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.fieldRow}>
         <TextInput value={draft} onChangeText={setDraft} onSubmitEditing={submit}
@@ -119,6 +115,8 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
     </View>
   );
 
+  const controls = <View style={styles.controls}><TalkButton voice={voice} reduceMotion={reduceMotion} /></View>;
+
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Backdrop accent={accent} reduceMotion={reduceMotion} />
@@ -129,12 +127,13 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
         keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets
       >
-        <CameraPanel slots={slots} accent={accent}
-          maxHeight={cameraMaxHeight(windowHeight, HOME_CAMERA_MAX_HEIGHT_SHARE, HOME_CAMERA_RESERVE_PT)}
-          reduceMotion={reduceMotion} style={styles.camera} />
+        <View style={{ minHeight: Math.max(280, windowHeight - (scrollControls ? 80 : 370)), gap: space.m }}>
         <StateBand mode={mode} modeWord="Task" hero={targetItem ?? 'Choose an item'}
           instruction={hero} onLongPressMode={onOpenDebug} reduceMotion={reduceMotion} style={styles.scene} />
         <ScenePanel scene={scene} reduceMotion={reduceMotion} style={styles.scene} />
+        <CameraPanel slots={slots} accent={accent}
+          maxHeight={cameraMaxHeight(windowHeight, HOME_CAMERA_MAX_HEIGHT_SHARE, HOME_CAMERA_RESERVE_PT)}
+          reduceMotion={reduceMotion} style={styles.camera} />
 
         {error ? (
           <Text accessibilityRole="alert" allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.error}>
@@ -174,18 +173,11 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
           </GlassPanel>
         ) : null}
 
-        <View style={styles.notes} accessibilityRole="summary">
-          <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.note}>
-            {DISCLAIMER_TEXT}
-          </Text>
-          <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.note}>
-            {PRIVACY_TEXT}
-          </Text>
-          <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.note}>
-            {betaNotice}
-          </Text>
-        </View>
         {scrollControls ? controls : null}
+        </View>
+        <TranscriptPanel entries={entries} max={HOME_TRANSCRIPT_MAX} showDescribe={false} reduceMotion={reduceMotion} style={styles.transcript} />
+        {typedRequest}
+        <Text style={styles.note}>{PRIVACY_TEXT}</Text>
       </ScrollView>
       {scrollControls ? null : controls}
     </KeyboardAvoidingView>

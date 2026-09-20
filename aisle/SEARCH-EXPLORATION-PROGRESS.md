@@ -1,5 +1,46 @@
 # Search exploration repair log
 
+## September 20: fast observations and local detector misses
+
+- Adaptive item searches now request Haiku through `searchMode: explore`, with
+  768-pixel snapshots. Unflagged task requests retain Sonnet and 1280-pixel images.
+  Fridge sequences and completion decisions stay on the stronger path. A target
+  candidate, closed-container observation, promising region (rate limited), or
+  twenty seconds without verification requests a stronger follow-up. Actual latency
+  and recognition accuracy still require a phone/model evaluation.
+- Fast responses supply landmarks, strategy and narration. Their target candidates
+  do not become confirmed item memory, steering boxes, negative shelf evidence or
+  completion. A candidate briefly holds relocation for verification (maximum twelve
+  seconds). Rejected candidates cannot leave a persistent positive target mark.
+- For exposed banana/apple/orange/tomato/potato classes, fresh detector frames can
+  provisionally deprioritize a local surface after at least eight samples over three
+  seconds without even a weak target detection. It requires a stable tracked view,
+  a confident centered surface and a size-based distance estimate within two metres.
+  Range is an estimate, not calibrated depth; this is only a temporary cooldown.
+  Stale frames, tracking loss, changed surfaces/views or target candidates interrupt
+  accumulation. Unsupported/packaged items use the semantic inspection path.
+- A detector-qualified miss can request relocation while cloud analysis is pending;
+  existing consent and movement checks remain. It never writes an absence mark.
+  Existing three-metre walked-neighborhood cooldown discourages nearby return loops.
+- Brief tracking interruptions preserve the exploration grid when native coordinates
+  remain continuous. Native origin changes, jumps, long gaps or uncertain recovery
+  clear geometry; semantic trip history remains. No view cones were restored as
+  absence evidence.
+- Search capture-pose validation now also governs the guided-task response path;
+  the redundant stricter heading/pedometer rejection is removed. Delayed observations
+  still enter historical memory before steering rejection when a capture pose exists.
+
+New regressions cover request routing/image size, candidate escalation and rejection,
+detector-driven relocation during pending inference, duplicate/stale detector frames,
+unsupported foods, and continuity versus coordinate reset. Restart the proxy and reload
+the app together. This change adds no native code; earlier unbuilt native changes still
+require a rebuilt development client. Neither live speed nor real-store performance is
+claimed from automated tests.
+
+Validation for this update: 93 app suites / 1,439 tests passed; 23 proxy files /
+222 tests passed; app lint and both TypeScript checks passed. No paid-model timing
+evaluation or supervised store walk was performed.
+
 Base: `eec8a26`. Read `GROCERY-SEARCH-DIAGNOSTICS.md` before implementation.
 
 ## Acceptance and progress

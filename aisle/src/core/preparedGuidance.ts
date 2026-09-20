@@ -20,6 +20,15 @@ export function guidanceText(kind: PreparedGuideKind, name: string, steps: numbe
 }
 
 export const MISSION_PHRASES = {
+  mission_search_next: 'Task complete. Search for another item, or tell me your new environment.',
+  mission_search_processing: 'Hold the camera steady while I process this view.',
+  mission_search_verify: 'Checking a possible match. Hold the camera steady.',
+  mission_search_auto: 'I will explore a new direction now. Say stop anytime.',
+  mission_search_auto_aisle: 'I will guide you toward another aisle. Say stop anytime.',
+  mission_search_auto_retrace: 'I will retrace our route to another place. Say stop anytime.',
+  mission_search_wait: 'Staying here. Say explore when you want to move.',
+  mission_search_retry_camera: 'Waiting for camera analysis. Hold steady; I am retrying.',
+  mission_search_tracking: 'Stop. Hold the phone steady while I recover our position.',
   mission_search_path: 'Hold still while I check the path ahead.',
   mission_search_position: 'Stop. Hold still while I recover our position.',
   mission_search_resume: 'Resuming the search. Hold the camera steady.',

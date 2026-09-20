@@ -30,6 +30,7 @@ const depth = z.object({
 });
 
 export const visionRequestSchema = z.object({
+  searchMode: z.literal('explore').optional(),
   seq: z.number().int().nonnegative(),
   question: z.enum(VISION_QUESTIONS as [VisionQuestion, ...VisionQuestion[]]),
   mode: z.enum(APP_MODES as [AppMode, ...AppMode[]]),

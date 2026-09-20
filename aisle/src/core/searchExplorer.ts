@@ -29,6 +29,7 @@ import { aisleClueScore, groceryAisle, relatedGroceryItems } from './groceryAisl
 import { itemLine } from './itemMission';
 import type { SearchLandmark, SearchObservation, SearchView } from './searchObservation';
 import { isAffirmative, isNegative } from './yesNo';
+import { createDetectorSearchEvidence, type DetectorFrame } from './detectorSearchEvidence';
 import { countWords, findForbiddenTerm, fitWords, hasDigit } from './phrases';
 
 export interface SearchArea {
@@ -58,6 +59,7 @@ export interface SearchDirective {
   narratable?: boolean;
 }
 export interface SearchExplorer {
+  verificationPending?(pending: boolean): void;
   analyzing?(pending: boolean): void;
   observe(observation: SearchObservation | undefined, seq: number, capturedAt: number): boolean;
   /** A model sentence owns this scan turn; do not immediately follow it with canned choreography. */
@@ -92,6 +94,8 @@ export interface SearchExplorer {
   enterArea(landmark: string): void;
 }
 export interface SearchExplorerDeps {
+  automaticExploration?: boolean;
+  detectorFrame?: () => DetectorFrame | null;
   item: string;
   context: TaskContext;
   trace?: (event: string, data: Record<string, unknown>) => void;
@@ -203,6 +207,9 @@ const fit = (s: string): string => (countWords(s) <= 12 ? s : fitWords(s));
 
 /** A bounded search, with consent and measured progress before changing the search area. */
 export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
+  const detectorEvidence = createDetectorSearchEvidence(deps.item);
+  let detectorChecked = false;
+  let verificationUntil = -Infinity;
   const now = deps.now ?? Date.now;
   const areas: SearchArea[] = [];
   let areaCount = 0;
@@ -247,6 +254,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   let closeMode = false;
   let viewEvidence = new Set<string>();
   let refused = new Set<string>();
+  let exitIntent: 'room' | 'aisle' | null = null;
+  let exitScan = 0;
+  let exitScanAt = -Infinity;
   let lastConfined = false;
   let startedAt = now();
   let mapGeneration = map?.trip.generation() ?? 0;
@@ -385,7 +395,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     const door = detectorDoorway();
     const withDoor = door && !fresh.some((l) => l.kind === 'doorway' && overlap(l.box, door.box) >= 0.3) ? [...fresh, door] : fresh;
     const signs = ocrSigns().filter((s) => !withDoor.some((l) => l.kind === 'section' && overlap(l.box, s.box) >= 0.3));
-    return [...withDoor, ...signs].filter(groceryDestination);
+    return [...withDoor, ...signs].filter(groceryDestination)
+      .filter(l => !exitIntent || l.kind === (exitIntent === 'room' ? 'doorway' : 'aisle_end'))
+      .filter(l => !/\b(bowls?|baskets?)\b/i.test(l.name) || l.hits >= 2 && l.confidence >= 0.85);
   };
   const choose = (): SearchLandmark | null => {
     const prior = clean(targetWords);
@@ -409,6 +421,11 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     }
   };
   const question = (): string => {
+    if (deps.automaticExploration) {
+      if (memoryRoute) return 'I will retrace our route to another place. Say stop anytime.';
+      if (proposal?.kind === 'aisle_end') return 'I will guide you toward another aisle. Say stop anytime.';
+      return 'I will explore a new direction now. Say stop anytime.';
+    }
     if (memoryRoute) return 'I remember another place to check. May we retrace our route?';
     if (pendingLeg) return 'May I explore a new direction from here?';
     if (deps.context === 'store') {
@@ -419,12 +436,12 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     return proposal?.kind === 'doorway' ? 'May I guide you through the doorway to search elsewhere?' : 'May I guide you toward another visible surface to search?';
   };
   const leaveStalledView = (pose: Pose | null): SearchDirective | null => {
-    if (lastConfined || now() - observedAt > FRESH_MS || analyzing) return null;
+    if (lastConfined || now() < verificationUntil || (!detectorChecked && (now() - observedAt > FRESH_MS || analyzing))) return null;
     const coverage = map?.trip.coverage(deps.item, pose ?? undefined);
     if (coverage && coverage.missing.length < missingBands) { missingBands = coverage.missing.length; coverageProgressAt = now(); }
     const budget = promisingHere() ? 35000 : 6000;
-    if (now() - localScanAt < budget || scan < 1) return null;
-    if (coverage?.positive) return null;
+    if (!detectorChecked && (now() - localScanAt < budget || scan < 1)) return null;
+    if (coverage?.positive && !detectorChecked) return null;
     if (coverage?.checked) {
       area.outcome = 'not_seen_in_scanned_views';
       map?.trip.noteAisleSearch(deps.item, 'checked');
@@ -432,7 +449,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       map?.trip.noteAisleSearch(deps.item, 'inconclusive');
     }
     map?.trip.defer(deps.item);
-    deps.trace?.('search_leave', { context: deps.context, area: area.id, budget, outcome: area.outcome, relevance: strategy?.relevance ?? 'unknown' });
+    deps.trace?.('search_leave', { context: deps.context, area: area.id, budget, outcome: area.outcome, relevance: strategy?.relevance ?? 'unknown', reason: detectorChecked ? 'detector_no_candidate_local_view' : 'dwell', absenceConfirmed: false });
     const exit = candidates()
       .filter(l => (l.kind === 'aisle_end' || l.kind === 'doorway') && l.hits >= 2 && l.confidence >= 0.8
         && ['open_passage', 'cross_aisle'].includes(l.boundary ?? '') && !refused.has(candidateKey(l))
@@ -552,6 +569,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       targetWords = target;
       lastConfined = opts.confined === true;
       const pose = deps.pose?.() ?? null;
+      detectorChecked = detectorEvidence.update(deps.detectorFrame?.() ?? null, pose, now(), deps.hfovDeg?.() ?? 56)
+        && now() >= verificationUntil;
       if (map && pose) map.ingestPose(pose);
       if (pose && (!localOrigin || Math.hypot(pose.x - localOrigin.x, pose.z - localOrigin.z) > 1.5)) {
         localOrigin = pose; localScanAt = now(); coverageProgressAt = now(); missingBands = 3;
@@ -576,7 +595,19 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       lastTickAt = now();
       // A found target always wins, including while permission is pending.
       if (direct?.targetVisible && !opts.surface) { resetScan(); return null; }
+      if (exitIntent && phase === 'scan') {
+        if (choose()) return this.exploreNow(exitIntent);
+        if (now() - exitScanAt < OPENING_SWEEP_MS) return { text: null, target: targetWords, phase };
+        exitScanAt = now();
+        const text = exitScan < OPENING_SWEEP.length ? OPENING_SWEEP[exitScan++]
+          : 'No exit confirmed. Describe its direction, or ask someone nearby.';
+        return emit(text);
+      }
       if (phase === 'permission') {
+        if (deps.automaticExploration && now() - permissionAt >= 5000) {
+          const next = this.intercept('yes');
+          return { text: next.text, target: proposal?.name ?? targetWords, phase };
+        }
         if (permissionAt !== -Infinity && now() - permissionAt >= CONSENT_MS) {
           return emit('Please say yes to move, or no to stay.', proposal?.name);
         }
@@ -670,6 +701,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
             const noProgress = travelled < 0.5;
             if (blocked || noProgress) map.markBlocked(pose, leg.yawDeg);
             if (!blocked && travelled >= 1.5) {
+              if (crossing) exitIntent = null;
               if (crossing && deps.context === 'store') map.trip.leaveAisle();
               area = freshArea(); area.landmark = crossing ? (deps.context === 'store' ? 'cross aisle corridor' : 'beyond opening') : undefined;
               localScanAt = now(); coverageProgressAt = now(); missingBands = 3; localOrigin = pose; viewEvidence = new Set();
@@ -702,6 +734,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       const moveOn = leaveStalledView(pose);
       if (moveOn) return moveOn;
       if (pendingNarration && now() - saidAt >= 5000) { const line = pendingNarration; pendingNarration = followUp; followUp = null; return emit(line); }
+      if (now() < verificationUntil) return emit('Checking a possible match. Hold the camera steady.');
       if (!analyzing && promisingHere() && !area.closeSearched && !opts.confined && now() - saidAt >= 5000) {
         area.closeSearched = true; closeMode = true; scan = 0; scanAt = now();
         return emit('This area looks promising. Let me inspect it more closely.');
@@ -714,7 +747,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         // Keep the last instruction while analysis is pending; announce a real
         // outage once, then the paused-state retry uses its own slow cadence.
         if (analyzing || now() - cameraWaitAt < 30000) return { text: null, target, phase };
-        const wait = emit('Hold the camera steady. I need a current view.');
+        const wait = emit('Hold the camera steady while I process this view.');
         if (wait.text) cameraWaitAt = now();
         return wait;
       }
@@ -784,6 +817,13 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       return { text: null, target, phase };
     },
     intercept(text) {
+      if (deps.automaticExploration && (phase === 'permission' || phase === 'move' || phase === 'advance')
+        && (isNegative(text) || /^(?:stay here|do not move|don't move|wait)[.!]?$/i.test(text.trim()))) {
+        if (proposal) refused.add(candidateKey(proposal));
+        resetScan();
+        pause('Staying here. Say explore when you want to move.', null);
+        return { consumed: true, text: 'Staying here. Say explore when you want to move.' };
+      }
       if (/\b(?:explore|look at|show|try|check|scan) (?:a |the )?(?:different|another|new) (?:view|angle)\b/i.test(text)) {
         resumeScan(true);
         scan = 1; scanAt = now(); saidAt = now();
@@ -811,16 +851,20 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         void movementSteps;
         return { consumed: true, text: `Okay. Heading for the ${proposal.name}.` };
       }
-      if (isNegative(text)) {
+      if (isNegative(text) || /^(?:stay here|do not move|don't move|wait)[.!]?$/i.test(text.trim())) {
         if (proposal) refused.add(candidateKey(proposal));
         resetScan();
+        if (deps.automaticExploration) {
+          pause('Staying here. Say explore when you want to move.', null);
+          return { consumed: true, text: 'Staying here. Say explore when you want to move.' };
+        }
         return { consumed: true, text: 'We will stay here and inspect another angle.' };
       }
       return { consumed: false, text: null };
     },
     target: () => (phase === 'move' || phase === 'permission') && proposal ? proposal.name : null,
     context() {
-      const prior = section === 'unknown' ? '' : `Likely category: ${section}; hypothesis only. `;
+      const prior = (exitIntent ? `Active objective: leave this ${exitIntent}. Locate an actual open doorway or cross-aisle in search.landmarks with boundary and box. Doorless openings count. Do not substitute tables, bowls, baskets or item-location guesses. If no opening is visible, report that honestly and request a new camera view. ` : '') + (section === 'unknown' ? '' : `Likely category: ${section}; hypothesis only. `);
       const history = areas.slice(-6).map((a) => `${a.sign ?? a.landmark ?? a.id}: ${a.section}, ${a.outcome}, ${a.views.join('/')}`).join('; ');
       const aisle = deps.context === 'store' ? groceryAisle(deps.item) : null;
       const neighbors = relatedGroceryItems(deps.item, area.items);
@@ -829,16 +873,19 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     },
     memory: () => areas.map((a) => ({ ...a, items: [...a.items], views: [...a.views] })),
     analyzing: (pending) => { analyzing = pending; },
+    verificationPending: pending => { verificationUntil = pending ? now() + 12000 : -Infinity; },
     coverage: () => (map ? { visited: map.visitedCells(), scanned: map.scannedCells(), viewed: map.viewedCells() } : null),
     gaveUp: () => gaveUpAt !== -Infinity,
     pending: () => phase === 'permission' || phase === 'paused',
     status: () => phase,
     repeat: () => { saidAt = -Infinity; },
     restart: () => resumeScan(true),
-    busy: () => phase === 'move' || phase === 'advance' || phase === 'permission',
+    busy: () => exitIntent !== null || phase === 'move' || phase === 'advance' || phase === 'permission',
     narrating: () => phase === 'scan' && quality === 'usable' && now() - observedAt <= FRESH_MS && !trackingStopped && !closeMode && !lastConfined && !promisingHere(),
     narrated: () => { modelNarratedAt = now(); saidAt = now(); pendingNarration = null; followUp = null; },
     exploreNow(prefer = null, consent = true) {
+      if (prefer && !exitIntent) { exitScan = 0; exitScanAt = -Infinity; }
+      exitIntent = prefer ?? exitIntent;
       gaveUpAt = -Infinity; startedAt = now(); localScanAt = now();
       map?.trip.defer(deps.item);
       // The current spot is done with: remember it as searched, then leave.
@@ -858,7 +905,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         phase = 'move'; moveAt = now(); saidAt = -Infinity; moveKey = null; moveSaidAt = -Infinity; lastMoveSteps = null; landmarkSeenAt = now();
         return { text: fit(`Okay. Heading for the ${pick.name}.`), target: pick.name, phase, haptic: 'CONFIRM' };
       }
-      if (map && pose) {
+      if (map && pose && !exitIntent) {
         if (!consent && map.bestHeading(pose, pose.yawDeg, deps.path?.() ?? null)) {
           pendingLeg = pose; phase = 'permission'; permissionAt = now(); saidAt = -Infinity; return emit(question());
         }
@@ -869,6 +916,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       return { text: 'Turn slowly so I can find another opening.', target: targetWords, phase, haptic: 'TURN' };
     },
     enterArea(landmark) {
+      exitIntent = null;
       area = freshArea(); area.landmark = landmark; viewEvidence = new Set();
       signHits = 0; signCandidate = ''; narratedSection = 'unknown'; resetScan();
     },

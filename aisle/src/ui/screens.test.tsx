@@ -13,16 +13,7 @@ import type { AppMode, SceneHypothesis } from '../core/contracts';
 import { MAX_UTTERANCE_WORDS, SAY_CARD_EXAMPLES, SAY_CARD_NOTE, SAY_CARD_TITLE, findForbidden, wordCount } from './copy';
 import { Root } from './Root';
 import { HomeScreen, CANCEL_LABEL, FIND_LABEL, ITEM_FIELD_LABEL, PENDING_NOTE, PRACTICE_LABEL, SETTINGS_LABEL } from './HomeScreen';
-import {
-  NavScreen,
-  REPEAT_LABEL,
-  STOP_ARMED_LABEL,
-  STOP_ARM_MS,
-  STOP_ARM_SCREEN_READER_MS,
-  STOP_HINT,
-  STOP_HINT_SCREEN_READER,
-  STOP_LABEL,
-} from './NavScreen';
+import { NavScreen } from './NavScreen';
 import { OnboardingScreen, DONE_LABEL, NEXT_LABEL, NO_LABEL, PLAY_AGAIN_LABEL, SKIP_LABEL, YES_LABEL } from './OnboardingScreen';
 import { DebugPanel, DEBUG_CLOSE_LABEL } from './DebugPanel';
 import { SettingsSheet, CLOSE_LABEL, FASTER_LABEL, SLOWER_LABEL, TRAINING_LABEL } from './SettingsSheet';
@@ -137,27 +128,27 @@ describe('HomeScreen', () => {
     const r = await render(<HomeScreen reduceMotion />);
     const labels = labelsOf(r);
     expect(labels.indexOf(CAMERA_LABEL)).toBeLessThan(labels.indexOf(TALK_LABEL));
-    expect(labels.indexOf(TALK_LABEL)).toBeLessThan(labels.indexOf(FIND_LABEL));
+    expect(labels.indexOf(FIND_LABEL)).toBeGreaterThan(labels.indexOf(TALK_LABEL));
   });
-  it('asks one question, labels every control, renders the three notices, no forbidden words', async () => {
+  it('asks one question, labels every control, omits the prototype and route notices, no forbidden words', async () => {
     setup('IDLE');
     const r = await render(<HomeScreen reduceMotion />);
     const strings = renderedStrings(r);
     expect(strings).toContain('What do you need?');
     expect(strings).toContain('Task');
-    expect(strings.some((s) => s.startsWith('Aisle is a prototype'))).toBe(true);
+    expect(strings.some((s) => s.startsWith('Aisle is a prototype'))).toBe(false);
     expect(strings.some((s) => s.includes('video stays on this phone'))).toBe(true);
-    expect(strings.some((s) => s.toLowerCase().includes('beta'))).toBe(true);
+    expect(strings.some((s) => s.toLowerCase().includes('beta'))).toBe(false);
     const labels = labelsOf(r);
     expect(labels).toEqual(expect.arrayContaining([TALK_LABEL, FIND_LABEL, 'Mode: Task']));
     expect(r.root.findAll((n: ReactTestInstance) => n.props.accessibilityLabel === ITEM_FIELD_LABEL && typeof n.type === 'string')).toHaveLength(1);
     expectClean(r);
   });
 
-  it('displays the beta notice B supplies', async () => {
+  it('omits supplied route notices from the camera screen', async () => {
     setup('IDLE');
     const r = await render(<HomeScreen reduceMotion betaNotice="Routes for walking are in beta; use caution." />);
-    expect(renderedStrings(r)).toContain('Routes for walking are in beta; use caution.');
+    expect(renderedStrings(r)).not.toContain('Routes for walking are in beta; use caution.');
   });
 
   it('typing an item and submitting emits ITEM_REQUESTED from the keyboard and taps CONFIRM', async () => {
@@ -279,7 +270,9 @@ describe('Guidance layout at different viewport sizes', () => {
       expect(scroller).toBeDefined();
       expect(scroller!.findAllByType(TalkButton)).toHaveLength(scrolls ? 1 : 0);
       expect(r.root.findAllByType(TalkButton)).toHaveLength(1);
-      expect(labelsOf(r)).toEqual(expect.arrayContaining([REPEAT_LABEL, STOP_LABEL]));
+      for (const label of ['Repeat', 'Stop guidance', 'Search again', 'Stop speaking', 'Finish']) {
+        expect(labelsOf(r)).not.toContain(label);
+      }
     } finally {
       await act(async () => { Dimensions.set({ window: previous }); });
     }
@@ -332,14 +325,14 @@ describe('TalkButton under a screen reader', () => {
 });
 
 describe('NavScreen', () => {
-  it('shows mode word, hero, the three slots and the four controls, in reading order', async () => {
+  it('shows mode word, hero, the three slots and the talk control, in reading order', async () => {
     setup('OUTDOOR_NAV');
     const r = await render(<NavScreen reduceMotion now={T0} />);
     const strings = renderedStrings(r);
     expect(strings).toContain('Walking');
     expect(strings).toContain('Keep walking');
     const labels = labelsOf(r);
-    const order = ['Mode: Walking', 'Signal: not seen', 'Vehicles: none reported', 'Aisle: no sign read yet', TALK_LABEL, REPEAT_LABEL, STOP_LABEL];
+    const order = ['Mode: Walking', 'Signal: not seen', 'Vehicles: none reported', 'Aisle: no sign read yet', TALK_LABEL];
     const idx = order.map((l) => labels.indexOf(l));
     expect(idx.every((i) => i >= 0)).toBe(true);
     expect(idx).toEqual([...idx].sort((a, b) => a - b));
@@ -410,73 +403,6 @@ describe('NavScreen', () => {
     }
   });
 
-  it('Repeat says the hero through the speech service', async () => {
-    setup('OUTDOOR_NAV');
-    const r = await render(<NavScreen reduceMotion now={T0} />);
-    await act(async () => {
-      stubs.bus.emit({ type: 'OUTDOOR_LEG_ADVANCED', index: 1, instruction: 'Turn left now' });
-    });
-    await press(byLabel(r, REPEAT_LABEL));
-    const say = stubs.log.calls.find((c) => c.service === 'speech' && c.method === 'say');
-    expect(say?.args[0]).toEqual(expect.objectContaining({ text: 'Turn left now', priority: 'NAV' }));
-  });
-
-  it('Stop guidance needs two taps, then aborts to IDLE with a CONFIRM tap', async () => {
-    setup('INDOOR_NAV', { initial: { targetItem: 'eggs' } });
-    const r = await render(<NavScreen reduceMotion now={T0} />);
-    await press(byLabel(r, STOP_LABEL));
-    expect(store.getState().mode).toBe('INDOOR_NAV');
-    expect(labelsOf(r)).toContain(STOP_ARMED_LABEL);
-    await press(byLabel(r, STOP_ARMED_LABEL));
-    expect(store.getState().mode).toBe('IDLE');
-    expect(store.getState().targetItem).toBeNull();
-    expect(stubs.log.calls).toContainEqual(expect.objectContaining({ method: 'play', args: ['CONFIRM'] }));
-  });
-
-  it('a two-second hold stops at once', async () => {
-    setup('OUTDOOR_NAV');
-    const r = await render(<NavScreen reduceMotion now={T0} />);
-    const stop = byLabel(r, STOP_LABEL);
-    expect(stop.props.delayLongPress).toBe(2000);
-    await act(async () => {
-      (stop.props.onLongPress as () => void)();
-    });
-    expect(store.getState().mode).toBe('IDLE');
-  });
-
-  it('with a screen reader on, Stop drops the hold, says so, and announces the armed state', async () => {
-    setup('OUTDOOR_NAV');
-    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
-    try {
-      const r = await render(<NavScreen reduceMotion now={T0} screenReader />);
-      const stop = byLabel(r, STOP_LABEL);
-      // VoiceOver's activate delivers press-in and press-out together: a hold never arrives.
-      expect(stop.props.onLongPress).toBeUndefined();
-      expect(stop.props.delayLongPress).toBeUndefined();
-      expect(stop.props.accessibilityHint).toBe(STOP_HINT_SCREEN_READER);
-
-      await press(stop);
-      expect(store.getState().mode).toBe('OUTDOOR_NAV');
-      expect(announce).toHaveBeenCalledWith(STOP_ARMED_LABEL);
-      await press(byLabel(r, STOP_ARMED_LABEL));
-      expect(store.getState().mode).toBe('IDLE');
-    } finally {
-      announce.mockRestore();
-    }
-  });
-
-  it('without a screen reader the hold and its hint stay', async () => {
-    setup('OUTDOOR_NAV');
-    const r = await render(<NavScreen reduceMotion now={T0} screenReader={false} />);
-    const stop = byLabel(r, STOP_LABEL);
-    expect(stop.props.onLongPress).toEqual(expect.any(Function));
-    expect(stop.props.accessibilityHint).toBe(STOP_HINT);
-  });
-
-  it('the armed window is longer under a screen reader', () => {
-    expect(STOP_ARM_SCREEN_READER_MS).toBeGreaterThan(STOP_ARM_MS);
-  });
-
   it('the Quiet pill turns narration off and back on, and never stops guidance', async () => {
     setup('OUTDOOR_NAV');
     const r = await render(<NavScreen reduceMotion now={T0} />);
@@ -516,14 +442,6 @@ describe('NavScreen', () => {
     const r = await render(<NavScreen reduceMotion now={T0} />);
     expect(hasNode(r, 'scene-panel')).toBe(false);
     expectClean(r);
-  });
-
-  it('in DONE the second target reads Finish and ends the trip', async () => {
-    setup('DONE');
-    const r = await render(<NavScreen reduceMotion now={T0} />);
-    expect(renderedStrings(r)).toContain("You've reached checkout");
-    await press(byLabel(r, 'Finish'));
-    expect(store.getState().mode).toBe('IDLE');
   });
 
   it('the hero is the single live region', async () => {
@@ -887,7 +805,7 @@ describe('Root', () => {
       stubs.bus.emit({ type: 'ROUTE_READY', legCount: 2, destName: 'Demo', crossingCount: 1 });
     });
     expect(store.getState().mode).toBe('OUTDOOR_NAV');
-    expect(labelsOf(r)).toContain(STOP_LABEL);
+    expect(labelsOf(r)).toContain(TALK_LABEL);
 
     await act(async () => {
       (byLabel(r, 'Mode: Walking').props.onLongPress as () => void)();
@@ -1152,19 +1070,19 @@ describe('NavScreen with the conversation and the describer', () => {
     const log = fakeLog([you('1', 'Find eggs')]);
     const r = await render(<NavScreen reduceMotion now={T0} conversation={log} />);
     const labels = labelsOf(r);
-    expect(labels.indexOf(CAMERA_LABEL)).toBeLessThan(labels.indexOf('Mode: Task'));
+    expect(labels.indexOf('Mode: Task')).toBeLessThan(labels.indexOf(CAMERA_LABEL));
     expect(labels.indexOf('Mode: Task')).toBeLessThan(labels.indexOf(TALK_LABEL));
-    expect(labels.indexOf(TALK_LABEL)).toBeLessThan(labels.indexOf('You: Find eggs'));
+    expect(labels.indexOf(CAMERA_LABEL)).toBeLessThan(labels.indexOf('You: Find eggs'));
     expect(renderedStrings(r)).toContain('eggs');
   });
 
-  it('renders the transcript from the log, follows new lines, and keeps the reading order band > camera > transcript > talk', async () => {
+  it('renders the transcript below the controls and follows new lines', async () => {
     setup('INDOOR_NAV', { initial: { targetItem: 'eggs' } });
     const log = fakeLog([you('1', 'I need eggs'), aisle('2', 'Eggs. Planning the route.')]);
     const describeNow = jest.fn(async () => 'Shelves on both sides');
     const r = await render(<NavScreen reduceMotion now={T0} conversation={log} describeNow={describeNow} />);
     let labels = labelsOf(r);
-    const order = ['Mode: In the store', CAMERA_LABEL, 'Signal: not seen', TALK_LABEL, 'You: I need eggs', 'Aisle: Eggs. Planning the route.', DESCRIBE_LABEL, REPEAT_LABEL, STOP_LABEL];
+    const order = ['Mode: In the store', CAMERA_LABEL, 'Signal: not seen', TALK_LABEL, 'You: I need eggs', 'Aisle: Eggs. Planning the route.', DESCRIBE_LABEL];
     const idx = order.map((l) => labels.indexOf(l));
     expect(idx.every((i) => i >= 0)).toBe(true);
     expect(idx).toEqual([...idx].sort((a, b) => a - b));

@@ -467,6 +467,7 @@ export function answerRoom(state: MissionState, transcript: string, now: number)
 export function exploreRequest(transcript: string): { asked: boolean; prefer: 'aisle' | 'room' | null } {
   const t = normalizeAnswer(transcript);
   if (/\b(?:do not|don'?t|stop) (?:explor|mov|walk)/.test(t)) return { asked: false, prefer: null };
+  if (/\b(?:leave|exit|get out of)\b/.test(t) && !/\b(?:do not|don'?t|not)\b/.test(t)) return { asked: true, prefer: /\baisle\b/.test(t) ? 'aisle' : 'room' };
   if (/\b(?:next|another|other|different) aisle\b/.test(t) || /\baisles?\b/.test(t) && /\b(?:try|check|look|search|move|explore)\b/.test(t)) return { asked: true, prefer: 'aisle' };
   if (/\b(?:next|another|other|different) room\b/.test(t) || /\brooms?\b/.test(t) && /\b(?:try|check|look|search|move|explore)\b/.test(t)) return { asked: true, prefer: 'room' };
   if (/^(?:explore|keep exploring|explore more|look around more|look somewhere else|search somewhere else|try somewhere else|move on|keep moving|let'?s move|somewhere else|elsewhere|look elsewhere|search elsewhere)$/.test(t)) return { asked: true, prefer: null };

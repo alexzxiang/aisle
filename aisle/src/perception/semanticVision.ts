@@ -536,6 +536,7 @@ export interface AskOutcome {
 }
 
 export interface AskOptions {
+  searchMode?: 'explore';
   userText?: string;
   targetItem?: string;
   knownSigns?: string[];
@@ -701,7 +702,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
 
   const buildRequest = async (question: VisionQuestion, o: AskOptions, n: number, captured: (at: number) => void): Promise<VisionRequest> => {
     const mode = store.getState().mode;
-    const width = o.image === 'none' ? null : (o.image ?? SNAPSHOT_WIDTH[question]);
+    const width = o.image === 'none' ? null : (o.image ?? (question === 'task_step' && o.searchMode === 'explore' ? 768 : SNAPSHOT_WIDTH[question]));
     let image: VisionRequest['image'];
     if (width !== null) {
       try {
@@ -715,6 +716,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
     const current = freshFacts();
     const heading = opts.getHeadingDeg?.();
     const req: VisionRequest = {
+      ...(question === 'task_step' && o.searchMode ? { searchMode: o.searchMode } : {}),
       seq: n,
       question,
       mode,

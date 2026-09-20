@@ -23,6 +23,17 @@ import {
 
 type Listener<T> = (v: T) => void;
 
+it('sends exploration at 768 and verification at 1280 with the lane preserved on the wire', async () => {
+  const requests: VisionRequest[] = [];
+  const h = harness(scripted(req => { requests.push(req); return okResponse(req.seq); }));
+  await h.sv.ask('task_step', { searchMode: 'explore', force: true, silent: true });
+  await h.sv.ask('task_step', { force: true, silent: true });
+  expect(h.perception.widths).toEqual([768, 1280]);
+  expect(requests[0]?.searchMode).toBe('explore');
+  expect(requests[1]?.searchMode).toBeUndefined();
+  h.sv.dispose();
+});
+
 /** A perception stub whose streams tests can drive by hand. */
 function fakePerception() {
   const dets = new Set<Listener<Detection[]>>();

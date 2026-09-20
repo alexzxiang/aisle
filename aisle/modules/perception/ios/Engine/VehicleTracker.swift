@@ -78,6 +78,24 @@ public struct RawDetection: Equatable, Sendable {
   }
 }
 
+/// Cart identity needs repeated evidence from actual detector frames, not cached tracks.
+/// Obstacle depth remains independent of this label filter.
+public struct CartEvidenceFilter {
+  private var previous: [NormalizedBox] = []
+  private var previousAt: Double = -.infinity
+  public init() {}
+  public mutating func reset() { previous = []; previousAt = -.infinity }
+  public mutating func apply(_ detections: [RawDetection], at t: Double) -> [RawDetection] {
+    let carts = detections.filter { $0.cls == .cart && $0.score >= 0.8 }
+    let old = previous
+    let recent = t > previousAt && t - previousAt <= 1.0
+    previous = carts.map { $0.box }; previousAt = t
+    return detections.filter { d in
+      d.cls != .cart || (d.score >= 0.8 && recent && old.contains { $0.intersectionOverUnion(d.box) >= 0.4 })
+    }
+  }
+}
+
 /// IoU association across consecutive detector frames: match when IoU ≥ 0.3,
 /// greedy by score; a track survives 5 missed frames; `trackId` is monotonic
 /// per session. Costs < 2 ms at COCO-nano output sizes.
@@ -365,6 +383,8 @@ public enum OpenImagesLabels {
     "hair dryer": .hairDrier, "computer mouse": .mouse, "tie": .tie, "person": .person, "man": .person, "woman": .person,
     "boy": .person, "girl": .person, "car": .car, "taxi": .car, "van": .car, "bus": .bus, "truck": .truck,
     "motorcycle": .motorcycle, "bicycle": .bicycle, "cart": .cart,
+    "water bottle": .bottle, "thermos": .bottle, "flask": .bottle,
+    "vacuum flask": .bottle, "reusable bottle": .bottle,
   ]
 
   /// Open Images nano is noisier than COCO nano: nothing under this score is kept.

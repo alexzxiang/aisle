@@ -112,6 +112,11 @@ describe('visionTimeoutFor', () => {
 });
 
 describe('which questions get the stronger model', () => {
+  it('uses Haiku only for explicitly requested exploration, preserving strong verification', () => {
+    expect(buildVisionParams(sampleRequest({ question: 'task_step', searchMode: 'explore' })).model).toBe(MODELS.haiku);
+    expect(buildVisionParams(sampleRequest({ question: 'task_step' })).model).toBe(MODELS.sonnet);
+    expect(modelFor('curb_crop', 'explore')).toBe(MODELS.sonnet);
+  });
   // Measured on four captured frames of an open fridge: Haiku said the step was
   // not done ("reach for the handle") 4/4, Sonnet said done ("already open") 4/4,
   // for ~300 ms more. Dropping the on-device facts and the "Seen:" line left

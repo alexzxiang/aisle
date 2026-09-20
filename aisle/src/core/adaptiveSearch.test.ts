@@ -56,6 +56,23 @@ describe('adaptive search in the actual guided-task loop', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(1700000000000); });
   afterEach(() => jest.useRealTimers());
 
+  it('escalates fast item candidates but does not reach for an item rejected by verification', async () => {
+    const h = setup('store');
+    h.setObservation({ item: { box: [0.4, 0.3, 0.2, 0.3], confidence: 0.95 } });
+    const original = h.ask.getMockImplementation()!;
+    h.ask.mockImplementation(async (q, opts) => {
+      const result = await original(q, opts);
+      if (!opts?.searchMode) result.response!.search = { ...result.response!.search!, item: { box: null, confidence: 0 } };
+      return result;
+    });
+    await jest.advanceTimersByTimeAsync(10000);
+    expect(h.ask.mock.calls.some(([, opts]) => opts?.searchMode === 'explore')).toBe(true);
+    expect(h.ask.mock.calls.some(([, opts]) => opts?.searchMode === undefined)).toBe(true);
+    expect(h.hand.start).not.toHaveBeenCalled();
+    expect(h.task.getDebugState().stage).not.toBe('reach');
+    h.task.dispose();
+  });
+
   it('uses independently confident search evidence from low-confidence overall results', async () => {
     const h = setup('store'); h.lowConfidence();
     await jest.advanceTimersByTimeAsync(20000);
@@ -146,7 +163,7 @@ describe('adaptive search in the actual guided-task loop', () => {
   it('lets an explicit explore request leave a home container without reinserting it on the next frame', async () => {
     const h = setup('home', 'bananas');
     h.setObservation({ barrier: 'closed_freezer', landmarks: [{ name: 'freezer', kind: 'appliance', section: 'frozen', box: [0.1, 0.1, 0.7, 0.8], confidence: 0.9 }] });
-    await jest.advanceTimersByTimeAsync(3500);
+    await jest.advanceTimersByTimeAsync(6500); // fast observation, then strong container verification
     expect(h.task.getDebugState().total).toBe(5);
     h.task.advance();
     expect(h.task.intercept('explore')).toBe(true);
@@ -222,7 +239,7 @@ describe('leaving an area the camera shows nothing in', () => {
     });
     await jest.advanceTimersByTimeAsync(20000);
     expect(h.said).not.toContain('Walk forward toward the doorway.');
-    expect(h.said.filter(s => s.includes('I need a current view.'))).toHaveLength(1);
+    expect(h.said.filter(s => s.includes('while I process this view.'))).toHaveLength(1);
     h.task.dispose();
   });
 

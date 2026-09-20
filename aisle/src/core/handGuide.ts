@@ -151,7 +151,8 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
       cancelled = false;
       const gen = ++generation;
       // An appliance box is never a handle box.
-      const cls = /\bhandle\b/i.test(item) ? null : classForWords(item);
+      const specificBottle = classForWords(item) === 'bottle' && /\b(neon|green|red|blue|black|white|yellow|pink|purple|metal|steel|insulated|reusable|thermos|flask)\b/i.test(item);
+      const cls = /\bhandle\b/i.test(item) || specificBottle ? null : classForWords(item);
       const startedAt = now();
       let steps = 0;
       let handWords = 0;
