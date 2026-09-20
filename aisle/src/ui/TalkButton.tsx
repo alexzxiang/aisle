@@ -1,6 +1,6 @@
 /**
- * Push-to-talk: an 88 pt round glass button with its label beneath, the
- * largest and most recognisable target on the screen (DESIGN.md, Targets).
+ * Push-to-talk: a full-width dark control with a compact glass disc and
+ * a visible gesture cue (DESIGN.md, UI refresh).
  * Held = "Listening" with a pulsing ring; released = "Hold to talk".
  *
  * Two gestures, chosen by whether a screen reader is running:
@@ -165,7 +165,7 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, 
       accessibilityLabel={label}
       accessibilityState={{ busy: held }}
       accessibilityHint={hint ?? (toggleMode ? TALK_HINT_TOGGLE : TALK_HINT_HOLD)}
-      style={[styles.wrap, style]}
+      style={[styles.wrap, held && styles.wrapHeld, style]}
     >
       <View style={styles.discArea}>
         <Animated.View pointerEvents="none" style={[styles.ring, held && styles.ringHeld, ringStyle]} testID="talk-ring" />
@@ -177,35 +177,57 @@ export function TalkButton({ voice, onStart, onStop, hint, style, screenReader, 
           </View>
         </Animated.View>
       </View>
-      <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.label}>
-        {label}
-      </Text>
+      <View style={styles.caption}>
+        <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.label}>
+          {label}
+        </Text>
+        <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.help}>
+          {held ? (ready ? (toggleMode ? 'Tap when you finish' : 'Release when you finish') : 'Wait for the listening cue') : 'Tell Aisle what you need'}
+        </Text>
+      </View>
     </Pressable>
   );
 }
 
-const RING_PAD = 18;
+const RING_PAD = 8;
+const DISC_SIZE = sizes.secondaryHeight;
 
 const styles = StyleSheet.create({
   wrap: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: space.s,
-    gap: space.s,
+    padding: space.m,
+    gap: space.m,
+    backgroundColor: colors.text,
+    borderRadius: sizes.radius,
+    borderWidth: 2,
+    borderColor: colors.text,
+  },
+  wrapHeld: {
+    borderColor: signalColors.DONT_WALK,
+  },
+  caption: {
+    flex: 1,
+    gap: space.xs,
+  },
+  help: {
+    ...type.meta,
+    fontWeight: '400',
+    color: colors.viewfinderText,
   },
   discArea: {
-    width: sizes.talkDiameter + RING_PAD * 2,
-    height: sizes.talkDiameter + RING_PAD * 2,
+    width: DISC_SIZE + RING_PAD * 2,
+    height: DISC_SIZE + RING_PAD * 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   ring: {
     position: 'absolute',
-    width: sizes.talkDiameter,
-    height: sizes.talkDiameter,
-    borderRadius: sizes.talkDiameter / 2,
+    width: DISC_SIZE,
+    height: DISC_SIZE,
+    borderRadius: DISC_SIZE / 2,
     borderWidth: 3,
-    borderColor: colors.text,
+    borderColor: colors.white,
     opacity: 0,
   },
   ringHeld: {
@@ -220,9 +242,9 @@ const styles = StyleSheet.create({
     borderRadius: sizes.talkDiameter / 2,
   },
   disc: {
-    width: sizes.talkDiameter,
-    height: sizes.talkDiameter,
-    borderRadius: sizes.talkDiameter / 2,
+    width: DISC_SIZE,
+    height: DISC_SIZE,
+    borderRadius: DISC_SIZE / 2,
     overflow: 'hidden',
     borderWidth: glass.borderWidth,
     borderColor: glass.border,
@@ -254,7 +276,7 @@ const styles = StyleSheet.create({
   label: {
     ...type.body,
     fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
+    color: colors.white,
+    textAlign: 'left',
   },
 });

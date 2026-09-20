@@ -14,7 +14,7 @@
  * its empty line and the pill is hidden.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { AccessibilityInfo, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { StateBand } from './StateBand';
 import { CameraPanel, isCameraLive } from './CameraPanel';
 import { ScenePanel } from './ScenePanel';
@@ -96,7 +96,9 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
   const speech = useOptionalService('speech');
   const haptics = useOptionalService('haptics');
   const entries = useConversationEntries(conversation);
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
+  // Large text and landscape need one scroll surface, including the controls.
+  const scrollControls = windowHeight < 600 || fontScale > 1.3;
 
   const signal = bandSignal(facts);
   const accent = accentFor(mode, signal);
@@ -147,9 +149,35 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
 
   const isDone = mode === 'DONE';
 
+  const controls = (
+    <View style={styles.controls}>
+      <TalkButton voice={voice} reduceMotion={reduceMotion} />
+      <View style={styles.row}>
+        <Button label={REPEAT_LABEL} onPress={repeat} hint="Says the current instruction again" reduceMotion={reduceMotion} style={styles.half} />
+        <Button
+          label={isDone ? FINISH_LABEL : armed ? STOP_ARMED_LABEL : STOP_LABEL}
+          onPress={isDone ? stopNow : onStopPress}
+          onLongPress={screenReader ? undefined : stopNow}
+          delayLongPress={screenReader ? undefined : STOP_HOLD_MS}
+          hint={isDone ? 'Ends the trip' : screenReader ? STOP_HINT_SCREEN_READER : STOP_HINT}
+          selected={armed}
+          reduceMotion={reduceMotion}
+          style={styles.half}
+        />
+      </View>
+      <View style={styles.row}>
+        {mode === 'GUIDED_TASK' && voice?.submitText ? <Button label="Search again" size="compact" quiet onPress={() => {
+          void Promise.resolve(voice.submitText?.('search again')).catch((err: unknown) => bus.emit({ type: 'ERROR', scope: 'voice', message: err instanceof Error ? err.message : String(err) }));
+        }} hint="Resumes a paused search from this area" reduceMotion={reduceMotion} style={styles.half} /> : null}
+        <Button label="Stop speaking" size="compact" quiet onPress={() => speech?.clearQueue()} hint="Stops the current spoken message" reduceMotion={reduceMotion} style={styles.half} />
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.screen}>
       <Backdrop accent={accent} reduceMotion={reduceMotion} />
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="guidance-scroll" nestedScrollEnabled>
       <StateBand
         mode={mode}
         hero={hero}
@@ -175,34 +203,9 @@ export function NavScreen(props: NavScreenProps): React.JSX.Element {
         reduceMotion={reduceMotion}
         style={styles.transcript}
       />
-      <View style={styles.controls}>
-        <View style={styles.row}>
-          {mode === 'GUIDED_TASK' && voice?.submitText ? <Button label="Search again" size="compact" onPress={() => {
-            void Promise.resolve(voice.submitText?.('search again')).catch((err: unknown) => bus.emit({ type: 'ERROR', scope: 'voice', message: err instanceof Error ? err.message : String(err) }));
-          }} hint="Resumes a paused search from this area" reduceMotion={reduceMotion} style={styles.half} /> : null}
-          <Button label="Stop speaking" size="compact" onPress={() => speech?.clearQueue()} hint="Stops the current spoken message" reduceMotion={reduceMotion} style={styles.half} />
-        </View>
-        <TalkButton voice={voice} reduceMotion={reduceMotion} />
-        <View style={styles.row}>
-          <Button
-            label={REPEAT_LABEL}
-            onPress={repeat}
-            hint="Says the current instruction again"
-            reduceMotion={reduceMotion}
-            style={styles.half}
-          />
-          <Button
-            label={isDone ? FINISH_LABEL : armed ? STOP_ARMED_LABEL : STOP_LABEL}
-            onPress={isDone ? stopNow : onStopPress}
-            onLongPress={screenReader ? undefined : stopNow}
-            delayLongPress={screenReader ? undefined : STOP_HOLD_MS}
-            hint={isDone ? 'Ends the trip' : screenReader ? STOP_HINT_SCREEN_READER : STOP_HINT}
-            selected={armed}
-            reduceMotion={reduceMotion}
-            style={styles.half}
-          />
-        </View>
-      </View>
+      {scrollControls ? controls : null}
+      </ScrollView>
+      {scrollControls ? null : controls}
     </View>
   );
 }
@@ -226,21 +229,32 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   transcript: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minHeight: 200,
+    height: 300,
+    flexShrink: 0,
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    gap: space.m,
+    paddingBottom: space.m,
   },
   controls: {
     paddingHorizontal: sizes.gutter,
     paddingTop: space.xs,
     paddingBottom: space.xl,
     gap: space.m,
+    backgroundColor: colors.bg,
+    borderTopWidth: 1,
+    borderTopColor: colors.hairline,
   },
   row: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: space.m,
   },
   half: {
     flex: 1,
+    minWidth: 140,
   },
 });

@@ -62,7 +62,6 @@ export function Button(props: ButtonProps): React.JSX.Element {
         <Text
           allowFontScaling
           maxFontSizeMultiplier={fontScaleCap.body}
-          numberOfLines={2}
           style={[styles.label, size === 'pill' && styles.pillLabel, quiet && styles.quietLabel, primary && styles.primaryLabel]}
         >
           {label}
@@ -88,6 +87,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: space.l,
+    paddingVertical: space.m,
   },
   secondary: {
     minHeight: sizes.secondaryHeight,

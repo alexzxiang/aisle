@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-import { AccessibilityInfo, ScrollView } from 'react-native';
+import { AccessibilityInfo, Dimensions, ScrollView } from 'react-native';
 import { services } from '../core/services';
 import { bindStoreToBus, createAppStore, type AppStore } from '../core/store';
 import { createStubServices, type StubServices } from '../core/stubs';
@@ -132,6 +132,13 @@ function scene(label: string, confirmed = true): SceneHypothesis {
 // ---------------------------------------------------------------------------
 
 describe('HomeScreen', () => {
+  it('puts both request methods before the camera in reading order', async () => {
+    setup('IDLE');
+    const r = await render(<HomeScreen reduceMotion />);
+    const labels = labelsOf(r);
+    expect(labels.indexOf(TALK_LABEL)).toBeLessThan(labels.indexOf(CAMERA_LABEL));
+    expect(labels.indexOf(ITEM_FIELD_LABEL)).toBeLessThan(labels.indexOf(CAMERA_LABEL));
+  });
   it('asks one question, labels every control, renders the three notices, no forbidden words', async () => {
     setup('IDLE');
     const r = await render(<HomeScreen reduceMotion />);
@@ -252,6 +259,30 @@ describe('HomeScreen', () => {
       r.unmount();
     });
     expect(calls).toEqual(['start', 'stop']);
+  });
+});
+
+describe('Guidance layout at different viewport sizes', () => {
+  it.each([
+    { height: 844, fontScale: 1, scrolls: false },
+    { height: 480, fontScale: 1, scrolls: true },
+    { height: 844, fontScale: 2, scrolls: true },
+  ])('keeps controls reachable at height $height and font scale $fontScale', async ({ height, fontScale, scrolls }) => {
+    const previous = Dimensions.get('window');
+    await act(async () => {
+      Dimensions.set({ window: { width: 390, height, scale: 3, fontScale } });
+    });
+    try {
+      setup('OUTDOOR_NAV');
+      const r = await render(<NavScreen reduceMotion />);
+      const scroller = r.root.findAllByType(ScrollView).find((n) => n.props.testID === 'guidance-scroll');
+      expect(scroller).toBeDefined();
+      expect(scroller!.findAllByType(TalkButton)).toHaveLength(scrolls ? 1 : 0);
+      expect(r.root.findAllByType(TalkButton)).toHaveLength(1);
+      expect(labelsOf(r)).toEqual(expect.arrayContaining([REPEAT_LABEL, STOP_LABEL]));
+    } finally {
+      await act(async () => { Dimensions.set({ window: previous }); });
+    }
   });
 });
 

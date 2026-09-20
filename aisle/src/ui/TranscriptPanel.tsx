@@ -166,6 +166,9 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
 
   return (
     <GlassPanel reduceMotion={reduceMotion} style={[styles.panel, style]} contentStyle={styles.content} testID={testID ?? 'transcript-panel'}>
+      <Text accessibilityRole="header" allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.who}>
+        {TRANSCRIPT_LABEL}
+      </Text>
       {/* The list owns every touch that lands on it, so a finger resting here while
           reading never reaches the hold-anywhere-to-talk layer behind the screen (which
           would open the microphone, freeze the UI for the audio-session switch and then
@@ -179,6 +182,7 @@ export function TranscriptPanel(props: TranscriptPanelProps): React.JSX.Element 
         accessibilityLabel={TRANSCRIPT_LABEL}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
+        nestedScrollEnabled
         onScroll={onScroll}
         onTouchStart={() => { touching.current = true; }}
         onTouchEnd={() => { touching.current = false; }}

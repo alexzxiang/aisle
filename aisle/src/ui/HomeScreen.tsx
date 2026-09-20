@@ -120,17 +120,12 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
       >
-        {/* The camera is up from launch (the awareness loop): show it, and what the app makes of it. */}
-        <CameraPanel
-          slots={slots}
-          accent={accent}
-          maxHeight={cameraMaxHeight(windowHeight, HOME_CAMERA_MAX_HEIGHT_SHARE, HOME_CAMERA_RESERVE_PT)}
-          reduceMotion={reduceMotion}
-          style={styles.camera}
-        />
-        <ScenePanel scene={scene} reduceMotion={reduceMotion} />
-
+        <TalkButton voice={voice} reduceMotion={reduceMotion} />
+        <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.sectionLabel}>
+          Or type your request
+        </Text>
         <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.fieldRow}>
           <TextInput
             value={draft}
@@ -156,8 +151,6 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
           </Text>
         ) : null}
 
-        <TalkButton voice={voice} reduceMotion={reduceMotion} />
-
         {pending ? (
           <GlassPanel reduceMotion={reduceMotion} contentStyle={styles.pendingRow}>
             <Text allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={[styles.detail, styles.half]}>
@@ -171,6 +164,18 @@ export function HomeScreen(props: HomeScreenProps): React.JSX.Element {
           <Button label={PRACTICE_LABEL} onPress={practice} hint="Replays the one-minute vibration lesson" reduceMotion={reduceMotion} style={styles.half} />
           <Button label={SETTINGS_LABEL} onPress={onOpenSettings} hint="Speaking rate, training mode, describing, headphones" reduceMotion={reduceMotion} style={styles.half} />
         </View>
+
+        <Text accessibilityRole="header" allowFontScaling maxFontSizeMultiplier={fontScaleCap.body} style={styles.sectionLabel}>
+          Your surroundings
+        </Text>
+        <CameraPanel
+          slots={slots}
+          accent={accent}
+          maxHeight={cameraMaxHeight(windowHeight, HOME_CAMERA_MAX_HEIGHT_SHARE, HOME_CAMERA_RESERVE_PT)}
+          reduceMotion={reduceMotion}
+          style={styles.camera}
+        />
+        <ScenePanel scene={scene} reduceMotion={reduceMotion} style={styles.scene} />
 
         {entries.length > 0 ? (
           <TranscriptPanel entries={entries} max={HOME_TRANSCRIPT_MAX} showDescribe={false} reduceMotion={reduceMotion} style={styles.transcript} />
@@ -230,12 +235,14 @@ const styles = StyleSheet.create({
   },
   fieldRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: space.s,
     padding: space.s,
   },
   field: {
     flex: 1,
+    minWidth: 150,
     minHeight: sizes.secondaryHeight,
     ...type.body,
     color: colors.text,
@@ -255,12 +262,24 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: space.m,
   },
   half: {
     flex: 1,
+    minWidth: 140,
   },
   transcript: {
+    marginHorizontal: 0,
+    height: 300,
+  },
+  sectionLabel: {
+    ...type.meta,
+    color: colors.secondary,
+    marginTop: space.s,
+    paddingHorizontal: space.xs,
+  },
+  scene: {
     marginHorizontal: 0,
   },
   sayCard: {
@@ -280,6 +299,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   camera: {
+    marginHorizontal: 0,
     flexGrow: 0,
     flexShrink: 0,
   },

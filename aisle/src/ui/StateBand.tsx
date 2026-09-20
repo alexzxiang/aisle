@@ -194,8 +194,7 @@ const styles = StyleSheet.create({
     ...type.meta,
     fontWeight: '700',
     color: colors.text,
-    textTransform: 'uppercase',
-    letterSpacing: 1.1,
+    letterSpacing: 0.1,
   },
   hero: {
     ...type.hero,

@@ -1,5 +1,29 @@
 # Aisle — UI design plan (Agent A)
 
+## UI refresh — September 19, 2026 (current layout)
+
+This section supersedes the historical layout and dark-palette descriptions
+below. The implementation uses the light glass palette in `theme.ts`.
+
+- Home orders content by action: current instruction, talk, typed request,
+  practice/settings, surroundings, conversation/examples, notices. Camera and
+  scene panels share the same gutter as input, with no doubled inset.
+- Talk is a full-width dark rounded control with white text, a compact disc,
+  and an explicit starting/listening/release cue. Direct-touch hold and screen
+  reader toggle behavior are unchanged. Reduced motion retains a static halo.
+- Guidance scrolls its instruction, camera, scene, and conversation. On normal
+  portrait screens, talk/repeat/stop remain in a bottom control area. Below
+  600 points tall or above 1.3 font scale, controls join the scrolling content
+  so enlarged labels cannot consume the entire viewport.
+- Conversations have a bounded 300-point panel, a visible heading, and their
+  own scroll surface. Android nested scrolling is enabled. Existing follow-to-
+  bottom behavior continues to respect someone reading older messages.
+- Buttons grow with their labels rather than truncating at two lines. Rows
+  wrap on narrow screens. Mode labels use sentence case. Home adjusts scroll
+  insets for the iOS keyboard.
+
+Validation and remaining device checks are recorded in `UI-CHECKPOINT.md`.
+
 Read at two metres by a sighted teammate, operated one-handed by a blind user through
 VoiceOver and the app's own speech. Ten rules; everything in `src/ui/` is built to them.
 
