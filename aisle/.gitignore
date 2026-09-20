@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Demo recordings are too large for GitHub (100 MB limit); share by link or git LFS.
+videos/

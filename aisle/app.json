@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Aisle",
+    "name": "Aisle Be There",
     "slug": "aisle",
     "version": "0.1.0",
     "scheme": "aisle",
@@ -12,11 +12,11 @@
       "bundleIdentifier": "edu.steelhacks.aisle",
       "supportsTablet": false,
       "infoPlist": {
-        "NSCameraUsageDescription": "Aisle reads signs and signals through the camera.",
-        "NSLocationWhenInUseUsageDescription": "Aisle needs your location to guide you.",
-        "NSMotionUsageDescription": "Aisle counts steps to estimate progress.",
-        "NSMicrophoneUsageDescription": "Aisle listens only while you hold the talk button.",
-        "NSSpeechRecognitionUsageDescription": "Aisle turns your request into text on this phone.",
+        "NSCameraUsageDescription": "Aisle Be There reads signs and signals through the camera.",
+        "NSLocationWhenInUseUsageDescription": "Aisle Be There needs your location to guide you.",
+        "NSMotionUsageDescription": "Aisle Be There counts steps to estimate progress.",
+        "NSMicrophoneUsageDescription": "Aisle Be There listens only while you hold the talk button.",
+        "NSSpeechRecognitionUsageDescription": "Aisle Be There turns your request into text on this phone.",
         "NSLocalNetworkUsageDescription": "Development server discovery.",
         "UIRequiredDeviceCapabilities": [
           "arkit"

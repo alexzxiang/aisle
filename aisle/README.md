@@ -1,6 +1,7 @@
-# Aisle
+# Aisle Be There
 
-A phone-only navigation aid for blind and low-vision users, built for SteelHacks XIII.
+The app itself (the short spoken name is still "Aisle"). A phone-only navigation aid for blind
+and low-vision users, built for SteelHacks XIII.
 It takes a person along the street, across a signalized or unsignalized crossing, into a
 grocery store nobody surveyed, to a requested item and on to checkout, using one standard
 iPhone. Haptics carry real-time signals, speech carries meaning, and the app **informs;
