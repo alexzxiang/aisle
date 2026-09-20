@@ -146,6 +146,12 @@ Acceptance: a screen recording of one full Forbes → Craig walk with every inst
 and correct, plus the two recorded routes committed.
 
 ## The tests everyone runs
+
+**Grocery search handoff (September 19):** See
+[GROCERY-SEARCH-DIAGNOSTICS.md](GROCERY-SEARCH-DIAGNOSTICS.md) for phone-trace evidence,
+reproduced parser failures, remaining context/depth/exploration bugs, and prioritized
+work with acceptance scenarios. Passing unit tests does not establish store-walk readiness.
+
 - **Living room:** open app → within 3 s something true about the room → "You seem to be in
   a living room. Right?" → yes → "find the eggs in my fridge" → confirm-back → steps with
   direction + distance → at the fridge, hand words → "Grab it." → "Done."
