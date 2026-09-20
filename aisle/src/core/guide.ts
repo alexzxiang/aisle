@@ -91,10 +91,34 @@ export const TARGET_FRESH_MS = 3000;
 /** Depth-grid nearness at which the bottom-centre cell counts as something in the way. */
 export const PATH_BLOCKED = 0.7;
 
+/**
+ * Depth bands, the same cuts the rest of the app reads the grid by: at or above NEAR_CLOSE the
+ * thing is close, at or above NEAR_MID it is a few steps off. Uncalibrated and relative, so they
+ * bound the estimate rather than produce one.
+ */
+export const NEAR_CLOSE = 0.66;
+export const NEAR_MID = 0.4;
+export const NEAR_CLOSE_MAX_STEPS = 2;
+export const NEAR_MID_MAX_STEPS = 4;
+
+/**
+ * Distance comes from the box height against an *assumed* height for the class, so it is only
+ * as good as that assumption: a half-height bar fridge, a child's chair, or a box clipped by the
+ * frame edge all read as further away than they are. The depth grid measures the same target
+ * independently and was already being passed in here and thrown away.
+ *
+ * It only ever pulls the estimate in, never pushes it out. The grid is relative and uncalibrated,
+ * so it cannot say "four steps" — but "this is close" is reliable, and the two errors are not
+ * equal: saying five steps to something one step away walks a blind person into it, while saying
+ * one step to something five away just has them reach early.
+ */
 export function stepsFromBox(cls: DetectionClass | null, box: [number, number, number, number], near: number | undefined, ultraWide = false, heightOverrideM?: number | null): number {
   const heightM = (cls && CLASS_HEIGHT_M[cls]) ?? heightOverrideM ?? DEFAULT_HEIGHT_M;
   const distanceM = distanceFromBox(box, heightM, ultraWide ? 100 : 56, cls === 'fridge' ? 0.7 : undefined) ?? MAX_STEPS * STEP_M;
-  return Math.max(0, Math.min(MAX_STEPS, Math.round(distanceM / STEP_M)));
+  const fromBox = Math.max(0, Math.min(MAX_STEPS, Math.round(distanceM / STEP_M)));
+  if (typeof near !== 'number' || !Number.isFinite(near)) return fromBox;
+  const cap = near >= NEAR_CLOSE ? NEAR_CLOSE_MAX_STEPS : near >= NEAR_MID ? NEAR_MID_MAX_STEPS : MAX_STEPS;
+  return Math.min(fromBox, cap);
 }
 
 /** Signed degrees from the frame centre to a box centre: + right. */

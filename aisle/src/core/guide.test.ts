@@ -1,6 +1,6 @@
 import type { Detection } from './contracts';
 import { MAX_UTTERANCE_WORDS, countWords, findForbiddenTerm, hasDigit } from './phrases';
-import { CLASS_HEIGHT_M, coachHand, createGuide, degreesFromBox, handWord, phraseFor, stepsFromBox, type GuideKind } from './guide';
+import { CLASS_HEIGHT_M, coachHand, createGuide, degreesFromBox, handWord, NEAR_CLOSE_MAX_STEPS, NEAR_MID_MAX_STEPS, phraseFor, stepsFromBox, type GuideKind } from './guide';
 
 const det = (cls: Detection['cls'], cx: number, h: number, near?: number): Detection => ({ cls, box: [cx - 0.15, 0.5 - h / 2, 0.3, h], score: 0.8, trackId: 1, ...(near !== undefined ? { near } : {}) });
 
@@ -147,5 +147,29 @@ describe('coachHand (round 9): push, pull back, other way, reach further vs grab
     expect(coachHand({ tipX: 0.7, tipY: 0.4, near: 0.9 }, { box, near: 0.5 }, 3, null)).toMatchObject({ word: 'forward', kind: 'reach_further', text: 'Reach further forward.' });
     expect(coachHand({ tipX: 0.7, tipY: 0.4, near: 0.55 }, { box, near: 0.5 }, 0, null)).toMatchObject({ word: 'grab', kind: 'grab', text: 'Grab it.' });
     expect(coachHand({ tipX: 0.7, tipY: 0.4, near: 0.2 }, { box, near: 0.5 }, 0, null)).toMatchObject({ word: 'forward', kind: 'pull_back', text: 'Too far. Pull back a little.' });
+  });
+});
+
+describe('depth bounds the box-height distance', () => {
+  // A fridge box small in frame reads as far away by height alone.
+  const farLooking: [number, number, number, number] = [0.4, 0.4, 0.1, 0.12];
+
+  it('pulls the estimate in when the grid says the thing is close', () => {
+    const byHeightAlone = stepsFromBox('fridge', farLooking, undefined);
+    expect(byHeightAlone).toBeGreaterThan(NEAR_CLOSE_MAX_STEPS);
+    expect(stepsFromBox('fridge', farLooking, 0.9)).toBeLessThanOrEqual(NEAR_CLOSE_MAX_STEPS);
+    expect(stepsFromBox('fridge', farLooking, 0.5)).toBeLessThanOrEqual(NEAR_MID_MAX_STEPS);
+  });
+
+  it('never pushes the estimate out — a far reading cannot make a close thing sound distant', () => {
+    const closeLooking: [number, number, number, number] = [0.1, 0.05, 0.8, 0.9];
+    const byHeightAlone = stepsFromBox('fridge', closeLooking, undefined);
+    expect(stepsFromBox('fridge', closeLooking, 0.05)).toBe(byHeightAlone);
+  });
+
+  it('is unchanged when the grid has nothing to say', () => {
+    for (const near of [undefined, NaN]) {
+      expect(stepsFromBox('fridge', farLooking, near)).toBe(stepsFromBox('fridge', farLooking, undefined));
+    }
   });
 });
