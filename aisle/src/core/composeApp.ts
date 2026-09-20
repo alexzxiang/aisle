@@ -488,6 +488,12 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
   let searchSteps = 0;
   unsubs.push(sensors.subscribeSteps((steps) => { searchSteps = steps; }));
   let latestPose: import('./contracts').Pose | null = null;
+  // Round 17: the phone's own OCR reads (full resolution) as sign landmarks for the store search.
+  let latestOcr: Array<{ text: string; box: [number, number, number, number]; at: number }> = [];
+  unsubs.push(perception.onOcrText((reads) => {
+    const at = now();
+    latestOcr = reads.filter((r) => r.text.trim().length >= 3 && r.confidence >= 0.5).slice(0, 8).map((r) => ({ text: r.text, box: r.box, at }));
+  }));
   const poseTrail: Array<{ x: number; z: number; at: number }> = [];
   unsubs.push(perception.onPose((p) => {
     latestPose = p;
@@ -509,6 +515,8 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     steps: () => searchSteps,
     pose: () => (latestPose && now() - latestPose.timestamp <= 2000 && latestPose.trackingState !== 'NOT_AVAILABLE' ? latestPose : null),
     path: () => (latestDepth && now() - latestDepth.at <= 1000 ? latestDepth : null),
+    hfovDeg: lensHfov,
+    signs: () => latestOcr,
     bus,
     store,
     speech,

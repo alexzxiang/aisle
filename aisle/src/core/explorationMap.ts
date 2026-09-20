@@ -38,6 +38,16 @@ export interface Openness {
 export interface ExplorationMap {
   /** Feed every pose; visits are recorded per cell. */
   visit(p: Pick<Pose, 'x' | 'z'>): void;
+  /**
+   * Round 17: the camera looked this way — paint the view cone (yaw ± hfov/2, out to `rangeM`)
+   * as seen. Panning at one spot then covers the whole ring around it, and "where else?" is
+   * answered by the cells no view has touched: the doorway you never faced, the far corner.
+   */
+  markViewed(p: Pick<Pose, 'x' | 'z'>, yawDeg: number, hfovDeg: number, rangeM?: number): void;
+  /** Cells any view has touched. */
+  viewedCells(): number;
+  /** Has this cell been looked at (from anywhere)? */
+  viewed(p: Pick<Pose, 'x' | 'z'>): boolean;
   markScanned(p: Pick<Pose, 'x' | 'z'>): void;
   /** The way ahead at this cell and yaw turned out blocked (an obstacle, a wall, a shelf end). */
   markBlocked(p: Pick<Pose, 'x' | 'z'>, yawDeg: number): void;
@@ -55,23 +65,29 @@ const key = (cx: number, cz: number): string => `${cx},${cz}`;
 const cellOf = (p: Pick<Pose, 'x' | 'z'>): [number, number] => [Math.floor(p.x / CELL_M), Math.floor(p.z / CELL_M)];
 export const wrap360 = (deg: number): number => ((deg % 360) + 360) % 360;
 
+/** How far a look counts as having seen the ground, metres. */
+export const VIEW_RANGE_M = 4.5;
+
 export function createExplorationMap(): ExplorationMap {
   const visited = new Map<string, number>();
   const scanned = new Set<string>();
+  const seen = new Map<string, number>();
   /** cell → set of yaw sectors (30°) found blocked. */
   const blocked = new Map<string, Set<number>>();
 
   const sector = (yawDeg: number): number => Math.round(wrap360(yawDeg) / 30) % 12;
+  /** Cells along a ray that no one has walked *or looked at* yet. */
   const visitsAlong = (p: Pick<Pose, 'x' | 'z'>, yawDeg: number): number => {
     const rad = (yawDeg * Math.PI) / 180;
-    let unvisited = 0;
+    let unknown = 0;
     for (let i = 1; i <= LOOKAHEAD_CELLS; i += 1) {
       const x = p.x + Math.sin(rad) * CELL_M * i;
       const z = p.z - Math.cos(rad) * CELL_M * i;
       const [cx, cz] = cellOf({ x, z });
-      if (!visited.has(key(cx, cz))) unvisited += 1;
+      const k = key(cx, cz);
+      if (!visited.has(k) && !seen.has(k)) unknown += 1;
     }
-    return unvisited;
+    return unknown;
   };
 
   return {
@@ -84,6 +100,25 @@ export function createExplorationMap(): ExplorationMap {
       const [cx, cz] = cellOf(p);
       scanned.add(key(cx, cz));
       visited.set(key(cx, cz), (visited.get(key(cx, cz)) ?? 0) + 1);
+    },
+    markViewed(p, yawDeg, hfovDeg, rangeM = VIEW_RANGE_M) {
+      // Sample the cone on a half-cell lattice: cheap, and every cell in it gets painted.
+      const half = hfovDeg / 2;
+      for (let a = -half; a <= half; a += 10) {
+        const rad = ((yawDeg + a) * Math.PI) / 180;
+        for (let r = CELL_M * 0.5; r <= rangeM; r += CELL_M * 0.5) {
+          const x = p.x + Math.sin(rad) * r;
+          const z = p.z - Math.cos(rad) * r;
+          const [cx, cz] = cellOf({ x, z });
+          const k = key(cx, cz);
+          seen.set(k, (seen.get(k) ?? 0) + 1);
+        }
+      }
+    },
+    viewedCells: () => seen.size,
+    viewed(p) {
+      const [cx, cz] = cellOf(p);
+      return seen.has(key(cx, cz));
     },
     markBlocked(p, yawDeg) {
       const [cx, cz] = cellOf(p);

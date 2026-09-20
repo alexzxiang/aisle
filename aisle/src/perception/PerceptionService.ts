@@ -326,7 +326,7 @@ export function bindPerceptionToApp(opts: BindPerceptionOptions): PerceptionBind
       const cooldownMs = described && described === lastObstacleLine ? 8000 : 4000;
       lastObstacleLine = described;
       speech.say(described
-        ? { text: described, priority: 'CRITICAL', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs }
+        ? { text: described, priority: 'CRITICAL', hazardClass: 'obstacle', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs }
         : { text: 'Obstacle ahead.', priority: 'CRITICAL', cacheKey: 'obstacle_ahead', interrupt: true, dedupeKey: 'obstacle-near', cooldownMs });
     }
     bus.emit({ type: 'OBSTACLE_AHEAD', distanceClass: e.distanceClass, direction: e.direction });

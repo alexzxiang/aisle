@@ -90,6 +90,8 @@ export interface SpeechRequest {
   dedupeKey?: string;      // suppresses a repeat within cooldownMs
   cooldownMs?: number;     // default 8000
   interrupt?: boolean;     // CRITICAL only
+  /** Round 17: a live-text hazard line ("Chair ahead, close. Stop.") declares its class so CRITICAL may carry it. */
+  hazardClass?: 'obstacle';
 }
 
 export interface SpeechService {

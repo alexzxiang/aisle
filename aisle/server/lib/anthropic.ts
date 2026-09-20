@@ -31,7 +31,7 @@ export const VISION_TIMEOUT_MS = 4000;
  * warm calls 1.4–2.5 s. curb_crop keeps the hot-path cap (its freshness window is 3 s). */
 export const VISION_TIMEOUT_SLACK_MS = 6000;
 export function visionTimeoutFor(question: string): number {
-  if (question === 'task_step') return 8000;
+  if (question === 'task_step') return 10_000;
   return question === 'curb_crop' ? VISION_TIMEOUT_MS : VISION_TIMEOUT_SLACK_MS;
 }
 export const MAX_IMAGE_LONG_EDGE = 1024;

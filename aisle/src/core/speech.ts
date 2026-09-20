@@ -107,9 +107,10 @@ export const MODE_POLICY: Readonly<Record<AppMode, ReadonlySet<SpeechClass>>> = 
   GUIDED_TASK: new Set(INDOOR),   // step instructions, hazards, describe; never crossing classes
 };
 
-export function classifyRequest(req: { cacheKey?: string; streamId?: string }): SpeechClass {
+export function classifyRequest(req: { cacheKey?: string; streamId?: string; hazardClass?: 'obstacle' }): SpeechClass {
   if (req.streamId !== undefined) return 'stream';
   if (req.cacheKey && isPhraseKey(req.cacheKey)) return PHRASE_CATEGORY[req.cacheKey];
+  if (req.hazardClass === 'obstacle') return 'obstacle';   // round 17: the described obstacle line
   return 'unknown';
 }
 
@@ -533,7 +534,7 @@ export function createSpeechService(opts: SpeechServiceOptions): AisleSpeechServ
     // the playback key all derive from the resolved key, never from caller text.
     const resolved = resolveKeyedText(req);
     const cacheKey = resolved.cacheKey;
-    const cls = classifyRequest({ cacheKey });
+    const cls = classifyRequest({ cacheKey, hazardClass: req.hazardClass });
     const allowLong = cacheKey !== undefined && LONG_PHRASE_ALLOWLIST.has(cacheKey);
     const isPrompt = cls === 'prompt' || (cacheKey !== undefined && TIER1_PROMPT_KEYS.has(cacheKey));
 

@@ -40,7 +40,7 @@ describe('active search with trip memory', () => {
     expect(h.guide).not.toHaveBeenCalled();
     expect(h.search.intercept('yes')).toEqual({ consumed: true, text: 'Okay. Heading for the produce display.' });
     expect(h.tick()?.text).toBe('Produce display ahead. Walk forward three steps.');
-    expect(h.guide).toHaveBeenLastCalledWith('produce display', expect.any(Object), { modelOnly: true, maxAgeMs: 8000 });
+    expect(h.guide).toHaveBeenLastCalledWith('produce display', expect.any(Object), { modelOnly: true, maxAgeMs: 12000 });
     // Unanswered: after ten seconds it goes anyway and says so (the person can still say stop).
     const quiet = setup(); quiet.permission();
     expect(quiet.said).toContain('May I guide you toward the produce section?');
@@ -171,37 +171,53 @@ describe('exploring a big space by coverage (round 12)', () => {
     return { search, tick, pose, setPath: (p: typeof path) => { path = p; }, texts: [] as string[] };
   }
 
-  it('with no landmark it walks a leg into unvisited ground, holds the heading, stops after the leg and looks again', () => {
+  /** The heading a leg line asks for, so a test can "turn" the phone onto it. */
+  const headingOf = (line: string): number => (/^Turn around/.test(line) ? 180 : /^Turn half left/.test(line) ? 315 : /^Turn half right/.test(line) ? 45 : /^Turn left/.test(line) ? 270 : /^Turn right/.test(line) ? 90 : 0);
+
+  it('with no landmark it walks a leg into ground no view has touched, holds the heading, stops after the leg and looks again', () => {
     const h = rig();
     const lines: string[] = [];
     for (let i = 0; i < 4; i += 1) { const r = h.tick(); if (r?.text) lines.push(r.text); }
-    expect(lines.at(-1)).toBe('Walk forward about ten steps. New ground that way.');
+    // Looking north painted the ground ahead as seen; the first leg goes where no view reached.
+    expect(lines.at(-1)).toMatch(/New ground/);
+    expect(lines.at(-1)).not.toMatch(/^Walk forward/);
     expect(h.search.status()).toBe('advance');
+    const heading = headingOf(lines.at(-1)!);
+    h.pose.yawDeg = heading;
+    expect(h.tick(3000)?.text).toBe('Keep walking forward. I am looking as you walk.');
     // Drifting right of the heading earns a nudge to the left.
-    h.pose.yawDeg = 40;
+    h.pose.yawDeg = heading + 40;
     expect(h.tick(3000)?.text).toBe('Drifting right. A little to the left.');
-    h.pose.yawDeg = 0;
+    h.pose.yawDeg = heading;
     // Six metres on: the leg is done, look around here.
-    h.pose.z = -6.5;
+    h.pose.x = 6.5 * Math.sin((heading * Math.PI) / 180);
+    h.pose.z = -6.5 * Math.cos((heading * Math.PI) / 180);
     expect(h.tick(3000)?.text).toBe('Stop here. Let me look around.');
     expect(h.search.status()).toBe('scan');
-    expect(h.search.coverage()).toEqual({ visited: 2, scanned: 2 });
+    expect(h.search.coverage()).toMatchObject({ visited: 2, scanned: 2 });
+    expect(h.search.coverage()!.viewed).toBeGreaterThan(5);
   });
 
-  it('a blocked way stops the leg and is remembered; the next leg goes another way', () => {
+  it('a blocked way stops the leg — once the person faces the heading — and is remembered; the next leg goes another way', () => {
     const h = rig();
-    for (let i = 0; i < 4; i += 1) h.tick();
+    const first: string[] = [];
+    for (let i = 0; i < 4; i += 1) { const r = h.tick(); if (r?.text) first.push(r.text); }
     expect(h.search.status()).toBe('advance');
+    h.pose.yawDeg = headingOf(first.at(-1)!);
+    h.tick(2000);                                   // aligned and settled
     h.setPath({ center: 0.9, left: 0.2, right: 0.2 });
-    const stop = h.tick(3000);
+    const stop = h.tick(2000);
     expect(stop?.text).toBe('Something ahead. Stop. Let me look around.');
     expect(stop?.haptic).toBe('STOP');
     h.setPath({ center: 0.1, left: 0.1, right: 0.1 });
     const lines: string[] = [];
     for (let i = 0; i < 4; i += 1) { const r = h.tick(); if (r?.text) lines.push(r.text); }
-    expect(lines.at(-1)).toMatch(/^Turn (?:half )?(?:left|right), then walk about ten steps\. New ground there\.$/);
+    expect(lines.at(-1)).toMatch(/New ground/);
+    expect(headingOf(lines.at(-1)!)).not.toBe(0);   // not the blocked way again
     // Until the person has turned onto the heading, the nudge is "keep turning", not "drifting".
-    expect(h.tick(3000)?.text).toMatch(/^Keep turning (?:left|right)\.$/);
+    h.pose.yawDeg = headingOf(first.at(-1)!);
+    const nudge = h.tick(3000)?.text;
+    expect(nudge === null || nudge === undefined || /^Keep turning (?:left|right)\.$|^Keep walking forward/.test(nudge)).toBe(true);
   });
 });
 

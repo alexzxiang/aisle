@@ -63,6 +63,7 @@ export const VISION_TIMEOUT_MS = 4000;
 export const MAX_IN_FLIGHT = 3;
 export const FRESHNESS_CROSSING_MS = 3000;
 export const FRESHNESS_INDOOR_MS = 6000;
+export const FRESHNESS_TASK_STEP_MS = 10_000;
 export const MIN_CONFIDENCE = 0.5;
 /** Round 7b: this many dead answers in a row (`confidence: 0`, the proxy's collapse shape) → one ERROR + one line. */
 export const DEAD_STREAK = 4;
@@ -103,6 +104,9 @@ const CROSSING_QUESTIONS: ReadonlySet<VisionQuestion> = new Set<VisionQuestion>(
 const SCENE_GATED: ReadonlySet<VisionQuestion> = new Set<VisionQuestion>(['aisle_disambiguate', 'storefront', 'scan_left', 'scan_right', 'curb_crop', 'situate']);
 
 export function freshnessWindowMs(question: VisionQuestion): number {
+  // task_step answers on Sonnet take five to eight seconds and carry the search evidence the
+  // explorer steers by; throwing them away as stale at six seconds starved the search (20:00 trace).
+  if (question === 'task_step') return FRESHNESS_TASK_STEP_MS;
   return CROSSING_QUESTIONS.has(question) ? FRESHNESS_CROSSING_MS : FRESHNESS_INDOOR_MS;
 }
 
@@ -199,7 +203,7 @@ export function createHttpVisionTransport(opts: HttpTransportOptions): VisionTra
   return {
     async ask(req) {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = setTimeout(() => controller?.abort(), opts.timeoutMs ?? (req.question === 'task_step' ? 8000 : timeoutMs));
+      const timer = setTimeout(() => controller?.abort(), opts.timeoutMs ?? (req.question === 'task_step' ? 10_000 : timeoutMs));
       try {
         const res = await fetchFn(url, {
           method: 'POST',
@@ -401,7 +405,7 @@ export function createWsVisionTransport(opts: WsTransportOptions): WsVisionTrans
         return opts.fallback ? opts.fallback.ask(req, o) : Promise.resolve(emptyVisionResponse(req.seq));
       }
       return new Promise<VisionResponse>((resolve) => {
-        const timer = setTimeout(() => settle(req.seq, emptyVisionResponse(req.seq)), opts.timeoutMs ?? (req.question === 'task_step' ? 8000 : timeoutMs));
+        const timer = setTimeout(() => settle(req.seq, emptyVisionResponse(req.seq)), opts.timeoutMs ?? (req.question === 'task_step' ? 10_000 : timeoutMs));
         pending.set(req.seq, { resolve, timer });
         if (!sendMessage({ type: 'vision', req, priority: o?.priority === 'INFO' ? 'INFO' : 'NAV' })) {
           settle(req.seq, emptyVisionResponse(req.seq));

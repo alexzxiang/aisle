@@ -101,7 +101,7 @@ Symptoms and causes we have already met:
 
 ## Verifying without the phone (what I run after every change)
 ```bash
-cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1322 tests
+cd aisle && npm run lint && npx jest                    # typecheck + phrase/deps lint + 1323 tests
 cd aisle/server && npx tsc --noEmit && npx vitest run   # 215 tests
 cd aisle && npm run ios:check                           # Swift compiles
 # live, with the proxy up:
@@ -398,6 +398,35 @@ to a table the detector holds at half confidence (0.5, was 0.6), which is often 
   thing belongs by section ("No bananas in view. They should be in produce.") and hands every
   tick to the explorer. The task_step prompt now spells out what counts as a landmark and asks
   for the ways on even at 0.5–0.7 confidence rather than nothing.
+
+## Round 17 (Stream A): what the 20:00–20:23 trace showed, and the "mind map"
+Read from `trace.jsonl` rather than guessed:
+- **Observations were being thrown away.** task_step runs on Sonnet (D's #14) at 4.5–8 s; the
+  phone's freshness window was 6 s, so most answers came back `stale` and the explorer never
+  got its landmarks (`FRESHNESS_TASK_STEP_MS` 10 s now; vision timeout 10 s on both sides;
+  explorer `FRESH_MS` 12 s).
+- **"The view is blocked or blurred" on every frame.** Claude labels a cluttered kitchen at
+  arm's length `occluded`; the explorer discarded the whole observation. Landmarks, signs and
+  foods are now taken at confidence ≥ 0.5 whatever the quality word; only *view coverage*
+  needs `usable`; the blurred line needs three unusable frames and no landmarks.
+- **Legs died at birth.** The blockage check fired before the person had turned onto the
+  leg's heading (the table they were scanning was still in front). It now waits for
+  alignment plus 1.5 s.
+- **The obstacle lines never played.** A live-text CRITICAL request has no phrase class and
+  was policy-dropped ("class unknown is not a hazard class"). `SpeechRequest.hazardClass:
+  'obstacle'` lets the described line through as CRITICAL.
+- **"Checked the table, counter, bowl and fridge. Where else?" every five seconds.** Said once
+  now; then the explorer speaks for the search; after it gives up ("I have looked everywhere I
+  can reach. No bananas anywhere. Say where to look, or stop.") a 45 s pulse at most.
+- **The mind map.** `explorationMap.markViewed()` paints the camera's view cone (yaw ± hfov/2,
+  4.5 m) on the 1.5 m grid every half second, so panning at one spot covers the ring around
+  it and a leg goes where no view has reached — the doorway you never faced. `coverage()`
+  reports visited / scanned / viewed. Not a 3D reconstruction (no LiDAR on this phone); a
+  2D "looked here" memory is what the search needs.
+- **OCR signs as landmarks.** The phone's own OCR (full 1920×1440 frame) reads department and
+  aisle signs far better than a 768 px still; reads that name a food section or an aisle are
+  section landmarks (`signs` dep from composeApp).
+Camera questions answered in the round-17 status entry.
 
 ## Things a newcomer trips on
 - Speech is a single queue with a mode policy (`src/core/speech.ts`): one pending NAV

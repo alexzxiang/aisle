@@ -832,3 +832,16 @@ doors are doorways, a wrong-section aisle is left by its end, corridor poses rea
 signs, consent auto-proceeds after ten seconds, the store search reasons by section and hands
 the walk to the explorer, and the prompt asks for the ways on explicitly. App 1322 tests, proxy
 217. JS + prompt — Metro reload and a proxy restart.
+
+### Round 17 (Stream A) — 2026-09-20
+Diagnosed from the 20:00–20:23 trace: Sonnet task_step answers (4.5–8 s) were discarded as
+stale by a 6 s window, so the explorer had no landmarks; Claude's "occluded" quality word threw
+away whole observations; exploration legs were killed by the table still in front of the camera
+before the person had turned; the described obstacle lines were policy-dropped as CRITICAL
+without a class; and the exhausted line repeated every five seconds. All fixed. The map now
+paints what the camera looked at (view cones on the grid) so a leg goes where no view reached;
+OCR sign reads are section landmarks; giving up is one sentence then a 45 s pulse. Ultra-wide:
+ARKit offers no ultra-wide format on this phone, and a separate capture session would lose the
+pose the map runs on — panning with view memory is the better trade. Resolution: the detector
+is fixed at 640; the still to Claude is 768 px; the OCR already runs on the full frame, which is
+why signs now come from it. App 1323 tests, proxy 217. JS + server — Metro reload, proxy restart.

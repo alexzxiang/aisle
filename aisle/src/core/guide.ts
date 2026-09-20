@@ -211,7 +211,7 @@ export function createGuide(deps: GuideDeps): Guide {
           evidenceAt = deps.detectionTimestamp?.() ?? now();
         }
       }
-      if (!box && modelBox && now() >= modelBox.at && now() - modelBox.at <= Math.min(8000, options?.maxAgeMs ?? TARGET_FRESH_MS)) {
+      if (!box && modelBox && now() >= modelBox.at && now() - modelBox.at <= Math.min(12_000, options?.maxAgeMs ?? TARGET_FRESH_MS)) {
         box = modelBox.box;
         near = modelBox.near;
         evidenceAt = modelBox.at;

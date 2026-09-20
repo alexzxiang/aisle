@@ -531,6 +531,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
   let lastKey: string | null = null;
   let pendingSide: string | null = null;
   let sideStreak = 0;
+  let exhaustedSaid = false;
   let lastSpokenAt = -Infinity;
   let searchTarget: string | null = null;
   const boxes = new Map<string, TargetBox>();
@@ -603,8 +604,15 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
             lastKey = decision.key; lastSpokenAt = t;
             return { text: fitWords(exploration.text), haptic, modelMaySpeak: false, decision };
           }
-          // The explorer is quiet this tick: the navigator's own reasoning line (a new guess) may go out.
-          if (!reasoned.decision.key.includes(':hypothesis:') && !reasoned.decision.key.endsWith(':exhausted')) {
+          // The explorer is quiet this tick: the navigator's own reasoning line (a new guess) may go
+          // out — once. "Checked the table, counter, bowl and fridge. Where else?" is said one time;
+          // after that the explorer speaks for the search, and after it has given up, nobody nags.
+          const exhausted = reasoned.decision.key.endsWith(':exhausted');
+          if (exhausted && (exhaustedSaid || deps.search.gaveUp())) {
+            return { text: null, haptic: null, modelMaySpeak: false, decision: { ...reasoned.decision, text: null } };
+          }
+          if (exhausted) exhaustedSaid = true;
+          if (!reasoned.decision.key.includes(':hypothesis:') && !exhausted) {
             return { text: null, haptic: null, modelMaySpeak: false, decision: { ...reasoned.decision, text: null } };
           }
         }
@@ -657,6 +665,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       // "try the cabinet" / "it's on the table": the person's word beats every guess.
       const redirect = statedPlaceIn(t);
       if (redirect && state.phase !== 'reach' && state.phase !== 'confirm') {
+        exhaustedSaid = false;
         state = { ...state, working: redirect, tried: state.tried.filter((p) => p !== redirect), reasoned: true, openAsked: false, opened: false, scanSince: null, askedRoom: false, phase: 'find_place' };
         asking = null;
         lastKey = null;

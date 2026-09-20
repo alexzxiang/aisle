@@ -31,3 +31,23 @@ describe('exploration map (round 12): go where we have not been', () => {
     expect(m.bestHeading({ x: 0, z: 0 }, 0, null)).toBeNull();
   });
 });
+
+describe('looking counts as coverage (round 17)', () => {
+  it('a full turn at one spot paints the ring around it; the best heading is then where no view reached', () => {
+    const m = createExplorationMap();
+    const here = { x: 0, z: 0 };
+    m.visit(here);
+    for (let yaw = 0; yaw < 360; yaw += 30) m.markViewed(here, yaw, 56);
+    expect(m.viewedCells()).toBeGreaterThan(20);
+    expect(m.viewed({ x: 0, z: -3 })).toBe(true);
+    // Nothing within four and a half metres is unknown any more; the lookahead (six metres) still has unknown cells at the far end.
+    const next = m.bestHeading(here, 0, null);
+    expect(next).not.toBeNull();
+    expect(next!.unvisited).toBeLessThanOrEqual(2);
+    // Looking north only leaves the other headings unknown.
+    const n = createExplorationMap();
+    n.visit(here);
+    n.markViewed(here, 0, 56);
+    expect(n.bestHeading(here, 0, null)?.turn).not.toBe('ahead');
+  });
+});
