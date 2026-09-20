@@ -37,6 +37,7 @@ import type {
   VisionResponse,
 } from '../core/contracts';
 import { PHRASES } from '../core/phrases';
+import { pedSignalModelPresent } from '../perception/PerceptionService';
 import { haversineM, type LatLng } from '../outdoor/geo';
 import { SIGNAL_READ_DELAYED_TEXT } from '../outdoor/guidance';
 import { angularError } from '../outdoor/legs';
@@ -295,8 +296,14 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
     }, 10_050);
   };
 
+  /** True unless the engine reports the pedestrian-signal model MISSING (null/unknown → trusted, e.g. mock). */
+  const pedSignalReady = (): boolean | null => pedSignalModelPresent(perception.debugLog?.() ?? []);
+
   const applySignal = (e: { state: SignalState; fresh: boolean }, source: SignalSource): void => {
     if (state !== 'READING' || !crossing) return;
+    // Safety: with no on-device pedestrian-signal model, a "live" read is unverifiable — never
+    // let it claim WALK (or any state). It becomes UNKNOWN and the honest fallback ladder runs.
+    if (source === 'live' && pedSignalReady() === false) e = { state: 'UNKNOWN', fresh: false };
     lastSignal = e;
     const decision = decideSignalPhrase(signalTrack, e, now());
     signalTrack = decision.track;
@@ -341,8 +348,18 @@ export function createCrossingController(deps: CrossingControllerDeps): AisleCro
     }
     setState('READING');
     signalTrack = initialSignalTrack(now());
-    if (manualSignal) applySignal({ state: manualSignal, fresh: true }, 'manual');
-    else armUnknownTimer();
+    if (manualSignal) {
+      applySignal({ state: manualSignal, fresh: true }, 'manual');
+    } else if (pedSignalReady() === false) {
+      // No pedestrian-signal model in this build: say so at once and drop to the delayed cloud
+      // read (or, for an unmapped crossing, the scan) — never wait on a live read that cannot come.
+      sayKey('cant_see_signal', { cooldownMs: SIGNAL_COOLDOWN_MS });
+      signalTrack = { ...signalTrack, cantSeeSaid: true };
+      if (crossing.signalized === null) void startUnsignalizedScan();
+      else startCurbCrop();
+    } else {
+      armUnknownTimer();
+    }
   };
 
   const onHeadingWhileAligning = (): void => {

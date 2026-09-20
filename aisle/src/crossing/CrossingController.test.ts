@@ -14,12 +14,14 @@ function crossing(overrides: Partial<Crossing> = {}): Crossing {
   return { crossingId: 'x1', street: 'Forbes Ave', signalized: true, pushButtonLikely: false, bearingDeg: BEARING, nearCurb: NEAR, farCurb: FAR, roadSide: 'RIGHT', ...overrides };
 }
 
-function harness(opts: { vision?: boolean; mode?: AppMode; detector?: boolean } = {}) {
+function harness(opts: { vision?: boolean; mode?: AppMode; detector?: boolean; signalModel?: 'present' | 'missing' } = {}) {
   const bus = createEventBus();
   const haptics = createFakeHaptics();
   const speech = createFakeSpeech();
   const sensors = createFakeSensors();
-  const perception = createFakePerception();
+  const perception = createFakePerception(
+    opts.signalModel ? `models: detector=present depth=present signal=${opts.signalModel === 'present' ? 'present' : 'MISSING'}` : undefined,
+  );
   const outdoor = createOutdoorStore();
   // A running detector emits empty frames even when no vehicles are visible.
   if (opts.detector !== false) setInterval(() => perception.emitDetections([]), 100);
@@ -521,4 +523,36 @@ it('reports unclear when side-scan heading was never established', async () => {
   expect(h.speech.keys()).not.toContain('no_vehicles_left');
   expect(h.speech.keys()).not.toContain('no_vehicles_right');
   h.controller.dispose();
+});
+
+describe('no pedestrian-signal model in the build (safety guard)', () => {
+  it('says it cannot see the signal on reaching the curb, and never a walk cue', async () => {
+    const h = await toReading(harness({ vision: false, signalModel: 'missing' }));
+    // Announced at once — no ten-second wait on a live read that cannot come.
+    expect(h.speech.keys()).toContain('cant_see_signal');
+    // A stray/spurious live WALK is coerced to UNKNOWN: never "walk signal on" or "already on".
+    h.bus.emit({ type: 'SIGNAL_STATE', state: 'WALK', fresh: true, confidence: 0.95 });
+    await jest.advanceTimersByTimeAsync(200);
+    expect(h.speech.keys()).not.toContain('walk_signal_on');
+    expect(h.speech.keys()).not.toContain('walk_already_on_wait');
+    h.controller.dispose();
+  });
+
+  it('a present, trusted model still announces a live fresh WALK', async () => {
+    const h = await toReading(harness({ vision: false, signalModel: 'present' }));
+    expect(h.speech.keys()).not.toContain('cant_see_signal');
+    h.bus.emit({ type: 'SIGNAL_STATE', state: 'DONT_WALK', fresh: false, confidence: 0.9 });
+    h.bus.emit({ type: 'SIGNAL_STATE', state: 'WALK', fresh: true, confidence: 0.9 });
+    await jest.advanceTimersByTimeAsync(50);
+    expect(h.speech.keys()).toContain('walk_signal_on');
+    h.controller.dispose();
+  });
+
+  it('a manual override from a teammate still works when the model is absent', async () => {
+    const h = await toReading(harness({ vision: false, signalModel: 'missing' }));
+    h.controller.setManualSignal('WALK');
+    await jest.advanceTimersByTimeAsync(50);
+    expect(h.speech.keys()).toContain('walk_signal_on');
+    h.controller.dispose();
+  });
 });
