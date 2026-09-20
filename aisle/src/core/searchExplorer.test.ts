@@ -29,6 +29,23 @@ function setup(context: 'store' | 'home' = 'store') {
 }
 
 describe('active search with trip memory', () => {
+  it('chooses a related-products sign over an unrelated sign in the same broad department', () => {
+    let t = 100000;
+    const search = createSearchExplorer({ item: 'spaghetti', context: 'store', guide: { instructionFor: () => null }, now: () => t });
+    let target = '';
+    for (let seq = 1; seq <= 5; seq++) {
+      t += 6000;
+      search.observe(observation({ landmarks: [
+        { name: 'Coffee and tea sign', kind: 'section', section: 'pantry', box: [0.1, 0.1, 0.2, 0.2], confidence: 0.95 },
+        { name: 'Pasta and sauces sign', kind: 'section', section: 'pantry', box: [0.6, 0.1, 0.2, 0.2], confidence: 0.85 },
+      ] }), seq, t);
+      target = search.tick('spaghetti', null)?.target ?? target;
+    }
+    expect(target).toBe('Pasta and sauces sign');
+    expect(search.context()).toContain('Related products:');
+    expect(search.memory().some((a) => a.outcome === 'item_seen')).toBe(false);
+  });
+
   it('scans first (three poses), asks permission for produce, walks on "yes" — or after ten silent seconds, saying so', () => {
     const h = setup(); h.permission();
     // In a store the look-around is along the aisle; at home it is left, right, behind.
@@ -149,7 +166,7 @@ describe('the right section gets a close search before moving on (round 12)', ()
     const lines: string[] = [];
     for (let i = 0; i < 9; i += 1) { const r = h.tick({ items: ['apples', 'oranges'], landmarks: [] }); if (r?.text) lines.push(r.text); }
     expect(lines).toContain('Apples and oranges here. This seems to be produce.');
-    const close = lines.indexOf('This is the right section. Let me search these shelves closely.');
+    const close = lines.indexOf('This section looks promising. Let me search these shelves closely.');
     expect(close).toBeGreaterThan(0);
     expect(lines.slice(close + 1, close + 4)).toEqual(['Pan slowly across the upper shelf.', 'Now pan across the middle shelf.', 'Tilt down and scan the lower shelf.']);
     expect(h.search.memory()[0]?.closeSearched).toBe(true);

@@ -24,6 +24,7 @@ import type { Pose } from './contracts';
 import { stepsWords } from './guide';
 import { createExplorationMap, type ExplorationMap, type Openness } from './explorationMap';
 import { foodSection, sectionFromFoods, type FoodSection } from './foodCatalog';
+import { aisleClueScore, groceryAisle, relatedGroceryItems } from './groceryAisles';
 import { itemLine } from './itemMission';
 import type { SearchLandmark, SearchObservation, SearchView } from './searchObservation';
 import { isAffirmative, isNegative } from './yesNo';
@@ -267,10 +268,10 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   const ocrSigns = (): Array<SearchLandmark & { at: number; hits: number }> => {
     const out: Array<SearchLandmark & { at: number; hits: number }> = [];
     for (const s of deps.signs?.() ?? []) {
-      if (now() - s.at > 4000) continue;
+      if (s.at > now() || now() - s.at > 4000) continue;
       const sec = foodSection(s.text);
       const aisle = /\baisle\b/i.test(s.text);
-      if (sec === 'unknown' && !aisle) continue;
+      if (sec === 'unknown' && !aisle && !groceryAisle(s.text)) continue;
       out.push({ name: `${s.text.trim().toLowerCase()} sign`, kind: 'section', section: sec, box: s.box, confidence: 0.8, at: s.at, hits: 2 });
     }
     return out;
@@ -292,7 +293,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       .filter((l) => !(l.kind === 'surface' && wrongAisle))
       .sort((a, b) => rank(b) - rank(a))[0] ?? null;
     function rank(l: SearchLandmark): number {
-      return (clean(l.name).includes(prior) ? 20 : 0) + (section !== 'unknown' && l.section === section ? 12 : 0)
+      return (deps.context === 'store' ? aisleClueScore(deps.item, l.name) : 0)
+        + (clean(l.name).includes(prior) ? 20 : 0) + (section !== 'unknown' && l.section === section ? 12 : 0)
         + (deps.context === 'store' ? (l.kind === 'aisle_end' ? (wrongAisle ? 9 : 5) : l.kind === 'section' ? 6 : 0) : l.kind === 'doorway' ? 4 : 0)
         + l.confidence;
     }
@@ -324,7 +326,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       });
       // Signs identify the current area only when repeated; merely seeing a distant sign
       // during movement must not teleport the user into that aisle.
-      if (phase !== 'move' && o.sign) {
+      const reliableArea = phase !== 'move' && o.quality === 'usable' && o.confidence >= OBSERVATION_MIN_CONFIDENCE;
+      if (reliableArea && o.sign) {
         const key = clean(o.sign);
         signHits = key === signCandidate ? signHits + 1 : 1;
         signCandidate = key;
@@ -335,10 +338,10 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           const text = `The sign here reads ${o.sign}.`;
           if (speakable(text)) pendingNarration = text;
         }
-      }
-      area.items = [...new Set([...area.items, ...o.items])].slice(-20);
-      const inferred = sectionFromFoods(o.items);
-      const signed = foodSection(o.sign ?? '');
+      } else { signHits = 0; signCandidate = ''; }
+      if (reliableArea) area.items = [...new Set([...area.items, ...o.items])].slice(-20);
+      const inferred = reliableArea ? sectionFromFoods(o.items) : 'unknown';
+      const signed = reliableArea && signHits >= 2 ? foodSection(area.sign ?? '') : 'unknown';
       area.section = signed !== 'unknown' ? signed : inferred !== 'unknown' ? inferred : area.section;
       if (area.section !== 'unknown' && area.section !== narratedSection && !pendingNarration) {
         const foods = o.items.filter((i) => foodSection(i) === area.section).slice(0, 2).join(' and ');
@@ -459,10 +462,15 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         if (scan >= 3) {
           // The right section (apples and oranges here, bananas wanted): search these shelves
           // closely before proposing anywhere else — the thing is probably within a few metres.
-          if (section !== 'unknown' && area.section === section && !area.closeSearched && !opts.confined) {
+          const neighbors = deps.context === 'store' ? relatedGroceryItems(deps.item, area.items) : [];
+          const specificAisle = deps.context === 'store' ? groceryAisle(deps.item) : null;
+          const promising = specificAisle
+            ? aisleClueScore(deps.item, area.sign ?? '') > 0 || neighbors.length >= 2
+            : section !== 'unknown' && area.section === section;
+          if (promising && !area.closeSearched && !opts.confined) {
             area.closeSearched = true;
             scan = 0; scanAt = now(); closeMode = true;
-            return emit('This is the right section. Let me search these shelves closely.');
+            return emit('This section looks promising. Let me search these shelves closely.');
           }
           closeMode = false;
           if (opts.confined) {
@@ -516,7 +524,10 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     context() {
       const prior = section === 'unknown' ? '' : `Likely category: ${section}; hypothesis only. `;
       const history = areas.slice(-6).map((a) => `${a.sign ?? a.landmark ?? a.id}: ${a.section}, ${a.outcome}, ${a.views.join('/')}`).join('; ');
-      return `${prior}Search ${phase}. Inspect target and visible alternative landmarks. Memory: ${history}. Unseen is not absent. Never infer walking direction from category.`;
+      const aisle = deps.context === 'store' ? groceryAisle(deps.item) : null;
+      const neighbors = relatedGroceryItems(deps.item, area.items);
+      const clues = aisle ? `Likely aisle: ${aisle.label}. Related products: ${aisle.words.join(', ')}. Observed related products: ${neighbors.join(', ') || 'none'}. Read overhead signs verbatim, including aisle numbers and categories. Box the corresponding visible aisle entrance or display; do not invent its direction. ` : '';
+      return `${prior}${clues}Search ${phase}. Inspect target and visible alternative landmarks. Memory: ${history}. Unseen is not absent. Never infer walking direction from category.`;
     },
     memory: () => areas.map((a) => ({ ...a, items: [...a.items], views: [...a.views] })),
     coverage: () => (map ? { visited: map.visitedCells(), scanned: map.scannedCells(), viewed: map.viewedCells() } : null),
