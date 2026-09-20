@@ -95,13 +95,15 @@ export interface FakePerception extends PerceptionService {
   emitDetections(d: Detection[]): void;
 }
 
-export function createFakePerception(): FakePerception {
+/** `models` is the engine's `models:` line so tests can simulate a present / MISSING signal model. */
+export function createFakePerception(models?: string): FakePerception {
   const base = createStubPerception();
   const calls: FakePerception['calls'] = [];
   const detCbs = new Set<(d: Detection[]) => void>();
   return {
     ...base,
     calls,
+    debugLog: () => (models !== undefined ? [models] : base.debugLog?.() ?? []),
     setCrossingBearing(b) {
       calls.push({ method: 'setCrossingBearing', args: [b] });
     },

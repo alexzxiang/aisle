@@ -3,7 +3,7 @@ import { createEventBus } from '../core/bus';
 import { createAppStore } from '../core/store';
 import type { PerceptionNativeModule } from '../../modules/perception';
 import { bindPerceptionToApp, createNativePerceptionService, createPerceptionService, vehicleText } from './PerceptionService';
-import { missingRequiredModels, reportMissingModels } from './PerceptionService';
+import { missingRequiredModels, pedSignalModelPresent, reportMissingModels } from './PerceptionService';
 import { PROFILE_FOR_MODE, obstacleReflexFor, profileForMode, vehicleCacheKey } from './profile';
 
 type AnyListener = (e: unknown) => void;
@@ -266,6 +266,13 @@ describe('missing on-device models are announced, not suffered in silence', () =
     // An older binary, or mock mode: absence of the line is not absence of the model.
     expect(missingRequiredModels(['videoFormat=1920x1440@30 wide'])).toBeNull();
     expect(missingRequiredModels([])).toBeNull();
+  });
+
+  it('reads the pedestrian-signal model presence for the crossing safety guard', () => {
+    expect(pedSignalModelPresent(present)).toBe(false);   // signal=MISSING (untrained today)
+    expect(pedSignalModelPresent(['models: detector=present depth=present signal=present'])).toBe(true);
+    expect(pedSignalModelPresent(['videoFormat=1920x1440@30 wide'])).toBeNull();   // no models line → unknown → trusted
+    expect(pedSignalModelPresent([])).toBeNull();
   });
 
   it('reports once, with the command that fixes it', () => {

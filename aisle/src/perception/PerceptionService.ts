@@ -184,6 +184,25 @@ export const MODELS_LOG_PREFIX = 'models:';
 /** Stages whose absence leaves the app unable to see objects or judge distance. */
 export const REQUIRED_MODEL_STAGES: readonly string[] = ['detector', 'depth'];
 
+/** The pedestrian-signal stage the engine names in its `models:` line (10 §6). */
+export const SIGNAL_MODEL_STAGE = 'signal';
+
+/**
+ * Whether the on-device pedestrian-signal model is loaded, read from the engine's `models:`
+ * line: `true` = present, `false` = MISSING, `null` = the engine said nothing (an older build,
+ * or mock mode). Safety-critical: a crossing must not trust a live WALK read when this is
+ * `false` — the model that would recognise the signal is not in the build (its weights are
+ * git-ignored and untrained today), so any "live" signal is unverifiable. `null` stays trusted
+ * so mock replay and older builds keep working; only a definite MISSING suppresses the read.
+ */
+export function pedSignalModelPresent(lines: readonly string[]): boolean | null {
+  const line = lines.find((l) => l.trim().startsWith(MODELS_LOG_PREFIX));
+  if (line === undefined) return null;
+  if (new RegExp(`\\b${SIGNAL_MODEL_STAGE}=MISSING\\b`).test(line)) return false;
+  if (new RegExp(`\\b${SIGNAL_MODEL_STAGE}=present\\b`).test(line)) return true;
+  return null;
+}
+
 /**
  * Which required model stages the engine reported as absent from the bundle.
  * `null` when the engine said nothing about models (an older build, or mock mode).
