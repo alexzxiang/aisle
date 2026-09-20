@@ -564,3 +564,189 @@ body.overview-open .overview { display: grid; }
    than a very long line of display type. */
 .wordmark { font-size: 156px; line-height: .94; letter-spacing: -4px; }
 .signoff__mark { white-space: nowrap; }
+
+/* ===========================================================================
+   Charts  (slides 7, 9, 10) — inline SVG, sized by the stage not the viewport
+   =========================================================================== */
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { font-family: var(--text); fill: var(--on-light-dim); font-size: 25px; }
+.chart .lab  { font-size: 27px; font-weight: 500; }
+.chart .val  { font-family: var(--mono); font-size: 25px; font-weight: 500; }
+.chart .tick { font-family: var(--mono); font-size: 23px; }
+.chart .grid { stroke: var(--paper-line); stroke-width: 1; }
+.chart .base { stroke: var(--ink); stroke-width: 1.5; }
+.chart .bar  { transition: filter 160ms var(--ease-out); }
+.chart g.row:hover .bar { filter: brightness(1.08); }
+
+.slide--light .chart .lab, .slide--light .chart .val { fill: var(--ink); }
+.slide--light .chart .val.win { fill: var(--deep); }
+.slide--dark  .chart text  { fill: var(--on-dark-dim); }
+.slide--dark  .chart .lab, .slide--dark .chart .val { fill: var(--paper); }
+.slide--dark  .chart .val.win { fill: var(--mint); }
+.slide--dark  .chart .grid { stroke: var(--ink-line); }
+.slide--dark  .chart .base { stroke: var(--on-dark-dim); }
+
+/* The bars deal themselves in left-to-right / bottom-up with the slide. */
+.slide.is-active .chart g.row { animation: dealbar 520ms var(--ease-out) backwards; }
+.slide.is-active .chart g.row:nth-child(1) { animation-delay: 240ms }
+.slide.is-active .chart g.row:nth-child(2) { animation-delay: 300ms }
+.slide.is-active .chart g.row:nth-child(3) { animation-delay: 360ms }
+.slide.is-active .chart g.row:nth-child(4) { animation-delay: 420ms }
+.slide.is-active .chart g.row:nth-child(5) { animation-delay: 480ms }
+.slide.is-active .chart g.row:nth-child(6) { animation-delay: 540ms }
+.slide.is-active .chart g.row:nth-child(n+7) { animation-delay: 600ms }
+@keyframes dealbar { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+
+/* Legend + the methodology line that sits under every chart. */
+.legend { display: flex; gap: 40px; align-items: center; flex-wrap: wrap; }
+.legend span { display: flex; gap: 12px; align-items: center; font-size: 26px; }
+.legend i { width: 26px; height: 14px; border-radius: 4px; flex: none; }
+.method {
+  font-family: var(--mono); font-size: 21px; line-height: 1.5;
+  padding-top: 16px; border-top: 1px solid var(--paper-line);
+}
+.slide--dark .method { border-top-color: var(--ink-line); color: var(--on-dark-dim); }
+.slide--light .method { color: var(--on-light-dim); }
+.method b { font-weight: 500; }
+.slide--light .method b { color: var(--deep); }
+.slide--dark  .method b { color: var(--mint); }
+
+/* Two-column slide: chart on one side, the argument on the other. */
+.split { display: flex; gap: 70px; align-items: flex-start; }
+.split__main { flex: 1; min-width: 0; }
+.split__side { width: 470px; flex: none; display: flex; flex-direction: column; gap: 26px; }
+.split__side p { font-size: 27px; line-height: 1.45; }
+
+/* The Nemotron race diagram. */
+.race-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.race-svg text { font-family: var(--text); font-size: 25px; fill: var(--paper); }
+.race-svg .mono { font-family: var(--mono); font-size: 22px; fill: var(--on-dark-dim); }
+.race-svg .box  { fill: #1A2327; stroke: var(--ink-line); stroke-width: 1.5; }
+.race-svg .box--nim { stroke: var(--mint); stroke-width: 2.5; }
+.race-svg .wire { stroke: var(--ink-line); stroke-width: 2.5; fill: none; }
+.race-svg .wire--live { stroke: var(--mint); stroke-width: 3.5; fill: none; }
+.race-svg .gate { fill: var(--deep-dark); stroke: var(--mint); stroke-width: 2.5; }
+.slide.is-active .race-svg .wire--live { stroke-dasharray: 10 8; animation: flow 1.1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -36 } }
+
+/* Evidence / market rows. */
+.evidence { display: flex; flex-direction: column; gap: 20px; }
+.evidence__row { display: flex; gap: 30px; align-items: baseline; }
+.evidence__n {
+  font-family: var(--display); font-size: 62px; font-weight: 600;
+  width: 220px; flex: none; line-height: 1;
+}
+.slide--light .evidence__n { color: var(--deep); }
+.slide--dark  .evidence__n { color: var(--mint); }
+.evidence__t { font-size: 29px; line-height: 1.4; flex: 1; }
+.cite { font-size: 22px; font-family: var(--mono); }
+.slide--light .cite { color: var(--on-light-dim); }
+.slide--dark  .cite { color: var(--on-dark-dim); }
+
+/* A pulled-out quote-ish claim, used for the "why speech" sentence. */
+.claim {
+  border-left: 5px solid var(--mint); padding: 6px 0 6px 34px;
+  font-size: 40px; line-height: 1.32; max-width: 1500px; font-weight: 500;
+}
+.slide--light .claim { border-left-color: var(--deep); }
+
+/* A chart slide carries more rows than a statement slide, so it buys the room
+   back from the gaps and the heading rather than letting .slide clip it. */
+.slide--chart { gap: 26px; justify-content: flex-start; }
+.slide--chart h2 { font-size: 60px; }
+.slide--chart .head { gap: 12px; }
+.slide--chart .method { margin-top: auto; }
+
+/* ===========================================================================
+   Layout corrections
+   =========================================================================== */
+
+/* `.code` was authored as a block. Used inside running text it has to behave
+   like an inline token instead of a padded slab. */
+p .code, li .code, .split__side .code, .method .code, .evidence__t .code {
+  display: inline;
+  padding: 3px 9px;
+  font-size: .84em;
+  line-height: 1.2;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.slide--dark p .code, .slide--dark .method .code, .slide--dark .split__side .code {
+  color: #F0A796; background: rgba(168,69,47,.22);
+}
+
+/* A slide that is a heading over a row of cards should sit centred, not have
+   the cards shoved to the floor by space-between. */
+.slide--stack { justify-content: center; gap: 54px; }
+
+/* Footnotes and method lines were reading as body copy. */
+.footnote { font-size: 21px; }
+.method   { font-size: 19px; line-height: 1.6; }
+
+/* Slide 8: the job pills and the diagram's mono labels were competing with
+   the headline. */
+.tagrow span { font-size: 25px; padding: 11px 22px; }
+.race-svg .mono { font-size: 20px; }
+.race-svg text { font-size: 23px; }
+
+/* A big number next to a paragraph reads as centred to the eye, not aligned
+   on the baseline of a 62px digit. */
+.evidence__row { align-items: center; }
+.evidence__n   { font-size: 58px; width: 200px; }
+.evidence__t   { font-size: 28px; }
+
+/* The method block is prose, so give it room to breathe across the full width
+   and let long ones wrap to two columns rather than pushing the chart up. */
+.method--wide { columns: 2; column-gap: 64px; }
+.method--wide b:first-child { display: block; }
+
+/* The detailed method blocks are long by design, so they run in three narrow
+   columns at footnote weight rather than pushing the chart off the slide. */
+.method--wide {
+  columns: 3; column-gap: 44px;
+  font-size: 17px; line-height: 1.55;
+  padding-top: 14px;
+}
+.method--wide b { display: block; margin-top: 8px; }
+.method--wide b:first-child { margin-top: 0; letter-spacing: 1.5px; }
+.method--wide i { font-style: normal; font-weight: 500; }
+
+/* Inline labels: a block label per section cost six extra lines per column. */
+.method--wide b { display: inline; margin: 0; }
+.method--wide b:first-child { display: inline; letter-spacing: 1.5px; }
+.method--wide b:not(:first-child)::before { content: "· "; }
+.split__side p { font-size: 25px; line-height: 1.42; }
+
+/* The gate and sink carry a second line of label rather than a code token. */
+.race-svg .sublab { font-size: 23px; fill: var(--on-deep-dim); font-weight: 600; }
+
+/* Push the method block to the floor of the slide so the chart above it takes
+   the slack, rather than the two meeting in the middle. */
+.slide--chart .method { margin-top: auto; padding-top: 20px; }
+
+/* Slide 11 is rows of evidence, not a chart: let them spread down the slide
+   instead of stacking at the top under the heading. */
+.slide--chart .evidence { flex: 1; justify-content: center; gap: 38px; }
+
+/* Slide 11: spread the evidence rows down the slide instead of stacking them
+   under the heading with the slack all at the bottom. */
+.slide--evidence { justify-content: space-between; }
+.slide--evidence .evidence { flex: 1; justify-content: space-evenly; gap: 30px; }
+.slide--evidence .evidence__n { font-size: 66px; }
+.slide--evidence .evidence__t { font-size: 29px; }
+.slide--evidence .cite { display: block; margin-top: 6px; }
+
+/* ---- Final typographic pass --------------------------------------------
+   Method blocks are reference material read up close, not presented copy, so
+   they go down to footnote weight and give their space to the charts. */
+.method       { font-size: 16px; line-height: 1.5; padding-top: 12px; }
+.method--wide { font-size: 14.5px; line-height: 1.48; column-gap: 40px; padding-top: 12px; }
+.slide--chart .method { padding-top: 14px; }
+
+/* Bar values were set at body size and competed with the bars themselves. */
+.chart .val  { font-size: 21px; }
+.chart .lab  { font-size: 24px; }
+.chart .tick { font-size: 20px; }
+
+/* The full model id has to fit inside its box. */
+.race-svg .mono { font-size: 17px; }
