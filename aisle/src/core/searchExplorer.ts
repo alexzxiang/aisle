@@ -20,6 +20,7 @@
  * policy and the words. Consent gates every relocation; "stop" ends everything (voice.ts).
  */
 import type { Guide, GuideInstruction, TargetBox } from './guide';
+import type { TripRoute } from './tripMemory';
 import type { Pose } from './contracts';
 import { stepsWords } from './guide';
 import { createExplorationMap, type ExplorationMap, type Openness } from './explorationMap';
@@ -107,7 +108,7 @@ export const MOVE_REPEAT_MS = 4000;
 export const MOVE_LOST_GRACE_MS = 6500;
 /** One relocation may take this long before another landmark is chosen. */
 export const MOVE_GIVE_UP_MS = 45_000;
-/** A consent question unanswered this long is taken as "go ahead" (the person can still say stop). */
+/** Remind once after silence; only an affirmative answer authorizes relocation. */
 export const CONSENT_MS = 10_000;
 /** After giving up, a reminder no more often than this. */
 export const GIVE_UP_PULSE_MS = 45_000;
@@ -195,7 +196,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   let advanceAt = -Infinity;
   let advanceSteps0 = 0;
   /** Round 12: the leg being walked when a position is known. */
-  const map = deps.map ?? (deps.pose ? createExplorationMap() : null);
+  const map = deps.map ?? (deps.pose ? createExplorationMap(now) : null);
   let leg: { yawDeg: number; from: { x: number; z: number }; steps0: number; at: number; aligned: boolean; alignedAt: number | null } | null = null;
   let lastPoseVisitAt = -Infinity;
   /** Searching the item's own section shelf by shelf (round 12). */
@@ -203,7 +204,25 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   let viewEvidence = new Set<string>();
   let refused = new Set<string>();
   let lastConfined = false;
-  const startedAt = now();
+  let startedAt = now();
+  let mapGeneration = map?.trip.generation() ?? 0;
+  let memoryRoute: TripRoute | null = null;
+  let pendingLeg: Pose | null = null;
+  let trackingStopped = false;
+  let localScanAt = now();
+  let localOrigin: Pose | null = null;
+  let coverageProgressAt = now();
+  let missingBands = 3;
+  let motionAt = 0;
+  let motionPose: Pose | null = null;
+  let crossing = false;
+  const stalled = (pose: Pose | null): boolean => {
+    if (!pose) return false;
+    if (!motionPose || motionAt < moveAt || Math.hypot(pose.x - motionPose.x, pose.z - motionPose.z) >= 0.35) {
+      motionPose = pose; motionAt = now();
+    }
+    return now() - motionAt > 18000;
+  };
   let permissionAt = -Infinity;
   let gaveUpAt = -Infinity;
   let lastPulseAt = -Infinity;
@@ -224,7 +243,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     if (ready && speakable(text)) { saidAt = now(); return { text, target, phase }; }
     return { text: null, target, phase };
   };
-  const resetScan = (): void => { scan = 0; scanAt = -Infinity; phase = 'scan'; proposal = null; arrivalHits = 0; saidAt = -Infinity; moveKey = null; lastMoveSteps = null; leg = null; };
+  const resetScan = (): void => { scan = 0; scanAt = -Infinity; phase = 'scan'; proposal = null; memoryRoute = null; pendingLeg = null; arrivalHits = 0; saidAt = -Infinity; moveKey = null; lastMoveSteps = null; leg = null; crossing = false; };
   /** A walking line, paced like the navigator's: news after two seconds, the same line again after four. */
   const move = (raw: string, key: string, target: string, haptic: SearchDirective['haptic'] = null): SearchDirective => {
     const t = now();
@@ -242,14 +261,23 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     if (!map) return null;
     const choice = now() - startedAt <= EXPLORE_BUDGET_MS ? map.bestHeading(pose, pose.yawDeg, deps.path?.() ?? null) : null;
     if (!choice) return null;
-    leg = { yawDeg: choice.yawDeg, from: { x: pose.x, z: pose.z }, steps0: deps.steps?.() ?? 0, at: now(), aligned: choice.turn === 'ahead', alignedAt: choice.turn === 'ahead' ? now() : null };
+    leg = { yawDeg: choice.yawDeg, from: { x: pose.x, z: pose.z }, steps0: deps.steps?.() ?? 0, at: now(), aligned: false, alignedAt: null };
     phase = 'advance'; moveKey = null; moveSaidAt = -Infinity; proposal = null;
     const turn = choice.turn === 'ahead' ? '' : choice.turn === 'around' ? 'Turn around, then ' : choice.turn === 'left' ? 'Turn left, then ' : choice.turn === 'right' ? 'Turn right, then ' : choice.turn === 'half_left' ? 'Turn half left, then ' : 'Turn half right, then ';
-    const line = turn ? `${turn}walk about ${stepsWords(EXPLORE_LEG_STEPS)}. New ground there.` : `Walk forward about ${stepsWords(EXPLORE_LEG_STEPS)}. New ground that way.`;
+    const line = turn ? `${turn}hold still. Let me check that direction.` : 'Hold still. Let me check the path ahead.';
     void preferTurn;
     return move(line, `leg:${choice.turn}`, targetWords, choice.turn === 'ahead' ? null : 'TURN');
   };
   const arrive = (): SearchDirective => {
+    if (proposal) map?.trip.arrive(proposal.name, proposal.kind === 'doorway' || proposal.kind === 'aisle_end' ? proposal.kind : 'area');
+    const portal = proposal && (proposal.kind === 'doorway' || proposal.kind === 'aisle_end') ? proposal : null;
+    const at = deps.pose?.();
+    if (portal && at && ['open_passage', 'cross_aisle'].includes(portal.boundary ?? '')) {
+      leg = { yawDeg: (at.yawDeg + (portal.box[0] + portal.box[2] / 2 - 0.5) * (deps.hfovDeg?.() ?? 56) + 360) % 360, from: { x: at.x, z: at.z }, steps0: deps.steps?.() ?? 0, at: now(), aligned: false, alignedAt: null };
+      crossing = true; phase = 'advance'; moveKey = null; moveSaidAt = -Infinity;
+      return { text: 'At the opening. Hold still while I check beyond it.', target: portal.name, phase, haptic: 'CONFIRM' };
+    }
+    localScanAt = now(); coverageProgressAt = now(); missingBands = 3; localOrigin = at ?? null;
     area = freshArea(); area.landmark = proposal?.name;
     viewEvidence = new Set(); signHits = 0; signCandidate = ''; narratedSection = 'unknown';
     resetScan();
@@ -277,7 +305,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     return out;
   };
   const candidates = (): Array<SearchLandmark & { at: number; hits: number }> => {
-    const fresh = landmarks.filter((l) => now() - l.at <= FRESH_MS && l.confidence >= LANDMARK_MIN_CONFIDENCE);
+    const fresh = landmarks.filter((l) => (!['doorway', 'aisle_end'].includes(l.kind) || (l.hits >= 2 && l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? ''))) && now() - l.at <= FRESH_MS && l.confidence >= LANDMARK_MIN_CONFIDENCE);
     const door = detectorDoorway();
     const withDoor = door && !fresh.some((l) => l.kind === 'doorway' && overlap(l.box, door.box) >= 0.3) ? [...fresh, door] : fresh;
     const signs = ocrSigns().filter((s) => !withDoor.some((l) => l.kind === 'section' && overlap(l.box, s.box) >= 0.3));
@@ -287,9 +315,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     const prior = clean(targetWords);
     // The current aisle is the wrong section: the way out is its end, not another shelf here.
     const wrongAisle = deps.context === 'store' && section !== 'unknown' && area.section !== 'unknown' && area.section !== section;
-    return candidates().filter((l) => (l.hits >= 2 || l.confidence >= 0.75) && !refused.has(candidateKey(l)))
+    return candidates().filter((l) => !['doorway', 'aisle_end'].includes(l.kind) || (l.hits >= 2 && l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? '')))
+      .filter((l) => (l.hits >= 2 || l.confidence >= 0.75) && !refused.has(candidateKey(l)))
       .filter((l) => clean(l.name) !== clean(area.landmark ?? ''))
-      .filter((l) => !areas.some((a) => a.sign && clean(a.sign) === clean(l.name) && a.outcome === 'not_seen_in_scanned_views'))
       .filter((l) => !(l.kind === 'surface' && wrongAisle))
       .sort((a, b) => rank(b) - rank(a))[0] ?? null;
     function rank(l: SearchLandmark): number {
@@ -300,6 +328,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     }
   };
   const question = (): string => {
+    if (memoryRoute) return 'I remember another place to check. May we retrace our route?';
+    if (pendingLeg) return 'May I explore a new direction from here?';
     if (deps.context === 'store') {
       if (proposal?.section !== 'unknown' && proposal?.section === section) return `May I guide you toward the ${section} section?`;
       if (proposal?.kind === 'aisle_end') return 'May I take you out of this aisle to look elsewhere?';
@@ -310,6 +340,14 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   return {
     observe(o, seq, capturedAt) {
       if (!o || seq <= lastSeq || capturedAt > now() || now() - capturedAt > FRESH_MS) return;
+      const currentPose = deps.pose?.() ?? null;
+      if (currentPose) map?.ingestPose(currentPose);
+      map?.trip.observe(o, deps.item, capturedAt);
+      // A delayed frame describes its capture viewpoint, not where the camera faces now.
+      const capturePose = map?.trip.poseAt(capturedAt);
+      if (map && deps.pose && !capturePose) return;
+      if (capturePose && currentPose && (Math.hypot(capturePose.x - currentPose.x, capturePose.z - currentPose.z) > 1
+        || Math.abs(((capturePose.yawDeg - currentPose.yawDeg + 540) % 360) - 180) > 25)) return;
       lastSeq = seq;
       observedAt = capturedAt;
       quality = o.confidence >= OBSERVATION_MIN_CONFIDENCE ? o.quality : 'occluded';
@@ -321,7 +359,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       // The same landmark comes back under drifting names ("aisle end", "end of aisle"): match by
       // kind and overlap first, name second, and keep the first name so the person hears one word.
       landmarks = o.landmarks.filter((l) => l.confidence >= LANDMARK_MIN_CONFIDENCE).map((l) => {
-        const same = previous.find((p) => capturedAt - p.at <= 15000 && (clean(p.name) === clean(l.name) || (p.kind === l.kind && overlap(p.box, l.box) >= 0.3)));
+        const same = previous.find((p) => capturedAt - p.at <= 15000 && p.boundary === l.boundary && (clean(p.name) === clean(l.name) || (p.kind === l.kind && overlap(p.box, l.box) >= 0.3)));
         return { ...l, name: same?.name ?? l.name, at: capturedAt, hits: (same?.hits ?? 0) + 1 };
       });
       // Signs identify the current area only when repeated; merely seeing a distant sign
@@ -361,16 +399,31 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         viewEvidence.add(`${o.view}:${bearing}`);
         if (!area.views.includes(o.view)) area.views.push(o.view);
         // Three different named views AND three observations, not repeated identical frames.
-        if (area.outcome !== 'item_seen') area.outcome = area.views.length >= 3 && viewEvidence.size >= 3 ? 'not_seen_in_scanned_views' : 'partly_searched';
+        if (area.outcome !== 'item_seen') area.outcome = map?.trip.coverage(deps.item, currentPose ?? undefined).checked ? 'not_seen_in_scanned_views' : 'partly_searched';
       }
     },
     tick(target, direct, opts = {}) {
       targetWords = target;
       lastConfined = opts.confined === true;
       const pose = deps.pose?.() ?? null;
+      if (map && pose) map.ingestPose(pose);
+      if (pose && (!localOrigin || Math.hypot(pose.x - localOrigin.x, pose.z - localOrigin.z) > 1.5)) {
+        localOrigin = pose; localScanAt = now(); coverageProgressAt = now(); missingBands = 3;
+      }
+      if (map && map.trip.generation() !== mapGeneration) {
+        mapGeneration = map.trip.generation(); resetScan(); landmarks = []; observedAt = -Infinity;
+      }
+      if (deps.pose && (!pose || (map && !map.trip.ready()))) {
+        if (!trackingStopped) { resetScan(); trackingStopped = true; saidAt = -Infinity; }
+        const line = emit('Stop. Hold the phone steady while I recover our position.');
+        return { ...line, haptic: line.text ? 'STOP' : null };
+      }
+      if (trackingStopped) { trackingStopped = false; resetScan(); }
       if (map && pose && now() - lastPoseVisitAt >= 500) {
         map.visit(pose);
-        map.markViewed(pose, pose.yawDeg, deps.hfovDeg?.() ?? 56);
+        // Relative monocular depth is not a metric range. Do not paint through walls.
+        // Actual surfaces are recorded as native 3D points in trip memory instead.
+
         lastPoseVisitAt = now();
       }
       if ((phase === 'move' || phase === 'advance') && lastTickAt !== -Infinity && now() - lastTickAt > STALE_TICK_MS) resetScan();
@@ -378,10 +431,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       // A found target always wins, including while permission is pending.
       if (direct?.targetVisible && !opts.surface) { resetScan(); return null; }
       if (phase === 'permission') {
-        if (proposal && permissionAt !== -Infinity && now() - permissionAt >= CONSENT_MS) {
-          // No answer: an unanswered question must not become the place we stand forever.
-          phase = 'move'; moveAt = now(); saidAt = now(); moveKey = null; moveSaidAt = -Infinity; lastMoveSteps = null; landmarkSeenAt = now();
-          return { text: fit(`No answer. Heading for the ${proposal.name}. Say stop to stay.`), target: proposal.name, phase, haptic: 'CONFIRM' };
+        if (permissionAt !== -Infinity && now() - permissionAt >= CONSENT_MS) {
+          return emit('Please say yes to move, or no to stay.');
         }
         return emit(question(), proposal?.name);
       }
@@ -389,6 +440,24 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         // Given up: one plain statement was made; from here a low pulse, not a nag.
         if (gaveUpAt !== -Infinity) return now() - lastPulseAt >= GIVE_UP_PULSE_MS ? (lastPulseAt = now(), { text: 'Still here. Say where to look, or stop.', target: targetWords, phase }) : { text: null, target: targetWords, phase };
         return emit('Search paused. Say search again, or stop.');
+      }
+      if (phase === 'move' && memoryRoute && pose && map) {
+        const route = map.trip.route(deps.item, section, memoryRoute.destination.id);
+        if (!route || Math.hypot(memoryRoute.destination.x - pose.x, memoryRoute.destination.z - pose.z) < 1) {
+          resetScan(); area = freshArea();
+          return emit('Stop here. Let me check this area again.');
+        }
+        if (stalled(pose) || now() - moveAt > MOVE_GIVE_UP_MS) {
+          map.trip.defer(deps.item, memoryRoute.destination.id);
+          resetScan(); return emit('Stop. This route is stalled. Let me find another way.');
+        }
+        memoryRoute = route;
+        const yaw = Math.atan2(route.waypoint.x - pose.x, -(route.waypoint.z - pose.z)) * 180 / Math.PI;
+        const err = ((yaw - pose.yawDeg + 540) % 360) - 180;
+        if (Math.abs(err) > 25) return move(err > 0 ? 'Turn slowly right.' : 'Turn slowly left.', `route-turn:${err > 0}`, targetWords, 'TURN');
+        const path = deps.path?.();
+        if (!path || path.center >= 0.7) return move('Stop. I need to check the path ahead.', 'route-blocked', targetWords, 'STOP');
+        return move('Walk slowly forward along our previous route.', 'route-forward', targetWords);
       }
       if (phase === 'move' && proposal) {
         const p = candidates().find((l) => clean(l.name) === clean(proposal!.name) && now() - l.at <= FRESH_MS);
@@ -399,12 +468,13 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         if (g?.kind === 'arrived' && g.box && g.box.at !== arrivalAt) { arrivalHits += 1; arrivalAt = g.box.at; }
         else if (g?.kind !== 'arrived') arrivalHits = 0;
         if (arrivalHits >= 2) return arrive();
-        if (now() - moveAt > MOVE_GIVE_UP_MS) { refused.add(candidateKey(proposal)); resetScan(); return emit('That took too long. Let me look for another way.'); }
+        if (stalled(pose) || now() - moveAt > MOVE_GIVE_UP_MS) { refused.add(candidateKey(proposal)); resetScan(); return emit('That took too long. Let me look for another way.'); }
         if (!g?.targetVisible) {
           // Lost from view: keep walking the last bearing briefly, then stop and look.
-          if (now() - landmarkSeenAt <= MOVE_LOST_GRACE_MS) return move(`Keep walking. Hold the camera level to find the ${proposal.name}.`, 'lost', proposal.name);
+          if (deps.path?.() && deps.path()!.center < 0.7 && now() - landmarkSeenAt <= MOVE_LOST_GRACE_MS) return move(`Keep walking. Hold the camera level to find the ${proposal.name}.`, 'lost', proposal.name);
           return move(`Stop. Turn slowly until I see the ${proposal.name} again.`, 'lost-stop', proposal.name, 'STOP');
         }
+        if (deps.pose && (!deps.path?.() || deps.path()!.center >= 0.7) && g.kind === 'forward') return move('Stop. I need to check the path ahead.', 'blocked', proposal.name, 'STOP');
         if (g.kind === 'sidestep') return move(g.text, 'sidestep', proposal.name, 'STOP');
         if (g.kind === 'arrived') return move(`${cap(proposal.name)} just ahead. Slow down.`, 'arriving', proposal.name);
         const line = itemLine(proposal.name, g);
@@ -425,14 +495,22 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           // A blockage counts only once the person faces the leg's heading and has had a moment to
           // step off; at the start the table they were scanning is still in front of the camera.
           const settled = leg.aligned && leg.alignedAt !== null && now() - leg.alignedAt >= 1500;
-          const blocked = settled && p !== null && p.center >= 0.75;
-          const far = map.distance(leg.from, pose) >= EXPLORE_LEG_M || (typeof legSteps === 'number' && legSteps - leg.steps0 >= EXPLORE_LEG_STEPS) || now() - leg.at >= EXPLORE_LEG_MS;
+          const blocked = settled && p !== null && p.center >= 0.7;
+          const rad = leg.yawDeg * Math.PI / 180;
+          const travelled = crossing ? Math.max(0, (pose.x - leg.from.x) * Math.sin(rad) - (pose.z - leg.from.z) * Math.cos(rad)) : map.distance(leg.from, pose);
+          const far = travelled >= (crossing ? 1.5 : EXPLORE_LEG_M) || (typeof legSteps === 'number' && legSteps - leg.steps0 >= EXPLORE_LEG_STEPS) || now() - leg.at >= EXPLORE_LEG_MS;
           if (blocked || far) {
-            if (blocked) map.markBlocked(pose, pose.yawDeg);
+            const noProgress = travelled < 0.5;
+            if (blocked || noProgress) map.markBlocked(pose, leg.yawDeg);
+            if (crossing && !blocked && travelled >= 1.5) {
+              area = freshArea(); area.landmark = 'beyond opening';
+              localScanAt = now(); coverageProgressAt = now(); missingBands = 3; localOrigin = pose; viewEvidence = new Set();
+              narratedSection = 'unknown'; signHits = 0; signCandidate = '';
+            }
             map.markScanned(pose);
             leg = null;
             resetScan(); saidAt = now();
-            return { text: blocked ? 'Something ahead. Stop. Let me look around.' : 'Stop here. Let me look around.', target: targetWords, phase, haptic: blocked ? 'STOP' : 'CONFIRM' };
+            return { text: blocked ? 'Something ahead. Stop. Let me look around.' : noProgress ? 'Stop. No progress this way. Let me find another opening.' : 'Stop here. Let me look around.', target: targetWords, phase, haptic: blocked ? 'STOP' : 'CONFIRM' };
           }
           if (!leg.aligned) {
             // Still turning onto the leg's heading: keep the turn going, not a "drift" complaint.
@@ -440,7 +518,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
             else return move(err > 0 ? 'Keep turning right.' : 'Keep turning left.', `turning:${err > 0 ? 'r' : 'l'}`, targetWords, 'TURN');
           }
           if (Math.abs(err) > EXPLORE_DRIFT_DEG) return move(err > 0 ? 'Drifting left. A little to the right.' : 'Drifting right. A little to the left.', `drift:${err > 0 ? 'r' : 'l'}`, targetWords, 'TURN');
-          return move('Keep walking forward. I am looking as you walk.', 'leg', targetWords);
+          if (!p || p.center >= 0.7) return move('Stop. Let me check the path before moving.', 'check-path', targetWords, 'STOP');
+          return move(crossing ? 'Walk slowly through the opening. I am checking ahead.' : 'Keep walking forward. I am looking as you walk.', 'leg', targetWords);
         }
         // No position: a few steps on, then look again.
         const steps = deps.steps?.();
@@ -457,9 +536,19 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         }
         return emit('Hold the camera steady. I need a current view.');
       }
-      if (unusableStreak >= 3 && landmarks.length === 0) return emit(quality === 'dark' ? 'The view is dark. Aim toward a brighter area.' : 'The view is blocked or blurred. Hold the camera steady.');
+      if (unusableStreak >= 3 && landmarks.length === 0 && now() - localScanAt < 45000) return emit(quality === 'dark' ? 'The view is dark. Aim toward a brighter area.' : 'The view is blocked or blurred. Hold the camera steady.');
+      if (unusableStreak >= 3 && landmarks.length === 0 && now() - localScanAt >= 45000) {
+        map?.trip.defer(deps.item); phase = 'paused'; saidAt = -Infinity;
+        return emit('View still unusable. Search paused. Say explore for another angle.');
+      }
       if (now() - scanAt >= SCAN_MS && now() - saidAt >= 5000) {
         if (scan >= 3) {
+          const coverage = map?.trip.coverage(deps.item, pose ?? undefined);
+          if (coverage && coverage.missing.length < missingBands) { missingBands = coverage.missing.length; coverageProgressAt = now(); }
+          const plausible = opts.surface || opts.confined || area.section === section || area.section === 'unknown';
+          if (coverage && plausible && !coverage.checked && !coverage.positive && now() - localScanAt < 60000 && now() - coverageProgressAt < 20000) {
+            return emit(SHELVES[Math.max(0, ['upper', 'middle', 'lower'].indexOf(coverage.missing[0] ?? 'upper'))]!);
+          }
           // The right section (apples and oranges here, bananas wanted): search these shelves
           // closely before proposing anywhere else — the thing is probably within a few metres.
           const neighbors = deps.context === 'store' ? relatedGroceryItems(deps.item, area.items) : [];
@@ -477,20 +566,24 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
             phase = 'paused'; saidAt = -Infinity;
             return emit('Item still unconfirmed. Say search again for another shelf scan.');
           }
+          if (now() - startedAt > EXPLORE_BUDGET_MS) {
+            phase = 'paused'; gaveUpAt = now(); lastPulseAt = now(); saidAt = -Infinity;
+            return emit('Search paused. We can keep looking, or ask someone nearby.');
+          }
+          memoryRoute = map?.trip.route(deps.item, section) ?? null;
+          if (memoryRoute) { phase = 'permission'; permissionAt = now(); saidAt = -Infinity; return emit(question()); }
           proposal = choose();
           if (proposal) { phase = 'permission'; permissionAt = now(); saidAt = -Infinity; return emit(question(), proposal.name); }
           if (map && pose) {
             // Round 12: go where we have not been. The depth grid vetoes blocked ways.
             map.markScanned(pose);
-            const started = startLeg(pose);
-            if (started) return started;
+            if (map.bestHeading(pose, pose.yawDeg, deps.path?.() ?? null)) {
+              pendingLeg = pose; phase = 'permission'; permissionAt = now(); saidAt = -Infinity;
+              return emit(question());
+            }
             phase = 'paused'; saidAt = -Infinity; gaveUpAt = now();
-            return emit(`I have looked everywhere I can reach. No ${targetWords} anywhere. Say where to look, or stop.`);
-          }
-          if (advances < ADVANCE_MAX) {
-            advances += 1;
-            phase = 'advance'; advanceAt = now(); advanceSteps0 = deps.steps?.() ?? 0; moveKey = null; moveSaidAt = -Infinity;
-            return move(`No landmark yet. Walk forward ${stepsWords(ADVANCE_STEPS)}, then I will look again.`, 'advance', targetWords);
+            lastPulseAt = now();
+            return emit('No confirmed route. Hidden items may remain. Say keep looking.');
           }
           phase = 'paused'; saidAt = -Infinity;
           return emit('No way on from here. Ask someone nearby, or say search again.');
@@ -503,11 +596,23 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       return { text: null, target, phase };
     },
     intercept(text) {
-      if (/^(?:search again|keep looking|scan again|try again|look again)[.!]?$/i.test(text.trim())) { resetScan(); return { consumed: true, text: 'Resuming the search. Hold the camera steady.' }; }
+      if (/^(?:search again|keep looking|scan again|try again|look again)[.!]?$/i.test(text.trim())) { resetScan(); startedAt = now(); localScanAt = now(); coverageProgressAt = now(); missingBands = 3; gaveUpAt = -Infinity; advances = 0; return { consumed: true, text: 'Resuming the search. Hold the camera steady.' }; }
       if (/^(?:where have we (?:looked|been)|what have we checked)[?!.]?$/i.test(text.trim())) {
         return { consumed: true, text: areas.some((a) => a.outcome === 'not_seen_in_scanned_views') ? 'We checked several views. Hidden items may still be there.' : 'We have only partly inspected this area.' };
       }
       if (phase !== 'permission') return { consumed: false, text: null };
+      if (isAffirmative(text)) map?.trip.defer(deps.item);
+      if (isAffirmative(text) && !lastConfined && (memoryRoute || pendingLeg)) {
+        if (deps.pose && (!deps.pose() || !map?.trip.ready())) return { consumed: true, text: 'Hold still while I recover our position.' };
+        if (pendingLeg) {
+          const p = deps.pose?.(); pendingLeg = null;
+          const next = p ? startLeg(p) : null;
+          if (!next) resetScan();
+          return { consumed: true, text: next?.text ?? 'Let me check another direction.' };
+        }
+        phase = 'move'; moveAt = now(); saidAt = -Infinity; moveKey = null; moveSaidAt = -Infinity;
+        return { consumed: true, text: 'Okay. Retracing our route. I will check for obstacles.' };
+      }
       if (isAffirmative(text) && proposal && !lastConfined) {
         phase = 'move'; movementSteps = deps.steps?.() ?? 0; moveAt = now(); saidAt = -Infinity; moveKey = null; moveSaidAt = -Infinity; lastMoveSteps = null; landmarkSeenAt = now();
         void movementSteps;
@@ -527,7 +632,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       const aisle = deps.context === 'store' ? groceryAisle(deps.item) : null;
       const neighbors = relatedGroceryItems(deps.item, area.items);
       const clues = aisle ? `Likely aisle: ${aisle.label}. Related products: ${aisle.words.join(', ')}. Observed related products: ${neighbors.join(', ') || 'none'}. Read overhead signs verbatim, including aisle numbers and categories. Box the corresponding visible aisle entrance or display; do not invent its direction. ` : '';
-      return `${prior}${clues}Search ${phase}. Inspect target and visible alternative landmarks. Memory: ${history}. Unseen is not absent. Never infer walking direction from category.`;
+      return `${prior}${clues}Search ${phase}. Inspect target and visible alternative landmarks. Coverage: ${JSON.stringify(map?.trip.coverage(deps.item) ?? null)}. Memory: ${history}. Trip: ${map?.trip.describe(deps.item) ?? ''}. Unseen is not absent. Never infer walking direction from category.`;
     },
     memory: () => areas.map((a) => ({ ...a, items: [...a.items], views: [...a.views] })),
     coverage: () => (map ? { visited: map.visitedCells(), scanned: map.scannedCells(), viewed: map.viewedCells() } : null),
@@ -535,17 +640,19 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     pending: () => phase === 'permission' || phase === 'paused',
     status: () => phase,
     repeat: () => { saidAt = -Infinity; },
-    restart: () => { resetScan(); advances = 0; gaveUpAt = -Infinity; },
+    restart: () => { resetScan(); startedAt = now(); localScanAt = now(); coverageProgressAt = now(); missingBands = 3; advances = 0; gaveUpAt = -Infinity; },
     busy: () => phase === 'move' || phase === 'advance' || phase === 'permission',
     exploreNow(prefer = null) {
-      gaveUpAt = -Infinity;
+      gaveUpAt = -Infinity; startedAt = now(); localScanAt = now();
+      map?.trip.defer(deps.item);
       // The current spot is done with: remember it as searched, then leave.
-      if (area.outcome !== 'item_seen') area.outcome = 'not_seen_in_scanned_views';
+      // A request to leave is not evidence that the shelves were inspected.
       const pose = deps.pose?.() ?? null;
+      if (deps.pose && (!pose || !map?.trip.ready())) return { text: 'Stop. Hold still while I recover our position.', target: targetWords, phase: 'scan', haptic: 'STOP' };
       if (map && pose) map.markScanned(pose);
       // A fresh landmark of the wanted kind (an aisle end, a doorway), without asking — the person asked.
       const wanted = prefer === 'aisle' ? 'aisle_end' : prefer === 'room' ? 'doorway' : null;
-      const fresh = landmarks.filter((l) => now() - l.at <= FRESH_MS && l.confidence >= LANDMARK_MIN_CONFIDENCE && !refused.has(candidateKey(l)) && clean(l.name) !== clean(area.landmark ?? ''));
+      const fresh = landmarks.filter((l) => (!['doorway', 'aisle_end'].includes(l.kind) || (l.hits >= 2 && l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? ''))) && now() - l.at <= FRESH_MS && l.confidence >= LANDMARK_MIN_CONFIDENCE && !refused.has(candidateKey(l)) && clean(l.name) !== clean(area.landmark ?? ''));
       const pick = (wanted ? fresh.find((l) => l.kind === wanted) : null) ?? choose() ?? fresh.sort((a, b) => b.confidence - a.confidence)[0] ?? null;
       if (pick) {
         proposal = pick;
@@ -556,11 +663,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         const started = startLeg(pose, prefer === 'aisle');
         if (started) return { ...started, text: started.text ? fit(`Okay. ${started.text}`) : 'Okay. Exploring.' };
       }
-      // No position and no landmark: the plain advance.
-      advances = Math.min(advances, ADVANCE_MAX - 1);
-      advances += 1;
-      phase = 'advance'; advanceAt = now(); advanceSteps0 = deps.steps?.() ?? 0; moveKey = null; moveSaidAt = -Infinity;
-      return { text: fit(`Okay. Walk forward ${stepsWords(ADVANCE_STEPS)}, then I will look again.`), target: targetWords, phase, haptic: 'CONFIRM' };
+      resetScan();
+      return { text: 'Turn slowly so I can find another opening.', target: targetWords, phase, haptic: 'TURN' };
     },
     enterArea(landmark) {
       area = freshArea(); area.landmark = landmark; viewEvidence = new Set();

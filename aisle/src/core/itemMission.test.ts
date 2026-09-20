@@ -308,22 +308,24 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     let t = T0;
     const pose = { x: 0, z: 0, y: 0, yawDeg: 0, trackingState: 'NORMAL' as const, timestamp: t };
     const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => t });
-    const search = createSearchExplorer({ item: 'bananas', context: 'home', guide, now: () => t, pose: () => ({ ...pose, timestamp: t }), path: () => ({ center: 0.1, left: 0.1, right: 0.1 }) });
+    const map = createExplorationMap(() => t);
+    const feed = (ms: number) => { for (let i = 0; i < ms; i += 100) { t += 100; map.ingestPose({ ...pose, timestamp: t }); } };
+    feed(300);
+    const search = createSearchExplorer({ map, item: 'bananas', context: 'home', guide, now: () => t, pose: () => ({ ...pose, timestamp: t }), path: () => ({ center: 0.1, left: 0.1, right: 0.1 }) });
     const m = createMissionRunner(parseMissionGoal('bananas')!, { guide, now: () => t, search });
     expect(m.tick().text).toBe('No bananas in view. They are usually on the counter.');
     t += 1000;
     const r = m.intercept('explore');
     expect(r.consumed).toBe(true);
-    expect(r.text).toBe('Okay. Walk forward about ten steps. New ground that way.');
+    expect(r.text).toBe('Okay. Hold still. Let me check the path ahead.');
     expect(search.busy()).toBe(true);
     // While the leg runs, the navigator does not hop to "maybe on the table".
-    t += 9000;
+    feed(2000);
     const during = m.tick();
     expect(during.text === null || /Keep walking|Drifting|Keep turning/.test(during.text)).toBe(true);
     expect(during.decision.key.startsWith('search:') || during.text === null).toBe(true);
     // Six metres on: the leg ends, a look around, then reasoning resumes.
-    pose.z = -6.5;
-    t += 1000;
+    for (let z = 0.1; z <= 6.5; z += 0.1) { pose.z = -z; feed(100); }
     expect(m.tick().text).toBe('Stop here. Let me look around.');
     expect(search.busy()).toBe(false);
   });
@@ -369,7 +371,12 @@ describe('createMissionRunner: the first line is immediate, repeats are paced, t
     dets = [{ cls: 'table', box: [0.05, 0.2, 0.9, 0.8], score: 0.9, trackId: 1 }];
     t += 2500;
     expect(m.tick().text).toBe('At the table. Tilt the camera down and pan slowly.');
-    t += 16_000;
+    // Continuous poses and three usable shelf bands are required before session exclusion.
+    for (let i = 0; i < 160; i++) { t += 100; map.ingestPose({ ...pose, timestamp: t }); }
+    for (const view of ['upper', 'upper', 'middle', 'middle', 'lower', 'lower'] as const) {
+      for (let i = 0; i < 8; i++) { t += 100; map.ingestPose({ ...pose, pitchDeg: view === 'upper' ? 15 : view === 'lower' ? -15 : 0, timestamp: t }); }
+      map.trip.observe({ inspection: { target: 'bananas', assessed: true, confidence: 0.95 }, sign: null, items: [], view, quality: 'usable', confidence: 0.9, barrier: 'none', landmarks: [] }, 'bananas', t);
+    }
     expect(m.tick().text).toBe('Not on the table. Maybe on the counter.');
     expect(map.absentMarks('bananas')).toHaveLength(1);
     expect(map.absentMarks('bananas')[0]).toMatchObject({ place: 'table' });

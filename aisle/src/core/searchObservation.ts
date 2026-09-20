@@ -4,6 +4,8 @@ export const SEARCH_VIEWS = ['overview', 'left', 'right', 'upper', 'middle', 'lo
 export type SearchView = typeof SEARCH_VIEWS[number];
 export type SearchBox = [number, number, number, number];
 export interface SearchLandmark {
+  /** Positive visual evidence of an opening, not merely a door-shaped object. */
+  boundary?: 'open_passage' | 'cross_aisle' | 'closed_door' | 'unknown';
   name: string;
   kind: 'surface' | 'appliance' | 'doorway' | 'aisle_end' | 'section';
   section: FoodSection;
@@ -11,6 +13,7 @@ export interface SearchLandmark {
   confidence: number;
 }
 export interface SearchObservation {
+  inspection?: { target: string; assessed: boolean; confidence: number };
   /** Requested item, separate from a navigation landmark named in Look for. */
   item?: { box: SearchBox | null; confidence: number };
   /** Physical barrier between the user and requested food, including transparent doors. */
@@ -42,9 +45,11 @@ export function coerceSearchObservation(raw: unknown): SearchObservation | undef
     const l = record(rawLandmark);
     const box = searchBox(l.box);
     if (!box || !name(l.name) || !['surface', 'appliance', 'doorway', 'aisle_end', 'section'].includes(String(l.kind))) continue;
-    landmarks.push({ name: name(l.name), kind: l.kind as SearchLandmark['kind'], box, confidence: confidence(l.confidence), section: FOOD_SECTIONS.includes(l.section as FoodSection) ? l.section as FoodSection : 'unknown' });
+    landmarks.push({ boundary: ['open_passage', 'cross_aisle', 'closed_door'].includes(String(l.boundary)) ? l.boundary as SearchLandmark['boundary'] : 'unknown', name: name(l.name), kind: l.kind as SearchLandmark['kind'], box, confidence: confidence(l.confidence), section: FOOD_SECTIONS.includes(l.section as FoodSection) ? l.section as FoodSection : 'unknown' });
   }
+  const inspection = record(r.inspection);
   return {
+    inspection: { target: name(inspection.target), assessed: inspection.assessed === true, confidence: confidence(inspection.confidence) },
     item: { box: searchBox(record(r.item).box), confidence: confidence(record(r.item).confidence) },
     barrier: ['closed_fridge', 'closed_freezer', 'none', 'unknown'].includes(String(r.barrier)) ? r.barrier as SearchObservation['barrier'] : 'unknown',
     sign: name(r.sign) || null,

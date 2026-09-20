@@ -116,6 +116,7 @@ export function missionName(words: string, cls: DetectionClass | null): string {
 }
 
 export interface MissionSnapshot {
+  coverageComplete?: boolean;
   now: number;
   /** guide.instructionFor(item) with the model's item box. */
   item: GuideInstruction | null;
@@ -357,7 +358,7 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
           const line = opens ? `Point the camera inside the ${placeName} and pan slowly.` : `At the ${placeName}. Tilt the camera down and pan slowly.`;
           return out('scan_place', line, 'start', goal.item, 'CONFIRM');
         }
-        if (s.now - since > MISSION_SCAN_GIVE_UP_MS) {
+        if (s.now - since > MISSION_SCAN_GIVE_UP_MS && (s.coverageComplete !== false || s.now - since > 60000)) {
           // Scanned long enough without the item: this place is ruled out; reason about the next.
           const picked = nextHypothesis();
           if (picked) return picked;
@@ -598,6 +599,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
     const candidates = state.working || deps.context === 'store' ? undefined
       : rankHypotheses(goal.item, goal.place, state.tried, () => 'unseen').slice(0, 4).map((h) => ({ place: h.place, evidence: evidenceOf(look(h.place)) }));
     return {
+      coverageComplete: deps.search && deps.map ? deps.map.trip.coverage(goal.item, deps.pose?.() ?? undefined).checked : undefined,
       now: now(),
       item: look(goal.item),
       place: state.working ? look(state.working) : null,
@@ -629,7 +631,7 @@ export function createMissionRunner(goal: MissionGoal, deps: MissionRunnerDeps):
       // Round 18: a place ruled out is marked on the map where we stand (we scan at arm's length).
       if (reasoned.decision.ruledOut && deps.map) {
         const p = deps.pose?.() ?? null;
-        if (p) deps.map.markAbsent(goal.item, reasoned.decision.ruledOut, p);
+        if (p && deps.map.trip.checkedNear(goal.item, p)) deps.map.markAbsent(goal.item, reasoned.decision.ruledOut, p);
       }
       const explorerBusy = deps.search?.busy() ?? false;
       const wantsExplore = reasoned.decision.explore === true || explorerBusy || (state.phase === 'scan_place' && !snap.item?.targetVisible && reasoned.decision.key.endsWith(':looking'));

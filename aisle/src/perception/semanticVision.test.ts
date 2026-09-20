@@ -185,6 +185,7 @@ describe('createSemanticVision policy', () => {
     h.perception.emitOcr(['3 da1ry', '$4.99']);
     const out = await h.sv.ask('aisle_disambiguate', { knownSigns: ['3', 'DAIRY'] });
     expect(out.status).toBe('applied');
+    expect(out.capturedAt).toBe(0); // snapshot time, independent of request/response time
     const req = transport.requests[0]!;
     expect(req.seq).toBe(1);
     expect(req.mode).toBe('INDOOR_NAV');

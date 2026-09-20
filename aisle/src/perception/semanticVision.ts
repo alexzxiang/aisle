@@ -524,6 +524,8 @@ export type AskStatus =
   | 'error';           // transport rejected; treated as silence
 
 export interface AskOutcome {
+  /** Actual image timestamp; null means no image was captured. */
+  capturedAt?: number | null;
   status: AskStatus;
   gate?: GateVerdict;
   seq: number;
@@ -697,13 +699,14 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
     }
   };
 
-  const buildRequest = async (question: VisionQuestion, o: AskOptions, n: number): Promise<VisionRequest> => {
+  const buildRequest = async (question: VisionQuestion, o: AskOptions, n: number, captured: (at: number) => void): Promise<VisionRequest> => {
     const mode = store.getState().mode;
     const width = o.image === 'none' ? null : (o.image ?? SNAPSHOT_WIDTH[question]);
     let image: VisionRequest['image'];
     if (width !== null) {
       try {
         const snap = await perception.snapshotJPEG(width);
+        captured(snap.timestamp);
         image = { base64: snap.base64, width: snap.width, height: snap.height };
       } catch {
         image = undefined; // facts-only request rather than no request
@@ -761,9 +764,10 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       stats.calls += 1;
       stats.inFlight = inFlight;
 
+      let capturedAt: number | null = null;
       let res: VisionResponse;
       try {
-        res = coerceVisionResponse(await transport.ask(await buildRequest(question, o, n), { priority: priority === 'INFO' ? 'INFO' : 'NAV' }), n);
+        res = coerceVisionResponse(await transport.ask(await buildRequest(question, o, n, (at) => { capturedAt = at; }), { priority: priority === 'INFO' ? 'INFO' : 'NAV' }), n);
       } catch {
         inFlight -= 1;
         stats.inFlight = inFlight;
@@ -793,7 +797,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       apply(res, meta);   // skips `speech` when the audio already streamed for this seq
       streamed.delete(n);
       stats.applied += 1;
-      return { status: 'applied', seq: n, response: res, streamed: wasStreamed, latencyMs };
+      return { status: 'applied', capturedAt, seq: n, response: res, streamed: wasStreamed, latencyMs };
     },
 
     nextSeq() {

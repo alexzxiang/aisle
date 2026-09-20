@@ -462,6 +462,9 @@ public struct DetectionPayload: PerceptionPayload, Equatable {
 }
 
 public struct PosePayload: PerceptionPayload, Equatable {
+  public var worldSessionId: String = ""
+  public var pitchDeg: Double = 0
+  public var mappingPoints: [[Double]] = []
   public var yawDeg: Double
   public var x: Double
   public var y: Double
@@ -482,6 +485,8 @@ public struct PosePayload: PerceptionPayload, Equatable {
   public var dictionary: [String: Any] {
     [
       "yawDeg": yawDeg, "x": x, "y": y, "z": z,
+      "worldSessionId": worldSessionId, "pitchDeg": pitchDeg,
+      "mappingPoints": mappingPoints.map { ["x": $0[0], "y": $0[1], "z": $0[2]] },
       "trackingState": trackingState.rawValue, "timestamp": timestamp,
     ]
   }

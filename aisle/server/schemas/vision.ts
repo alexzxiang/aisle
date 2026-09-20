@@ -55,6 +55,7 @@ export const VISION_RESPONSE_SCHEMA: Readonly<Record<string, unknown>> = Object.
       confidence: { type: 'number' },
     }),
     search: { ...obj({
+      inspection: obj({ target: { type: 'string', description: 'Exact requested item from Goal.' }, assessed: { type: 'boolean', description: 'True only if this visible shelf band was deliberately inspected for the requested item; not for an overview, navigation, blur or opaque packaging.' }, confidence: { type: 'number' } }),
       item: obj({ box: { type: ['array', 'null'], items: { type: 'number' }, description: 'The requested FOOD/ITEM from Goal, even while Look for names a navigation landmark. Null unless identified; never a shelf or appliance.' }, confidence: { type: 'number' } }),
       barrier: { type: 'string', enum: ['closed_fridge', 'closed_freezer', 'none', 'unknown'], description: 'A physical door blocking access to the requested item. Visible contents through glass are still behind a closed door.' },
       sign: { type: ['string', 'null'], description: 'Verbatim readable sign identifying the CURRENT area, not a distant destination. Null when unreadable.' },
@@ -63,6 +64,7 @@ export const VISION_RESPONSE_SCHEMA: Readonly<Record<string, unknown>> = Object.
       quality: { type: 'string', enum: ['usable', 'blurred', 'dark', 'occluded'] },
       landmarks: { type: 'array', items: obj({
         name: { type: 'string', description: 'Short stable name of a visible navigable landmark; do not invent a hidden destination.' },
+        boundary: { type: 'string', enum: ['open_passage', 'cross_aisle', 'closed_door', 'unknown'] },
         kind: { type: 'string', enum: ['surface', 'appliance', 'doorway', 'aisle_end', 'section'] },
         section: { type: 'string', enum: [...FOOD_SECTIONS] },
         box: { type: 'array', items: { type: 'number' } },

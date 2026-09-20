@@ -199,6 +199,7 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
   /// A course reference requested before the first frame is applied on it.
   private var pendingCourseBearing: Double?
   private var lastPitchDeg: Double = 0
+  private var worldSessionId = UUID().uuidString
 
   public override init() {
     super.init()
@@ -230,6 +231,7 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
       return
     }
     let config = makeConfiguration()
+    worldSessionId = UUID().uuidString
     session.run(config, options: [.resetTracking, .removeExistingAnchors])
     isRunning = true
     isInterrupted = false
@@ -240,6 +242,8 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
   /// by interruption recovery (09 §2).
   public func resetTracking() {
     guard isRunning else { return }
+    worldSessionId = UUID().uuidString
+    sharpFrames.reset()
     session.run(makeConfiguration(), options: [.resetTracking])
   }
 
@@ -310,6 +314,7 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
     }
     if tracking.shouldResetTracking {
       resetTracking()
+      return // The current frame belongs to the previous coordinate origin.
     }
 
     // Yaw rate over the last ~0.3 s (looming sweep suppression, OCR blur gate).
@@ -328,9 +333,19 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
     let geometry = FrameGeometry(
       bodyHeadingDeg: bodyHeading, horizonRow: horizon, yawRateDegPerSec: yawRate,
       trackingState: watchdog.state, timestamp: nowSeconds)
-    let pose = PosePayload(
+    var pose = PosePayload(
       yawDeg: yaw, x: position.x, y: position.y, z: position.z,
       trackingState: watchdog.state, timestamp: timestampMs)
+    pose.worldSessionId = worldSessionId
+    pose.pitchDeg = pitch
+    // Bound bridge traffic. These are measured sparse features, not a collision mesh.
+    if let cloud = frame.rawFeaturePoints, !cloud.points.isEmpty {
+      let strideBy = max(1, cloud.points.count / 64)
+      pose.mappingPoints = stride(from: 0, to: cloud.points.count, by: strideBy).prefix(64).map {
+        let p = cloud.points[$0]
+        return [Double(p.x), Double(p.y), Double(p.z)]
+      }
+    }
 
     let context = FrameContext(
       frame: frame, geometry: geometry, pose: pose, pitchDeg: pitch,
@@ -385,6 +400,8 @@ public final class ARSessionManager: NSObject, ARSessionDelegate {
     watchdog.reset()
     yawHistory.reset()
     if isRunning {
+      worldSessionId = UUID().uuidString
+      sharpFrames.reset()
       session.run(makeConfiguration(), options: [.resetTracking])
     }
     delegate?.sessionManagerInterruptionEnded(self)

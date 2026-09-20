@@ -498,9 +498,13 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     const at = now();
     latestOcr = reads.filter((r) => r.text.trim().length >= 3 && r.confidence >= 0.5).slice(0, 8).map((r) => ({ text: r.text, box: r.box, at }));
   }));
+  unsubs.push(perception.onTrackingState((state) => {
+    if (state !== 'NORMAL') { latestPose = null; explorationMap.trip.loseTracking(); }
+  }));
   const poseTrail: Array<{ x: number; z: number; at: number }> = [];
   unsubs.push(perception.onPose((p) => {
     latestPose = p;
+    explorationMap.ingestPose(p);
     poseTrail.push({ x: p.x, z: p.z, at: now() });
     while (poseTrail.length > 0 && now() - poseTrail[0]!.at > 2000) poseTrail.shift();
   }));
@@ -517,7 +521,7 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     adaptiveSearch: !mocks,
     heading: () => sceneMemory.facing(),
     steps: () => searchSteps,
-    pose: () => (latestPose && now() - latestPose.timestamp <= 2000 && latestPose.trackingState !== 'NOT_AVAILABLE' ? latestPose : null),
+    pose: () => (latestPose && now() - latestPose.timestamp <= 2000 && latestPose.trackingState === 'NORMAL' ? latestPose : null),
     path: () => (latestDepth && now() - latestDepth.at <= 1000 ? latestDepth : null),
     hfovDeg: lensHfov,
     signs: () => latestOcr,

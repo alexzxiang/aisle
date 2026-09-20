@@ -589,6 +589,11 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     // Schedule before awaiting anything. Geometry keeps running even with a stalled
     // vision request, and advancing a step can never accidentally kill the loop.
     r.timer = setT(() => { void tick(r); }, deps.guide ? Math.min(tickMs, 500) : tickMs);
+    if (deps.adaptiveSearch && deps.map && deps.pose && (!deps.pose() || !deps.map.trip.ready())) {
+      handGuide.stop(); r.handing = false;
+      speech.say({ text: 'Stop. Hold the phone steady while I recover our position.', priority: 'NAV', dedupeKey: 'task-tracking', cooldownMs: 10000 });
+      return;
+    }
     const step = r.steps[r.step];
     if ((r.fridge && r.step === 4) || (r.mission && r.step === 2)) return; // only user confirmation completes pickup
     if (r.mission) {
@@ -633,13 +638,13 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         if (r.check && now() - r.check.at > checkTtlMs) r.check = null; // no answer: back to watching
         const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: true, force: true });
         if (run !== r || r.step !== askedStep || mode() !== 'GUIDED_TASK') return;
+        if (out.status === 'applied' && out.capturedAt !== null) r.search?.observe(out.response?.search, out.seq, out.capturedAt ?? now() - (out.latencyMs ?? 0));
         if (r.search) {
           const currentHeading = deps.heading?.();
           const turned = typeof captureHeading === 'number' && typeof currentHeading === 'number'
             && Math.abs(((currentHeading - captureHeading + 540) % 360) - 180) > 15;
           if (turned || (captureSteps !== undefined && captureSteps !== deps.steps?.())) return;
         }
-        if (out.status === 'applied') r.search?.observe(out.response?.search, out.seq, now() - (out.latencyMs ?? 0));
         const observation = out.status === 'applied' ? out.response?.search : undefined;
         // Round 11: Claude's landmarks are evidence for the navigator's hypotheses too — a counter it
         // boxed is a counter the phone can walk to, even when the detector has no box for it.

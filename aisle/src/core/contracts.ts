@@ -140,6 +140,11 @@ export interface HeadingSample {
 export type TrackingState = 'NOT_AVAILABLE' | 'LIMITED' | 'NORMAL';
 
 export interface Pose {
+  /** Changes whenever native ARKit resets its coordinate origin. */
+  worldSessionId?: string;
+  pitchDeg?: number;
+  /** Sparse measured world points, bounded by the native emitter. */
+  mappingPoints?: Array<{ x: number; y: number; z: number }>;
   yawDeg: number;           // ARKit world yaw, gravityAndHeading aligned (0 = true north)
   x: number; y: number; z: number;   // metres in the ARKit world frame
   trackingState: TrackingState;

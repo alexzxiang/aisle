@@ -1,19 +1,10 @@
-/**
- * ExplorationMap — where the person has been, so the search can go where they have not
- * (round 12, Stream A).
- *
- * ARKit reports the phone's position in metres at 10 Hz (`Pose.x/z`, `yawDeg`). A coarse grid
- * (CELL_M) of visited cells, plus the cells where a scan was done and the headings that
- * turned out blocked, is enough to explore a room, a classroom or a store aisle by aisle
- * without Claude having to name a landmark first: the next heading is the one with the
- * most unvisited cells along it that the depth grid does not call blocked. Ahead is
- * preferred on ties (no turn), then a quarter turn, then around.
- *
- * Coordinates are ARKit's world frame (x east-ish, z south-ish after gravity-and-heading
- * alignment); yaw is the app's compass yaw (0 = north, + clockwise). A ray at yaw θ
- * advances (sin θ, −cos θ) in (x, z).
+/** Session exploration: coarse visited cells plus sparse 3D and semantic trip memory.
+ * Live camera pans do not paint the old visibility cone: monocular nearness cannot
+ * provide the metric occlusion limits needed to say what lies behind a shelf.
+ * World yaw zero advances along negative z; positive yaw turns toward positive x.
  */
 import type { Pose } from './contracts';
+import { createTripMemory, type TripMemory } from './tripMemory';
 
 export const CELL_M = 1.5;
 /** How far ahead a heading is scored, in cells. */
@@ -36,6 +27,8 @@ export interface Openness {
 }
 
 export interface ExplorationMap {
+  readonly trip: TripMemory;
+  ingestPose(p: Pose): void;
   /** Feed every pose; visits are recorded per cell. */
   visit(p: Pick<Pose, 'x' | 'z'>): void;
   /**
@@ -91,6 +84,8 @@ export const wrap360 = (deg: number): number => ((deg % 360) + 360) % 360;
 export const VIEW_RANGE_M = 4.5;
 
 export function createExplorationMap(now: () => number = Date.now): ExplorationMap {
+  const trip = createTripMemory(now);
+  let generation = 0;
   const visited = new Map<string, number>();
   const scanned = new Set<string>();
   const seen = new Map<string, number>();
@@ -115,6 +110,14 @@ export function createExplorationMap(now: () => number = Date.now): ExplorationM
   };
 
   return {
+    trip,
+    ingestPose(p) {
+      trip.ingest(p);
+      if (trip.generation() !== generation) {
+        generation = trip.generation();
+        visited.clear(); scanned.clear(); seen.clear(); blocked.clear(); absent.length = 0;
+      }
+    },
     visit(p) {
       const [cx, cz] = cellOf(p);
       const k = key(cx, cz);
