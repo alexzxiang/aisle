@@ -19,6 +19,7 @@ it.each([
   ['teacher desk', 'desk'], ['student desks', 'desk'], ['kitchen island', 'countertop'],
   ['produce bin', 'food_container'], ['display shelves', 'shelf'], ['display table', 'table'],
   ['bedside table', 'nightstand'], ['classroom chairs', 'chair'],
+  ['sun hat', 'hat'], ['AirPods', 'headphones'], ['wireless earbuds', 'headphones'],
 ])('preserves the supporting structure in %s', (words, cls) => {
   expect(classForWords(words)).toBe(cls);
 });

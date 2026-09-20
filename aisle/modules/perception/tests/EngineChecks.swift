@@ -256,6 +256,7 @@ func trackerChecks() {
   var weakCart = cartCandidate; weakCart.score = 0.6
   check("cart: weak repeated label withheld", cartEvidence.apply([weakCart], at: 3.2).isEmpty)
   check("bottle: reusable label aliases", OpenImagesLabels.detectionClass(for: "water bottle") == .bottle && OpenImagesLabels.detectionClass(for: "thermos") == .bottle)
+  check("household: hat label aliases", OpenImagesLabels.detectionClass(for: "Hat") == .hat && OpenImagesLabels.detectionClass(for: "Sun hat") == .hat)
   var hazards = HazardFilter()
   let person = DetectionPayload(cls: .person, box: box(cx: 0.5, cy: 0.6, w: 0.25, h: 0.5), score: 0.9, trackId: 1)
   let h1 = hazards.evaluate([person], at: 10)

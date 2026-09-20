@@ -220,6 +220,7 @@ export function createGuide(deps: GuideDeps): Guide {
     instructionFor(targetWords, modelBox, options) {
       const cls = classForWords(targetWords);
       const specificBottle = cls === 'bottle' && /\b(neon|green|red|blue|black|white|yellow|pink|purple|metal|steel|insulated|reusable|thermos|flask)\b/i.test(targetWords);
+      const specificHeadphones = cls === 'headphones' && /\b(?:airpods?|air pods?|earbuds?)\b/i.test(targetWords);
       const name = cls === 'fridge' && /\bfreezer\b/i.test(targetWords) ? 'freezer' : cls ? spokenName(cls) : targetWords.toLowerCase().replace(/^(the|a|an|my|some)\s+/, '');
       const hfov = deps.hfovDeg();
 
@@ -227,7 +228,7 @@ export function createGuide(deps: GuideDeps): Guide {
       let box: [number, number, number, number] | null = null;
       let near: number | undefined;
       let evidenceAt = now();
-      if (cls && !options?.modelOnly && !specificBottle) {
+      if (cls && !options?.modelOnly && !specificBottle && !specificHeadphones) {
         // 0.5: a table at half confidence is a table to walk to; below that the memory bearing steers.
         const seen = deps.detections().filter((d) => d.cls === cls && d.score >= 0.5).sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
         if (seen) {
@@ -273,7 +274,7 @@ export function createGuide(deps: GuideDeps): Guide {
       }
 
       // 2. Out of view: remembered bearing.
-      if (options?.modelOnly || specificBottle) return null;
+      if (options?.modelOnly || specificBottle || specificHeadphones) return null;
       const where = deps.memory.whereIs(targetWords);
       if (typeof where === 'object') {
         const rel = wrap180(where.relativeDeg);

@@ -214,6 +214,7 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
   case nightstand
   case wardrobe
   case headphones
+  case hat
   case watch
   case wheelchair
   case streetLight = "street_light"
@@ -251,7 +252,7 @@ public enum DetectionClass: String, Codable, CaseIterable, Sendable {
     .cheese, .cream, .dairy, .seafood, .pasta, .juice, .iceCream, .cucumber, .pepper, .grape, .lemon, .pear, .peach, .foodContainer,
     .door, .doorHandle, .countertop, .cabinet, .drawer, .lightSwitch, .stairs, .shelf, .window, .mirror, .pillow, .towel,
     .trashCan, .lamp, .plate, .mug, .kettle, .can, .box, .egg, .milk, .bread, .glasses, .shoe, .washingMachine, .dishwasher,
-    .bathtub, .shower, .faucet, .desk, .stool, .nightstand, .wardrobe, .headphones, .watch, .wheelchair, .streetLight,
+    .bathtub, .shower, .faucet, .desk, .stool, .nightstand, .wardrobe, .headphones, .hat, .watch, .wheelchair, .streetLight,
     .trafficSign, .parkingMeter, .curtain, .monitor, .printer, .fireplace, .ladder, .pan, .stove, .cuttingBoard, .soap,
     .candle, .tree, .bag, .tomato, .potato, .fruit, .vegetable, .snack, .tablet, .pen, .coin,
   ]

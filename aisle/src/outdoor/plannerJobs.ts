@@ -278,7 +278,7 @@ const WHERE_RE = /\b(where am i|where are we|were am i|what street|where is this
 const ABORT_RE = /\b(stop|cancel|quit|abort|never mind|nevermind|end route)\b/i;
 const HELP_RE = /\b(help|what can you do|instructions|how does this work)\b/i;
 const GO_TO_RE = /\b(?:take me to|bring me to|walk me to|guide me to|navigate to|directions to|go to|get to|find (?:the |a |my )?)\s*(.+)$/i;
-const HOME_WORDS_RE = /\b(fridge|refrigerator|freezer|kitchen|living room|bedroom|bathroom|hallway|closet|couch|sofa|desk|table|door ?frame|my keys|my phone|my wallet|my bag|remote|charger|stairs|in my)\b/i;
+const HOME_WORDS_RE = /\b(fridge|refrigerator|freezer|kitchen|living room|bedroom|bathroom|hallway|closet|couch|sofa|desk|table|door ?frame|my keys|my phone|my wallet|my bag|my air ?pods|my earbuds?|my headphones|my hat|remote|charger|stairs|in my)\b/i;
 const PLACE_WORDS_RE = /\b(cvs|walgreens|rite aid|pharmacy|store|shop|market|grocery|giant eagle|target|walmart|costco|trader joe|whole foods|library|bank|station|cafe|coffee|starbucks|restaurant|hospital|clinic|school|university|campus|park|bus stop|address|street|avenue|ave|road)\b/i;
 
 /** Rough goal classification shared by the template and A's on-device fallback parser. */

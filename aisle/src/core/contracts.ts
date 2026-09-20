@@ -274,7 +274,7 @@ export const HOME_DETECTION_CLASSES = [
   'cheese', 'cream', 'dairy', 'seafood', 'pasta', 'juice', 'ice_cream', 'cucumber', 'pepper', 'grape', 'lemon', 'pear', 'peach', 'food_container',
   'door', 'door_handle', 'countertop', 'cabinet', 'drawer', 'light_switch', 'stairs', 'shelf', 'window', 'mirror', 'pillow', 'towel',
   'trash_can', 'lamp', 'plate', 'mug', 'kettle', 'can', 'box', 'egg', 'milk', 'bread', 'glasses', 'shoe', 'washing_machine', 'dishwasher',
-  'bathtub', 'shower', 'faucet', 'desk', 'stool', 'nightstand', 'wardrobe', 'headphones', 'watch', 'wheelchair', 'street_light',
+  'bathtub', 'shower', 'faucet', 'desk', 'stool', 'nightstand', 'wardrobe', 'headphones', 'hat', 'watch', 'wheelchair', 'street_light',
   'traffic_sign', 'parking_meter', 'curtain', 'monitor', 'printer', 'fireplace', 'ladder', 'pan', 'stove', 'cutting_board', 'soap',
   'candle', 'tree', 'bag', 'tomato', 'potato', 'fruit', 'vegetable', 'snack', 'tablet', 'pen', 'coin',
 ] as const;

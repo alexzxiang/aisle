@@ -362,7 +362,8 @@ public enum OpenImagesLabels {
     // Things people ask for.
     "plate": .plate, "mug": .mug, "coffee cup": .mug, "kettle": .kettle, "teapot": .kettle, "tin can": .can, "box": .box,
     "egg (food)": .egg, "milk": .milk, "bread": .bread, "bagel": .bread, "glasses": .glasses, "sunglasses": .glasses,
-    "footwear": .shoe, "boot": .shoe, "headphones": .headphones, "watch": .watch, "computer monitor": .monitor,
+    "footwear": .shoe, "boot": .shoe, "headphones": .headphones, "hat": .hat, "cowboy hat": .hat, "sun hat": .hat,
+    "watch": .watch, "computer monitor": .monitor,
     "tablet computer": .tablet, "printer": .printer, "frying pan": .pan, "wok": .pan, "cutting board": .cuttingBoard,
     "soap dispenser": .soap, "candle": .candle, "plastic bag": .bag, "tomato": .tomato, "potato": .potato, "fruit": .fruit,
     "vegetable": .vegetable, "snack": .snack, "cookie": .snack, "candy": .snack, "pen": .pen, "coin": .coin,

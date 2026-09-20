@@ -5,11 +5,11 @@ export type FoodSection = typeof FOOD_SECTIONS[number];
 export const FOOD_CATALOG: Readonly<Record<Exclude<FoodSection, 'unknown'>, readonly string[]>> = {
   produce: ['banana', 'apple', 'orange', 'pear', 'peach', 'grape', 'berry', 'strawberry', 'blueberry', 'avocado', 'lemon', 'lime', 'tomato', 'potato', 'onion', 'carrot', 'broccoli', 'lettuce', 'spinach', 'cucumber', 'pepper', 'mushroom', 'fruit', 'vegetable'],
   dairy: ['egg', 'milk', 'cheese', 'yogurt', 'yoghurt', 'butter', 'cream', 'mozzarella', 'cheddar', 'cottage cheese'],
-  meat: ['meat', 'chicken', 'beef', 'pork', 'turkey', 'steak', 'sausage', 'bacon', 'ham'],
+  meat: ['meat', 'chicken', 'beef', 'pork', 'turkey', 'steak', 'sausage', 'bacon', 'ham', 'ground beef', 'deli meat'],
   seafood: ['fish', 'salmon', 'tuna', 'shrimp', 'prawn', 'seafood'],
   bakery: ['bread', 'bagel', 'bun', 'roll', 'tortilla', 'cake'],
   pantry: ['rice', 'pasta', 'noodle', 'cereal', 'oat', 'bean', 'lentil', 'flour', 'sugar', 'salt', 'oil', 'soup', 'sauce', 'cracker', 'chip', 'cookie', 'juice', 'coffee', 'tea'],
-  frozen: ['frozen', 'ice cream'],
+  frozen: ['frozen', 'ice cream', 'pizza'],
 };
 
 export function foodSection(words: string): FoodSection {

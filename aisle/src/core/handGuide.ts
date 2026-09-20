@@ -152,7 +152,8 @@ export function createHandGuide(deps: HandGuideDeps): HandGuide {
       const gen = ++generation;
       // An appliance box is never a handle box.
       const specificBottle = classForWords(item) === 'bottle' && /\b(neon|green|red|blue|black|white|yellow|pink|purple|metal|steel|insulated|reusable|thermos|flask)\b/i.test(item);
-      const cls = /\bhandle\b/i.test(item) || specificBottle ? null : classForWords(item);
+      const specificHeadphones = classForWords(item) === 'headphones' && /\b(?:airpods?|air pods?|earbuds?)\b/i.test(item);
+      const cls = /\bhandle\b/i.test(item) || specificBottle || specificHeadphones ? null : classForWords(item);
       const startedAt = now();
       let steps = 0;
       let handWords = 0;

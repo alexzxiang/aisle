@@ -8,6 +8,9 @@ describe('explicitHomeGoal', () => {
     ['take me to the fridge', 'fridge'],
     ['take me to my fridge and find my eggs', 'eggs in my fridge'],
     ['get me the remote on the couch', 'remote on the couch'],
+    ['find my wallet', 'wallet'],
+    ['find my AirPods', 'airpods'],
+    ['find my hat', 'hat'],
   ])('%s → %s', (said, goal) => {
     expect(explicitHomeGoal(said)).toBe(goal);
   });

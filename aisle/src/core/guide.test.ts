@@ -16,6 +16,11 @@ describe('guide (pure)', () => {
     expect(guide.instructionFor('water bottle')?.targetVisible).toBe(true);
     expect(guide.instructionFor('neon green metal water bottle')?.targetVisible).not.toBe(true);
   });
+  it('requires semantic confirmation for AirPods instead of accepting generic headphones', () => {
+    const guide = rig({ detections: [det('headphones', 0.5, 0.3)] }).guide;
+    expect(guide.instructionFor('headphones')?.targetVisible).toBe(true);
+    expect(guide.instructionFor('my AirPods')?.targetVisible).not.toBe(true);
+  });
   it('relative depth alone cannot declare a small distant fridge within reach', () => {
     expect(rig({ detections: [det('fridge', 0.5, 0.3, 0.95)] }).guide.instructionFor('fridge')?.kind).not.toBe('arrived');
   });

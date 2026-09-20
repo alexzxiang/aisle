@@ -38,7 +38,7 @@ const OPENS = new Set(['fridge', 'freezer', 'cabinet', 'drawer', 'wardrobe', 'di
 /** Item words → usual places, best first. The first regex that matches wins. */
 const USUAL: ReadonlyArray<[RegExp, Usual]> = [
   [/\b(?:thermos|flask|(?:metal|steel|insulated|reusable) (?:water )?bottle)\b/, [['table', 0.35], ['desk', 0.35], ['shelf', 0.3]]],
-  [/\b(?:ice ?cream|frozen|popsicles?)\b/, [['freezer', 0.9], ['fridge', 0.5]]],
+  [/\b(?:ice ?cream|frozen|popsicles?|pizza)\b/, [['freezer', 0.9], ['fridge', 0.5]]],
   [/\b(?:eggs?|milk|cheese|yogu?rt|butter|cream|juice|leftovers?|soda|beer|wine|jam|ketchup|mustard|sauce|salad|meat|chicken|fish|deli)\b/, [['fridge', 0.9], ['countertop', 0.2], ['table', 0.15]]],
   [/\b(?:bananas?|apples?|oranges?|pears?|peach(?:es)?|grapes?|lemons?|limes?|fruit|avocados?|tomato(?:es)?)\b/, [['countertop', 0.5], ['table', 0.45], ['bowl', 0.4], ['fridge', 0.25]]],
   [/\b(?:bread|bagels?|loaf|buns?|rolls?|toast|muffins?|croissants?)\b/, [['countertop', 0.6], ['table', 0.3], ['cabinet', 0.3], ['fridge', 0.15]]],
@@ -53,7 +53,7 @@ const USUAL: ReadonlyArray<[RegExp, Usual]> = [
   [/\b(?:pillows?|blankets?|sheets?)\b/, [['bed', 0.7], ['couch', 0.5], ['wardrobe', 0.2]]],
   [/\b(?:towels?|toothbrush|toothpaste|soap|shampoo|razor)\b/, [['sink', 0.5], ['shower', 0.45], ['bathtub', 0.3], ['cabinet', 0.3]]],
   [/\b(?:medicine|pills?|medication|tablets|vitamins?|bandages?)\b/, [['cabinet', 0.5], ['sink', 0.35], ['nightstand', 0.3], ['countertop', 0.25]]],
-  [/\b(?:shoes?|sneakers?|boots?|slippers?|coat|jacket|umbrella|bag|backpack)\b/, [['door', 0.5], ['wardrobe', 0.4], ['chair', 0.2], ['bed', 0.15]]],
+  [/\b(?:shoes?|sneakers?|boots?|slippers?|hats?|caps?|beanies?|coat|jacket|umbrella|bag|backpack)\b/, [['door', 0.5], ['wardrobe', 0.4], ['chair', 0.2], ['bed', 0.15]]],
   [/\b(?:books?|notebook|magazine|newspaper|papers?)\b/, [['shelf', 0.5], ['desk', 0.4], ['table', 0.35], ['nightstand', 0.3], ['couch', 0.2]]],
   [/\b(?:clothes|shirt|sweater|pants|socks|jeans)\b/, [['wardrobe', 0.6], ['drawer', 0.5], ['bed', 0.3], ['chair', 0.25]]],
   [/\b(?:candles?|lamps?|lighter|matches)\b/, [['table', 0.4], ['shelf', 0.35], ['nightstand', 0.3], ['drawer', 0.3]]],

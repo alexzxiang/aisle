@@ -3,7 +3,7 @@ import { normalizeGoal } from './handGuide';
 /** Explicit home commands win over a model's grocery-route guess. Questions remain questions. */
 export function explicitHomeGoal(transcript: string): string | null {
   let t = transcript.trim().replace(/[.!?]+$/, '').toLowerCase();
-  if (!/\b(fridge|refrigerator|freezer|kitchen|living room|bedroom|bathroom|couch|sofa|table|counter|my keys|my phone)\b/.test(t)) return null;
+  if (!/\b(fridge|refrigerator|freezer|kitchen|living room|bedroom|bathroom|couch|sofa|table|counter|my keys|my phone|my wallet|my air ?pods|my earbuds?|my headphones|my hat)\b/.test(t)) return null;
   t = t.replace(/^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:please\s+)?/, '');
   const prefix = /^(?:(?:take|bring|walk|guide|lead|send|navigate) me (?:to|toward)|(?:help me )?(?:find|get|fetch|retrieve|reach)(?: me)?|(?:i|we) (?:need|want)(?: to (?:find|get))?|how (?:do i|can i) get to|go to)\s+/i;
   if (!prefix.test(t)) return null;
