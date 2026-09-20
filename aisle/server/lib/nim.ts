@@ -83,6 +83,13 @@ export interface NimDeps {
   createStream?: CreateStream;
   now?: () => number;
   onFailover?: (from: NimTarget, to: NimTarget, reason: string) => void;
+  /**
+   * Every 429 from a NIM target, whether or not anything is left to fail over to. `onFailover`
+   * cannot stand in for this: with no spare key and no OpenRouter — the current configuration —
+   * a rate limit has nowhere to go, so it fires nothing and `/api/health` reports
+   * `nvidia.http429: 0` while Nemotron is in fact refusing calls.
+   */
+  onRateLimited?: (target: NimTarget) => void;
 }
 
 export class NimConfigError extends Error {
@@ -270,6 +277,7 @@ export function nimChat(params: NimChatParams, deps: NimDeps): NimHandle {
         };
       } catch (e) {
         const verdict = isFailoverError(e);
+        if (verdict.status === 429) deps.onRateLimited?.(target);
         const next = targets[i + 1];
         const beforeFirstToken = firstTokenAt === null;
         // The spare NIM key is only worth trying on a rate limit.

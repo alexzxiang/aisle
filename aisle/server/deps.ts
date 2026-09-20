@@ -61,7 +61,9 @@ export async function createDefaultDeps(opts: CreateDepsOptions = {}): Promise<A
   const config = opts.config ?? loadConfig();
   const anthropicDeps: AnthropicDeps = { apiKey: config.anthropicApiKey, ...(opts.anthropic ?? {}) };
   const eleven = { config, fetchFn: opts.fetchFn };
-  const nim: NimDeps = { config };
+  // A Nemotron rate limit is the failure this system actually hits; count it so /api/health
+  // and `npm run doctor` show it instead of a permanent zero.
+  const nim: NimDeps = { config, onRateLimited: () => http429.bump('nvidia') };
   const jobSchemas = opts.jobSchemas ?? (await loadJobSchemas());
 
   const warmup = createWarmupRegistry({
