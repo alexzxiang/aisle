@@ -162,6 +162,16 @@ describe('stepLegProgress', () => {
     const r = run([fix(away), fix(away), fix(away), fix(away)]);
     expect(r.events).toContain('OFF_ROUTE');
   });
+
+  it('detects parallel movement even when along-route progress continues', () => {
+    const fixes = [20, 30, 40].map((m) => fix(destinationPoint(destinationPoint(O, 0, m), 270, 40)));
+    expect(run(fixes).events).toContain('OFF_ROUTE');
+  });
+
+  it('does not interpret separation within GPS uncertainty as off-route', () => {
+    const away = destinationPoint(destinationPoint(O, 0, 40), 270, 40);
+    expect(run([fix(away, 35), fix(away, 35), fix(away, 35)]).events).not.toContain('OFF_ROUTE');
+  });
 });
 
 describe('referenceBearingFor', () => {

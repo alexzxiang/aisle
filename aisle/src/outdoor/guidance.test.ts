@@ -66,6 +66,12 @@ describe('leg and crossing requests', () => {
     expect(legConfirmRequest(leg(0, 'ARRIVE', 'Forbes Ave', 30), null)?.text).toBe('Entrance ahead, about one hundred feet.');
   });
 
+  it('follows the route maneuver even if the compiled script names the opposite turn', () => {
+    const l = leg(0, 'TURN_LEFT', 'Forbes Ave');
+    expect(legSoonRequest(l, script)?.cacheKey).toBe('turn_left_soon');
+    expect(legNowRequest(l, script)?.cacheKey).toBe('turn_left_now');
+  });
+
   it('crossing ahead: the compiled announcement once, push_button_likely once when flagged', () => {
     const reqs = crossingAheadRequests(crossing({ pushButtonLikely: true }), script);
     expect(reqs.map((r) => r.text)).toEqual(['Crossing ahead: Forbes Avenue. Signalized.', PHRASES.push_button_likely]);

@@ -83,6 +83,39 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 describe('LegRunner', () => {
+  it('speaks a correction for persistent heading drift, not a stale compass', async () => {
+    const h = harness();
+    await h.runner.loadRoute(buildRoute(), { storeId: 's', entrance, destName: 'd', origin: START });
+    for (let i = 0; i < 3; i += 1) {
+      jest.advanceTimersByTime(1000);
+      h.sensors.setHeading(180, 3);
+      const p = destinationPoint(START, 240, 40 + i * 2);
+      h.sensors.emitFix(fix(p.lat, p.lng));
+    }
+    expect(h.speech.texts()).toContain('Bear right to follow the route.');
+    const count = h.speech.said.length;
+    jest.advanceTimersByTime(15000);
+    for (let i = 0; i < 3; i += 1) {
+      h.sensors.emitFix(fix(START.lat, START.lng));
+      jest.advanceTimersByTime(1000);
+    }
+    expect(h.speech.said).toHaveLength(count);
+    h.runner.stop();
+  });
+
+  it('retargets course guidance to the local segment of a curved leg', async () => {
+    const h = harness();
+    const route = buildRoute();
+    const bend = destinationPoint(START, 240, 60);
+    const end = destinationPoint(bend, 300, 120);
+    route.legs[0] = { ...route.legs[0], polyline: [START, bend, end], endLat: end.lat, endLng: end.lng, endBearingDeg: 300 };
+    await h.runner.loadRoute(route, { storeId: 's', entrance, destName: 'd', origin: START });
+    const here = destinationPoint(bend, 300, 30);
+    h.sensors.emitFix(fix(here.lat, here.lng));
+    const reference = h.perception.calls.filter((c) => c.method === 'setCourseReference').at(-1)!.args[0] as { bearingDeg: number };
+    expect(reference.bearingDeg).toBeCloseTo(300, 1);
+    h.runner.stop();
+  });
   it('start: fetches the route, emits ROUTE_READY once, speaks the warning then leg 0 confirm, targets COURSE', async () => {
     const h = harness();
     const p = h.runner.start({ storeId: 'demo-store-01', entrance, destName: 'Demo Grocery', origin: START });
@@ -123,6 +156,8 @@ describe('LegRunner', () => {
     expect(h.haptics.played).toContain('TURN');
     expect(h.perception.calls.slice(-1)).toEqual([{ method: 'setCourseReference', args: [{ bearingDeg: 330 }] }]);
     expect(h.runner.getDebugState().turnPhase).toBe('ALIGNING');
+    expect(h.runner.getDebugState().remainingM).toBeCloseTo(60, 0);
+    expect(h.outdoor.getState().nextManeuverM).toBeCloseTo(60, 0);
     h.sensors.emitHeading({ trueHeadingDeg: 335, accuracy: 3, timestamp: Date.now() });
     jest.advanceTimersByTime(1000);
     h.sensors.emitHeading({ trueHeadingDeg: 335, accuracy: 3, timestamp: Date.now() });
@@ -227,6 +262,10 @@ describe('LegRunner', () => {
     expect(h.outdoor.getState().replans).toBe(1);
     expect(h.runner.getDebugState().legIndex).toBe(0);
     expect(h.outdoor.getState().offline).toBe(false);
+    const confirms = h.speech.said.filter((r) => r.dedupeKey?.endsWith('leg-0-confirm'));
+    expect(confirms).toHaveLength(2);
+    expect(confirms[0].dedupeKey).not.toBe(confirms[1].dedupeKey);
+    expect(h.speech.cleared).toContain('NAV');
   });
 
   it('a re-plan whose new route drops the armed crossing aborts the controller with reason replan', async () => {

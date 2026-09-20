@@ -72,14 +72,15 @@ export function requestFor(
 /** The compiled phrases for a leg, falling back to the template when the script lacks it. */
 export function scriptLegFor(leg: RouteLeg, script: RouteCompileOutput | null | undefined): RouteCompileOutput['legs'][number] {
   const found = script?.legs.find((l) => l.index === leg.index);
-  if (found) return found;
-  return templateLeg({
+  const canonical = templateLeg({
     index: leg.index,
     instruction: leg.instruction,
     maneuver: leg.maneuver,
     distanceM: leg.distanceM,
     startBearingDeg: leg.startBearingDeg,
   });
+  // Turn direction is route data, never a language-model wording decision.
+  return found ? { ...found, soon: canonical.soon, now: canonical.now } : canonical;
 }
 
 export function legSoonRequest(leg: RouteLeg, script: RouteCompileOutput | null | undefined): SpeechRequest | null {

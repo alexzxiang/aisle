@@ -33,7 +33,6 @@ export const ACCURACY_FAIR_M = 35;
 export const OVERSHOOT_M = 10;
 export const OFF_ROUTE_CROSS_TRACK_M = 25;
 export const OFF_ROUTE_FIXES = 3;
-export const STALL_PROGRESS_M = 3;
 
 /** Accuracy gate: the advancement radius for a fix, or null when it does not count. */
 export function advanceRadiusFor(accuracyM: number): number | null {
@@ -83,8 +82,8 @@ function legEnd(leg: RouteLeg): LatLng {
 /**
  * Advance rule (03 Task 3): two consecutive counting fixes inside the radius of the
  * leg end, or two consecutive counting fixes more than 10 m past the end along-track.
- * Off-route: three consecutive counting fixes > 25 m cross-track from both the
- * current and next leg with along-track progress stalled.
+ * Off-route: three consecutive counting fixes separated from both the current
+ * and next leg by more than 25 m and the accuracy-aware uncertainty margin.
  */
 export function stepLegProgress(prev: LegProgressState, fix: GeoFix, legs: readonly RouteLeg[]): LegProgressStep {
   const leg = legs[prev.legIndex];
@@ -125,12 +124,12 @@ export function stepLegProgress(prev: LegProgressState, fix: GeoFix, legs: reado
     return { state: next, events, counted: true, distToEndM, alongM, crossTrackM, remainingM };
   }
 
-  // Off-route detection: far from this leg and the next, and not making progress.
+  // Parallel travel is still off route. Require separation beyond GPS uncertainty.
+  const offRouteThreshold = Math.max(OFF_ROUTE_CROSS_TRACK_M, fix.accuracyM * 1.5);
   const nextLeg = legs[prev.legIndex + 1];
-  const farFromNext = nextLeg ? (projectOntoPolyline(here, nextLeg.polyline)?.distM ?? Infinity) > OFF_ROUTE_CROSS_TRACK_M : true;
-  const stalled = prev.lastAlongM !== null && alongM - prev.lastAlongM < STALL_PROGRESS_M;
-  const far = crossTrackM > OFF_ROUTE_CROSS_TRACK_M && farFromNext;
-  const offRouteCount = far && stalled ? prev.offRouteCount + 1 : far ? Math.max(1, prev.offRouteCount) : 0;
+  const farFromNext = nextLeg ? (projectOntoPolyline(here, nextLeg.polyline)?.distM ?? Infinity) > offRouteThreshold : true;
+  const far = crossTrackM > offRouteThreshold && farFromNext;
+  const offRouteCount = far ? prev.offRouteCount + 1 : 0;
   next = { ...next, offRouteCount };
   if (offRouteCount >= OFF_ROUTE_FIXES) {
     events.push('OFF_ROUTE');

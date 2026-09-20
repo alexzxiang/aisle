@@ -25,10 +25,11 @@ import type {
 } from '../core/contracts';
 import type { AisleCrossingController } from '../crossing/CrossingController';
 import { buildRouteLine, crossingLengthM, projectOntoRoute, toCrossing, type RouteLine } from '../crossing/crossingData';
-import { type LatLng } from './geo';
+import { initialBearingDeg, polylineLengthM, projectOntoPolyline, type LatLng } from './geo';
+import { initialCorrection, stepCorrection } from './courseCorrection';
 import { CROSSING_AHEAD_M, crossingAheadRequests, offlineNoticeRequest, prefetchPhrases, prefetchPortOf, replanRequest, variablePhrases } from './guidance';
 import { DIRECT_ROUTE_ATTRIBUTION, directRoute } from './directRoute';
-import { initialLegProgress, stepLegProgress, usableOutdoorFix, type LegProgressState } from './legs';
+import { angularError, initialLegProgress, stepLegProgress, usableOutdoorFix, type LegProgressState } from './legs';
 import type { PlannerClient } from './planner';
 import { templateAnswer } from './plannerJobs';
 import { RouteClientError, type RouteClient, type RouteRequest } from './routeClient';
@@ -118,6 +119,10 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
   let prefetchReport: LegRunnerDebugState['prefetch'] = null;
   let transitionStarted = false;
   let running = false;
+  let correction = initialCorrection();
+  let courseBearing: number | null = null;
+  let routeRevision = 0;
+  let installing = false;
   let tick: ReturnType<typeof setInterval> | null = null;
   const unsubs: Array<() => void> = [];
 
@@ -126,15 +131,17 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
   const say = (req: SpeechRequest): void => {
     lastPhrase = req.text;
     outdoor.getState().countUtterance();
-    speech.say(req);
+    const routeSpecific = req.dedupeKey?.startsWith('leg-') || req.dedupeKey?.startsWith('alignment-');
+    speech.say({ ...req, dedupeKey: routeSpecific ? `route-${routeRevision}-${req.dedupeKey}` : req.dedupeKey });
   };
 
-  const retargetCourse = (legIndex: number): void => {
+  const retargetCourse = (legIndex: number, bearing?: number): void => {
     const leg = route?.legs[legIndex];
     if (!leg) return;
+    courseBearing = bearing ?? leg.startBearingDeg;
     haptics.stopCourse();
-    haptics.startCourse(sensors.courseErrorFor({ bearingDeg: leg.startBearingDeg, line: leg.polyline, roadSide: leg.roadSide }));
-    perception.setCourseReference({ bearingDeg: leg.startBearingDeg });
+    haptics.startCourse(sensors.courseErrorFor({ bearingDeg: courseBearing, line: leg.polyline, roadSide: leg.roadSide }));
+    perception.setCourseReference({ bearingDeg: courseBearing });
   };
 
   const runActions = (actions: TurnAction[]): void => {
@@ -147,6 +154,7 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
 
   const applyTurn = (event: Parameters<typeof stepTurnFlow>[1]): void => {
     if (!route) return;
+    if (event.type === 'ADVANCED') speech.clearQueue('NAV');
     const r = stepTurnFlow(turn, event, route.legs, route.script);
     turn = r.state;
     runActions(r.actions);
@@ -231,8 +239,9 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
   // --- fixes ---------------------------------------------------------------------------
 
   const onFix = (fix: GeoFix): void => {
-    if (!running || !route || !line) return;
+    if (!running || !route || !line || installing || replanning) return;
     if (!usableOutdoorFix(fix, now())) {
+      correction = initialCorrection();
       progress = { ...progress, insideCount: 0, overshootCount: 0, offRouteCount: 0 };
       outdoor.getState().setProgress({ lastFixCounted: false });
       return;
@@ -242,7 +251,10 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
     const step = stepLegProgress(progress, fix, route.legs);
     const before = progress.legIndex;
     progress = step.state;
-    remainingM = step.remainingM;
+    const activeLeg = route.legs[progress.legIndex];
+    const activeProjection = activeLeg ? projectOntoPolyline(fix, activeLeg.polyline) : null;
+    remainingM = before === progress.legIndex ? step.remainingM
+      : activeProjection ? Math.max(0, polylineLengthM(activeLeg.polyline) - activeProjection.alongM) : activeLeg?.distanceM ?? 0;
 
     const here: LatLng = { lat: fix.lat, lng: fix.lng };
     const routeProj = projectOntoRoute(here, line);
@@ -260,22 +272,50 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
           if (mode !== 'CROSSING' && mode !== 'AT_CURB') retargetCourse(progress.legIndex);
         }
         maybeStartTransition();
-      } else if (ev === 'OFF_ROUTE') {
+      } else if (ev === 'OFF_ROUTE' && walking) {
         void replan(fix);
       }
       // ARRIVED: no utterance of ours (Task 8) — Agent D's STORE_ENTERED is the handoff.
     }
-    if (before === progress.legIndex && walking) applyTurn({ type: 'PROGRESS', remainingM: step.remainingM });
+    const offRoute = step.crossTrackM > Math.max(25, fix.accuracyM * 1.5)
+      && (projectOntoPolyline(fix, route.legs[before + 1]?.polyline ?? [])?.distM ?? Infinity) > Math.max(25, fix.accuracyM * 1.5);
+    if (walking && (offRoute || replanning)) {
+      correction = initialCorrection();
+      haptics.stopCourse();
+      courseBearing = null;
+      perception.setCourseReference(null);
+      outdoor.getState().setBeaconTarget(null);
+      outdoor.getState().setProgress({ lastFixCounted: step.counted });
+      return;
+    }
+    if (before === progress.legIndex && walking) applyTurn({ type: 'PROGRESS', remainingM });
+
+    if (walking && turn.phase === 'WALKING' && activeProjection && activeLeg) {
+      const a = activeLeg.polyline[activeProjection.segIndex];
+      const b = activeLeg.polyline[activeProjection.segIndex + 1];
+      const bearing = a && b ? initialBearingDeg(a, b) : activeLeg.startBearingDeg;
+      if (courseBearing === null || Math.abs(angularError(courseBearing, bearing)) > 5) retargetCourse(progress.legIndex, bearing);
+      const heading = sensors.getHeading();
+      const fused = sensors.getFusedHeadingDeg();
+      // Near a maneuver, its dedicated turn flow owns the instructions.
+      if (heading && heading.accuracy >= 2 && fused !== null && now() >= heading.timestamp
+        && now() - heading.timestamp <= 2000 && remainingM > 25
+        && fix.accuracyM <= 20 && activeProjection.distM <= Math.max(12, fix.accuracyM)) {
+        const result = stepCorrection(correction, fused, bearing, fix.timestamp);
+        correction = result.state;
+        if (result.request) say(result.request);
+      } else correction = initialCorrection();
+    } else correction = initialCorrection();
 
     updateCrossings(routeAlongM);
 
     if (mode !== 'CROSSING' && mode !== 'AT_CURB') {
       const leg = route.legs[progress.legIndex];
-      outdoor.getState().setBeaconTarget(beaconTargetFor(leg, step.remainingM, request ? { lat: request.entrance.lat, lng: request.entrance.lng } : null));
+      outdoor.getState().setBeaconTarget(beaconTargetFor(leg, remainingM, request ? { lat: request.entrance.lat, lng: request.entrance.lng } : null));
     }
     outdoor.getState().setProgress({
       legIndex: progress.legIndex,
-      nextManeuverM: step.remainingM,
+      nextManeuverM: remainingM,
       nextCrossingM,
       lastFixCounted: step.counted,
     });
@@ -285,7 +325,10 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
 
   const replan = async (fix: GeoFix): Promise<void> => {
     if (replanning || !request || !route) return;
+    const revision = routeRevision;
     replanning = true;
+    speech.clearQueue('NAV');
+    say({ text: 'Pause. You are off the route. Recalculating directions.', priority: 'NAV', dedupeKey: 'off-route', cooldownMs: 15000 });
     replans += 1;
     outdoor.getState().bumpReplans();
     // A degraded straight-line route has nothing to fetch: "off route" only means the line
@@ -304,9 +347,10 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
         deps.planner ? deps.planner.run('answer', { question: 'replan', context: { mode: deps.getMode() } }).then((r) => r.output.reply) : Promise.resolve(templateAnswer({ question: 'replan', context: {} }).reply),
         sleep(REPLAN_REPLY_WAIT_MS).then(() => templateAnswer({ question: 'replan', context: {} }).reply),
       ]);
+      if (!running || revision !== routeRevision) return;
       say(replanRequest(reply));
       const fresh = await deps.routeClient.fetchRoute({ origin: { lat: fix.lat, lng: fix.lng }, dest: request.entrance, storeId: request.storeId });
-      if (!running) return;
+      if (!running || revision !== routeRevision) return;
       outdoor.getState().setOffline(false);
       const armedStillThere = armedCrossingId !== null && fresh.crossings.some((c) => c.crossingId === armedCrossingId);
       if (armedCrossingId !== null && !armedStillThere) {
@@ -316,6 +360,7 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
       await installRoute(fresh, request, 'REPLANNED');
       if (armedStillThere) reannounceArmedCrossing(fix);
     } catch (e) {
+      if (!running || revision !== routeRevision) return;
       // Keep the old route (cached audio keeps playing); the next off-route run tries again.
       // A network / timeout failure is the one connectivity signal B owns: say `offline_notice` once.
       if (e instanceof RouteClientError && (e.kind === 'network' || e.kind === 'timeout')) {
@@ -330,6 +375,11 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
   // --- route install -------------------------------------------------------------------------
 
   const installRoute = async (r: RouteResponse, req: StartRequest, how: 'ROUTE_READY' | 'REPLANNED'): Promise<void> => {
+    routeRevision += 1;
+    const revision = routeRevision;
+    installing = true;
+    correction = initialCorrection();
+    speech.clearQueue('NAV');
     route = r;
     request = req;
     line = buildRouteLine(r.legs);
@@ -346,6 +396,9 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
       prefetchPhrases(texts, port),
       sleep(cap).then(() => ({ requested: texts.length, ok: 0, failed: ['<timeout>'], elapsedMs: cap })),
     ]);
+    if (!running || revision !== routeRevision) return;
+    installing = false;
+    speech.clearQueue('NAV');
     prefetchReport = { requested: report.requested, ok: report.ok, failed: report.failed };
 
     outdoor.getState().setRoute({ legs: r.legs, crossings: r.crossings, destName: r.destName, warnings: r.warnings, attribution: r.attribution, planner: r.planner });
@@ -361,7 +414,7 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
     unsubs.push(sensors.subscribeLocation(onFix));
     unsubs.push(sensors.subscribeHeading((h) => {
       const heading = sensors.getFusedHeadingDeg();
-      if (WALKING_MODES.has(deps.getMode()) && heading !== null && now() >= h.timestamp && now() - h.timestamp <= 2000) {
+      if (!installing && !replanning && WALKING_MODES.has(deps.getMode()) && heading !== null && now() >= h.timestamp && now() - h.timestamp <= 2000) {
         applyTurn({ type: 'HEADING', headingDeg: heading, accuracy: h.accuracy, now: now() });
       }
     }));
@@ -380,13 +433,21 @@ export function createLegRunner(deps: LegRunnerDeps): LegRunner {
       if (running) setTimeout(check, 0);
     }));
     tick = setInterval(() => {
-      if (WALKING_MODES.has(deps.getMode())) applyTurn({ type: 'TICK', now: now() });
+      if (!installing && !replanning && WALKING_MODES.has(deps.getMode())) applyTurn({ type: 'TICK', now: now() });
     }, TICK_MS);
   };
 
   const stop = (): void => {
     if (!running && route === null) return;
     running = false;
+    routeRevision += 1;
+    installing = false;
+    // Deliberately no clearQueue('NAV') here. The other clears drop stale route
+    // instructions while a route is live; this one is teardown, and the runner
+    // stops itself on STORE_ENTERED — the same instant trip.ts enqueues the
+    // handoff announcement. Clearing here swallowed "Entering the store.",
+    // which 00-PROJECT-BRIEF lists under "Never cut". Abort already cancels a
+    // pending announcement through trip.ts.
     if (tick) clearInterval(tick);
     tick = null;
     for (const u of unsubs.splice(0)) u();
