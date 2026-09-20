@@ -550,8 +550,10 @@ export function createVoiceInput(opts: VoiceInputOptions): VoiceInput {
       const m = opts.store.getState().mode;
       const inStore = m === 'INDOOR_NAV' || m === 'AT_ITEM' || m === 'ITEM_PICKUP' || m === 'CHECKOUT_NAV';
       // The awareness loop's confirmed or observed scene beats the mode's guess; the mode still wins inside a trip.
-      const context: TaskContext = explicitHomeGoal(output.goal) !== null || /\b(fridge|refrigerator|my kitchen|my living room)\b/i.test(output.goal)
-        ? 'home' : inStore ? 'store' : m === 'OUTDOOR_NAV' ? 'street' : (opts.sceneContext?.() ?? 'home');
+      const scene = opts.sceneContext?.();
+      const context: TaskContext = inStore || scene === 'store' ? 'store'
+        : explicitHomeGoal(output.goal) !== null || /\b(fridge|refrigerator|my kitchen|my living room)\b/i.test(output.goal) ? 'home'
+        : m === 'OUTDOOR_NAV' ? 'street' : (scene ?? 'home');
       startTask(output.goal, context);
       return;
     } else if (output.intent === 'abort') {

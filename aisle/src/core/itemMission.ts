@@ -316,8 +316,8 @@ export function decide(goal: MissionGoal, state: MissionState, s: MissionSnapsho
   }
   // 1b. No working place yet (nothing stated, or the stated one was ruled out): reason about where it usually is.
   if (!working && s.context === 'store') {
-    // In a store the reasoning is by section, and the explorer owns the walk between sections:
-    // one line about where the thing belongs, then every tick is the explorer's.
+    // Store food belongs on merchandise shelves/displays or in refrigerated cases. Home
+    // priors such as a counter, table or fruit bowl never become store destinations.
     if (!state.reasoned) {
       next.reasoned = true;
       const sec = foodSection(goal.item);

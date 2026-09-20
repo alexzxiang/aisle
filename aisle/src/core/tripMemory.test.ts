@@ -123,9 +123,48 @@ test('deferred routes are skipped without claiming absence and are retried after
   expect(h.map.route('milk', 'dairy', 'nonexistent')).toBeNull();
 });
 
+test('a stalled shelf cools down nearby walked viewpoints without excluding farther produce', () => {
+  const h = rig();
+  h.observe({ items: ['apples', 'oranges'] });
+  for (let i = 1; i <= 60; i++) {
+    h.pose({ x: i / 10 });
+    if (i === 10 || i === 50) h.observe({ items: ['apples', 'oranges'] });
+  }
+  h.map.defer('bananas', h.map.snapshot().places[0]!.id);
+  const route = h.map.route('bananas', 'produce');
+  expect(route?.destination.x).toBeGreaterThan(3);
+  expect(h.map.describe('bananas')).toContain('partial coverage');
+  h.map.noteAisle('produce aisle', 'produce');
+  h.map.noteAisleSearch('bananas', 'inconclusive');
+  expect(h.map.aisleVisited('produce sign', 'bananas')).toBe(false);
+});
+
 test('a door-shaped object without open-floor evidence never becomes an exploration portal', () => {
   const h = rig();
   const doorway: SearchObservation['landmarks'][number] = { name: 'door', kind: 'doorway', section: 'unknown', box: [0.3, 0.1, 0.3, 0.8], confidence: 0.99 };
   h.observe({ landmarks: [doorway] }); h.observe({ landmarks: [{ ...doorway, boundary: 'closed_door' }] });
   expect(h.map.snapshot().portals).toHaveLength(0);
+});
+
+test('tracks grocery aisle visits and search outcome independently for each item', () => {
+  const h = rig();
+  h.map.noteAisle('Aisle four pasta', 'pantry');
+  h.map.noteAisleSearch('spaghetti', 'inconclusive');
+  expect(h.map.aisleVisited('Aisle four pasta', 'spaghetti')).toBe(true);
+  expect(h.map.aisleVisited('Aisle six coffee', 'spaghetti')).toBe(false);
+  expect(h.map.aisleVisited('Aisle four pasta', 'coffee')).toBe(false);
+  h.map.noteAisleSearch('spaghetti', 'checked');
+  expect(h.map.visitedAisles('spaghetti')).toEqual([expect.objectContaining({ result: 'checked', visits: 1 })]);
+  h.map.leaveAisle();
+});
+
+test('keeps separate unmarked aisles and upgrades one when its sign becomes readable', () => {
+  const h = rig();
+  h.map.noteAisle('unmarked aisle', 'unknown');
+  h.map.noteAisle('PRODUCE', 'produce');
+  h.map.noteAisleSearch('bananas', 'inconclusive');
+  h.map.leaveAisle();
+  h.map.noteAisle('unmarked aisle', 'unknown');
+  h.map.noteAisleSearch('bananas', 'inconclusive');
+  expect(h.map.visitedAisles('bananas').map(a => a.label)).toEqual(['PRODUCE', 'unmarked aisle']);
 });

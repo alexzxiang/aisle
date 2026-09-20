@@ -551,14 +551,14 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
     if (r.mission) {
       const place = deps.scene?.();
       const seen = deps.seen?.();
-      return `${r.mission.userText()}${search}${place ? ` Place: ${place}.` : ''}${seen ? ` Seen: ${seen}.` : ''}`.slice(0, r.search ? 1800 : 500);
+      return `Setting: ${r.context}. ${r.mission.userText()}${search}${place ? ` Place: ${place}.` : ''}${seen ? ` Seen: ${seen}.` : ''}`.slice(0, r.search ? 1800 : 500);
     }
     const s = r.steps[r.step]!;
     const place = deps.scene?.();
     const where = place ? ` Place: ${place}.` : '';
     const seen = deps.seen?.();
     const memory = seen ? ` Seen: ${seen}.` : '';
-    return `Goal: ${r.goal}. Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${r.searchTarget ?? s.lookFor}.${r.fridge ? ` Stage: ${FRIDGE_STAGES[r.step]}. Preserve this mission; do not describe the room or plan a route.` : ''}${search}${where}${memory}`.slice(0, r.search ? 1800 : 500);
+    return `Setting: ${r.context}. Goal: ${r.goal}. Step ${r.step + 1} of ${r.steps.length}: ${s.instruction} Look for: ${r.searchTarget ?? s.lookFor}.${r.fridge ? ` Stage: ${FRIDGE_STAGES[r.step]}. Preserve this mission; do not describe the room or plan a route.` : ''}${search}${where}${memory}`.slice(0, r.search ? 1800 : 500);
   };
 
   /** 'done' closes on the streak; 'ask' puts it to the user; 'no' resets. */
@@ -625,7 +625,10 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         // gave up / stopped: the step stays open; the reminder and the next reach retry it.
       });
     }
-    if (!r.asking && !r.handing && r.search?.status() !== 'paused' && now() - r.lastVisionAt >= tickMs) {
+    // Paused exploration must still see a recovered camera or a newly revealed
+    // opening. Poll more slowly while stationary; never resume walking blindly.
+    const visionInterval = r.search?.status() === 'paused' ? Math.max(tickMs, 5000) : tickMs;
+    if (!r.asking && !r.handing && now() - r.lastVisionAt >= visionInterval) {
       r.asking = true;
       r.lastVisionAt = now();
       const askedStep = r.step;
@@ -639,6 +642,7 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
         const out = await deps.vision.ask('task_step', { userText: userText(r), priority: 'NAV', silent: true, force: true });
         if (run !== r || r.step !== askedStep || mode() !== 'GUIDED_TASK') return;
         if (out.status === 'applied' && out.capturedAt !== null) r.search?.observe(out.response?.search, out.seq, out.capturedAt ?? now() - (out.latencyMs ?? 0));
+        if (r.search?.status() === 'paused') return;
         if (r.search) {
           const currentHeading = deps.heading?.();
           const turned = typeof captureHeading === 'number' && typeof currentHeading === 'number'
@@ -810,6 +814,12 @@ export function createGuidedTask(deps: GuidedTaskDeps): GuidedTask {
   // Leaving GUIDED_TASK by any road (abort, DONE, a debug jump) ends the loop.
   unsubs.push(store.subscribe((s, prev) => {
     if (prev.mode === 'GUIDED_TASK' && s.mode !== 'GUIDED_TASK') stop();
+    // An explicit location correction must replace an already-running home search.
+    // Keep the shared trip map; rebuild only this mission's assumptions.
+    if (s.mode === 'GUIDED_TASK' && run && s.scene !== prev.scene
+      && s.scene?.confirmed && s.scene.source === 'user' && s.scene.setting === 'store' && run.context !== 'store') {
+      void begin(run.goal, 'store');
+    }
   }));
 
   return {

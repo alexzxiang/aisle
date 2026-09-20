@@ -274,8 +274,15 @@ describe('composeApp (mock mode)', () => {
     const app = composeApp({ config: CONFIG, bus, store, platform, mocks, fixtureTrack: track, loadStoreMap: () => demoStore, outdoor });
     await app.start();
 
-    // The awareness loop has already placed the shopper in a store (Stream A's scene classifier / a "yes").
-    store.setState({ scene: { setting: 'store', label: 'in a store aisle', confidence: 0.9, confirmed: true, source: 'user', at: T0 } });
+    // Correct a running home mission verbally; the old household assumptions must end.
+    bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas', context: 'home', source: 'keyboard' });
+    await jest.advanceTimersByTimeAsync(3000);
+    expect(app.guidedTask.getDebugState().context).toBe('home');
+    await app.voice.submitText('we are in the grocery store');
+    await jest.advanceTimersByTimeAsync(3000);
+    expect(app.guidedTask.getDebugState().context).toBe('store');
+    expect(store.getState().taskGoal).toBe('bananas');
+    store.getState().abort();
 
     // No surveyed map: the item is found by looking (a guided task with store context), not ITEM_REQUESTED → trip.
     await app.voice.submitText('I need eggs');

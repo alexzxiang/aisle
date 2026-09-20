@@ -110,6 +110,8 @@ export const MOVE_LOST_GRACE_MS = 6500;
 export const MOVE_GIVE_UP_MS = 45_000;
 /** Remind once after silence; only an affirmative answer authorizes relocation. */
 export const CONSENT_MS = 10_000;
+/** A grocery shelf viewpoint that yields no new coverage this long is deferred, not cleared. */
+export const SAME_VIEW_NO_PROGRESS_MS = 10_000;
 /** After giving up, a reminder no more often than this. */
 export const GIVE_UP_PULSE_MS = 45_000;
 /** With nothing to head for and no position: walk this far, then look again — at most ADVANCE_MAX times. */
@@ -226,6 +228,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
   let permissionAt = -Infinity;
   let gaveUpAt = -Infinity;
   let lastPulseAt = -Infinity;
+  let pauseRecovery: 'camera' | 'opening' | null = null;
+  let pauseText = 'Search paused. Say resume, or stop.';
   /** A tick after a long silence (the navigator spoke instead) must not resume a stale leg. */
   let lastTickAt = -Infinity;
   const STALE_TICK_MS = 8000;
@@ -243,7 +247,18 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     if (ready && speakable(text)) { saidAt = now(); return { text, target, phase }; }
     return { text: null, target, phase };
   };
-  const resetScan = (): void => { scan = 0; scanAt = -Infinity; phase = 'scan'; proposal = null; memoryRoute = null; pendingLeg = null; arrivalHits = 0; saidAt = -Infinity; moveKey = null; lastMoveSteps = null; leg = null; crossing = false; };
+  const resetScan = (): void => { scan = 0; scanAt = -Infinity; phase = 'scan'; pauseRecovery = null; proposal = null; memoryRoute = null; pendingLeg = null; arrivalHits = 0; saidAt = -Infinity; moveKey = null; lastMoveSteps = null; leg = null; crossing = false; };
+  const resumeScan = (renewBudget: boolean): void => {
+    resetScan();
+    if (renewBudget) startedAt = now();
+    localScanAt = now(); coverageProgressAt = now(); missingBands = 3;
+    gaveUpAt = -Infinity; unusableStreak = 0; advances = 0;
+  };
+  const pause = (text: string, recovery: typeof pauseRecovery): SearchDirective => {
+    phase = 'paused'; pauseRecovery = recovery; pauseText = text;
+    gaveUpAt = now(); lastPulseAt = now(); saidAt = -Infinity;
+    return emit(text);
+  };
   /** A walking line, paced like the navigator's: news after two seconds, the same line again after four. */
   const move = (raw: string, key: string, target: string, haptic: SearchDirective['haptic'] = null): SearchDirective => {
     const t = now();
@@ -269,6 +284,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     return move(line, `leg:${choice.turn}`, targetWords, choice.turn === 'ahead' ? null : 'TURN');
   };
   const arrive = (): SearchDirective => {
+    if (proposal && deps.context === 'store') recentlyReached.set(clean(proposal.name), now());
     if (proposal) map?.trip.arrive(proposal.name, proposal.kind === 'doorway' || proposal.kind === 'aisle_end' ? proposal.kind : 'area');
     const portal = proposal && (proposal.kind === 'doorway' || proposal.kind === 'aisle_end') ? proposal : null;
     const at = deps.pose?.();
@@ -285,7 +301,12 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     return { text: 'Here. Let me look around this spot.', target: targetWords, phase, haptic: 'CONFIRM' };
   };
   const section = foodSection(deps.item);
+  const recentlyReached = new Map<string, number>();
   const candidateKey = (l: SearchLandmark): string => `${area.id}:${clean(l.name)}`;
+  // Containers are not grocery destinations. Apply this to every selection path,
+  // including explicit "explore" requests, so a fallback cannot reintroduce them.
+  const groceryDestination = (l: SearchLandmark): boolean => deps.context !== 'store'
+    || !/\b(bowls?|countertops?|counters?|tables?)\b/i.test(l.name);
   /** The detector's own doors (Open Images `door`) are doorways too, whether or not Claude listed them. */
   const detectorDoorway = (): (SearchLandmark & { at: number; hits: number }) | null => {
     const box = deps.doorway?.() ?? null;
@@ -309,7 +330,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     const door = detectorDoorway();
     const withDoor = door && !fresh.some((l) => l.kind === 'doorway' && overlap(l.box, door.box) >= 0.3) ? [...fresh, door] : fresh;
     const signs = ocrSigns().filter((s) => !withDoor.some((l) => l.kind === 'section' && overlap(l.box, s.box) >= 0.3));
-    return [...withDoor, ...signs];
+    return [...withDoor, ...signs].filter(groceryDestination);
   };
   const choose = (): SearchLandmark | null => {
     const prior = clean(targetWords);
@@ -318,10 +339,14 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     return candidates().filter((l) => !['doorway', 'aisle_end'].includes(l.kind) || (l.hits >= 2 && l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? '')))
       .filter((l) => (l.hits >= 2 || l.confidence >= 0.75) && !refused.has(candidateKey(l)))
       .filter((l) => clean(l.name) !== clean(area.landmark ?? ''))
+      .filter((l) => now() - (recentlyReached.get(clean(l.name)) ?? -Infinity) >= 120000)
+      .filter((l) => deps.context !== 'store' || !map?.trip.aisleVisited(l.name, deps.item))
       .filter((l) => !(l.kind === 'surface' && wrongAisle))
       .sort((a, b) => rank(b) - rank(a))[0] ?? null;
     function rank(l: SearchLandmark): number {
       return (deps.context === 'store' ? aisleClueScore(deps.item, l.name) : 0)
+        + (deps.context === 'store' && area.landmark && area.landmark !== 'cross aisle corridor'
+          && (l.kind === 'aisle_end' || l.kind === 'doorway') ? 50 : 0)
         + (clean(l.name).includes(prior) ? 20 : 0) + (section !== 'unknown' && l.section === section ? 12 : 0)
         + (deps.context === 'store' ? (l.kind === 'aisle_end' ? (wrongAisle ? 9 : 5) : l.kind === 'section' ? 6 : 0) : l.kind === 'doorway' ? 4 : 0)
         + l.confidence;
@@ -336,6 +361,40 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       return 'May I guide you toward another part of the store?';
     }
     return proposal?.kind === 'doorway' ? 'May I guide you through the doorway to search elsewhere?' : 'May I guide you toward another visible surface to search?';
+  };
+  const leaveStalledGroceryView = (pose: Pose): SearchDirective | null => {
+    if (deps.context !== 'store' || !map || lastConfined || now() - observedAt > FRESH_MS) return null;
+    const coverage = map.trip.coverage(deps.item, pose);
+    if (coverage.missing.length < missingBands) { missingBands = coverage.missing.length; coverageProgressAt = now(); }
+    if (now() - coverageProgressAt < SAME_VIEW_NO_PROGRESS_MS) return null;
+    if (coverage.positive) return null;
+    if (coverage.checked) {
+      area.outcome = 'not_seen_in_scanned_views';
+      map.trip.noteAisleSearch(deps.item, 'checked');
+    } else {
+      map.trip.noteAisleSearch(deps.item, 'inconclusive');
+    }
+    map.trip.defer(deps.item);
+    const exit = candidates()
+      .filter(l => (l.kind === 'aisle_end' || l.kind === 'doorway') && l.hits >= 2 && l.confidence >= 0.8
+        && ['open_passage', 'cross_aisle'].includes(l.boundary ?? '') && !refused.has(candidateKey(l))
+        && now() - (recentlyReached.get(clean(l.name)) ?? -Infinity) >= 120000)
+      .sort((a, b) => Number(b.kind === 'aisle_end') - Number(a.kind === 'aisle_end') || b.confidence - a.confidence)[0] ?? null;
+    if (exit) {
+      proposal = exit; phase = 'permission'; permissionAt = now(); saidAt = -Infinity;
+      return emit(question(), exit.name);
+    }
+    memoryRoute = map.trip.route(deps.item, section);
+    if (memoryRoute) {
+      phase = 'permission'; permissionAt = now(); saidAt = -Infinity;
+      return emit(question());
+    }
+    map.markScanned(pose);
+    if (map.bestHeading(pose, pose.yawDeg, deps.path?.() ?? null)) {
+      pendingLeg = pose; phase = 'permission'; permissionAt = now(); saidAt = -Infinity;
+      return emit(question());
+    }
+    return pause('No opening seen. Turn slowly; I am checking for another aisle.', 'opening');
   };
   return {
     observe(o, seq, capturedAt) {
@@ -364,7 +423,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       });
       // Signs identify the current area only when repeated; merely seeing a distant sign
       // during movement must not teleport the user into that aisle.
-      const reliableArea = phase !== 'move' && o.quality === 'usable' && o.confidence >= OBSERVATION_MIN_CONFIDENCE;
+      const reliableArea = phase !== 'move' && phase !== 'advance' && o.quality === 'usable' && o.confidence >= OBSERVATION_MIN_CONFIDENCE;
       if (reliableArea && o.sign) {
         const key = clean(o.sign);
         signHits = key === signCandidate ? signHits + 1 : 1;
@@ -381,6 +440,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       const inferred = reliableArea ? sectionFromFoods(o.items) : 'unknown';
       const signed = reliableArea && signHits >= 2 ? foodSection(area.sign ?? '') : 'unknown';
       area.section = signed !== 'unknown' ? signed : inferred !== 'unknown' ? inferred : area.section;
+      if (deps.context === 'store' && reliableArea) {
+        map?.trip.noteAisle(area.sign ?? (area.section !== 'unknown' ? `${area.section} aisle` : 'unmarked aisle'), area.section);
+      }
       if (area.section !== 'unknown' && area.section !== narratedSection && !pendingNarration) {
         const foods = o.items.filter((i) => foodSection(i) === area.section).slice(0, 2).join(' and ');
         const text = foods ? `${cap(foods)} here. This seems to be ${area.section}.` : `This seems to be the ${area.section} section.`;
@@ -400,6 +462,13 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         if (!area.views.includes(o.view)) area.views.push(o.view);
         // Three different named views AND three observations, not repeated identical frames.
         if (area.outcome !== 'item_seen') area.outcome = map?.trip.coverage(deps.item, currentPose ?? undefined).checked ? 'not_seen_in_scanned_views' : 'partly_searched';
+      }
+      // A pause stops movement, not perception. Fresh evidence can resolve a
+      // camera failure or reveal a way on; the next scan still asks consent.
+      if (phase === 'paused' && quality === 'usable'
+        && ((o.item?.box && o.item.confidence >= 0.8) || (now() - startedAt <= EXPLORE_BUDGET_MS
+          && (pauseRecovery === 'camera' || (pauseRecovery === 'opening' && choose() !== null))))) {
+        resumeScan(false);
       }
     },
     tick(target, direct, opts = {}) {
@@ -437,9 +506,10 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         return emit(question(), proposal?.name);
       }
       if (phase === 'paused') {
-        // Given up: one plain statement was made; from here a low pulse, not a nag.
-        if (gaveUpAt !== -Infinity) return now() - lastPulseAt >= GIVE_UP_PULSE_MS ? (lastPulseAt = now(), { text: 'Still here. Say where to look, or stop.', target: targetWords, phase }) : { text: null, target: targetWords, phase };
-        return emit('Search paused. Say search again, or stop.');
+        // Keep the actual reason, rather than replacing it with a generic nag.
+        return now() - lastPulseAt >= GIVE_UP_PULSE_MS
+          ? (lastPulseAt = now(), { text: pauseText, target: targetWords, phase })
+          : { text: null, target: targetWords, phase };
       }
       if (phase === 'move' && memoryRoute && pose && map) {
         const route = map.trip.route(deps.item, section, memoryRoute.destination.id);
@@ -503,7 +573,8 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
             const noProgress = travelled < 0.5;
             if (blocked || noProgress) map.markBlocked(pose, leg.yawDeg);
             if (crossing && !blocked && travelled >= 1.5) {
-              area = freshArea(); area.landmark = 'beyond opening';
+              if (deps.context === 'store') map.trip.leaveAisle();
+              area = freshArea(); area.landmark = deps.context === 'store' ? 'cross aisle corridor' : 'beyond opening';
               localScanAt = now(); coverageProgressAt = now(); missingBands = 3; localOrigin = pose; viewEvidence = new Set();
               narratedSection = 'unknown'; signHits = 0; signCandidate = '';
             }
@@ -528,25 +599,39 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
         if (walked) { resetScan(); saidAt = now(); return { text: 'Stop here. Let me look around again.', target: targetWords, phase, haptic: 'CONFIRM' }; }
         return move(`Walk forward ${stepsWords(ADVANCE_STEPS)}, then I will look again.`, 'advance', targetWords);
       }
+      if (pose) {
+        const moveOn = leaveStalledGroceryView(pose);
+        if (moveOn) return moveOn;
+      }
       if (pendingNarration && now() - saidAt >= 5000) { const line = pendingNarration; pendingNarration = followUp; followUp = null; return emit(line); }
       if (now() - observedAt > 15000) {
         if (now() - Math.max(startedAt, observedAt) > 30000) {
-          phase = 'paused'; saidAt = -Infinity;
-          return emit('No usable camera response. Say search again to retry.');
+          return pause('Waiting for camera analysis. Hold steady; I am retrying.', 'camera');
         }
         return emit('Hold the camera steady. I need a current view.');
       }
       if (unusableStreak >= 3 && landmarks.length === 0 && now() - localScanAt < 45000) return emit(quality === 'dark' ? 'The view is dark. Aim toward a brighter area.' : 'The view is blocked or blurred. Hold the camera steady.');
       if (unusableStreak >= 3 && landmarks.length === 0 && now() - localScanAt >= 45000) {
-        map?.trip.defer(deps.item); phase = 'paused'; saidAt = -Infinity;
-        return emit('View still unusable. Search paused. Say explore for another angle.');
+        map?.trip.defer(deps.item);
+        return pause('View blocked or blurred. Adjust the camera; I am still checking.', 'camera');
       }
       if (now() - scanAt >= SCAN_MS && now() - saidAt >= 5000) {
         if (scan >= 3) {
           const coverage = map?.trip.coverage(deps.item, pose ?? undefined);
           if (coverage && coverage.missing.length < missingBands) { missingBands = coverage.missing.length; coverageProgressAt = now(); }
           const plausible = opts.surface || opts.confined || area.section === section || area.section === 'unknown';
-          if (coverage && plausible && !coverage.checked && !coverage.positive && now() - localScanAt < 60000 && now() - coverageProgressAt < 20000) {
+          if (coverage?.checked) {
+            area.outcome = 'not_seen_in_scanned_views';
+            if (deps.context === 'store') map?.trip.noteAisleSearch(deps.item, 'checked');
+          }
+          const viewpointStalled = deps.context === 'store' && coverage !== null && coverage !== undefined
+            && now() - coverageProgressAt >= SAME_VIEW_NO_PROGRESS_MS;
+          if (viewpointStalled && !coverage?.checked) {
+            map?.trip.noteAisleSearch(deps.item, 'inconclusive');
+            map?.trip.defer(deps.item);
+          }
+          if (coverage && plausible && !coverage.checked && !coverage.positive && !viewpointStalled
+            && now() - localScanAt < 60000) {
             return emit(SHELVES[Math.max(0, ['upper', 'middle', 'lower'].indexOf(coverage.missing[0] ?? 'upper'))]!);
           }
           // The right section (apples and oranges here, bananas wanted): search these shelves
@@ -556,19 +641,17 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
           const promising = specificAisle
             ? aisleClueScore(deps.item, area.sign ?? '') > 0 || neighbors.length >= 2
             : section !== 'unknown' && area.section === section;
-          if (promising && !area.closeSearched && !opts.confined) {
+          if (promising && !area.closeSearched && !opts.confined && !viewpointStalled) {
             area.closeSearched = true;
             scan = 0; scanAt = now(); closeMode = true;
             return emit('This section looks promising. Let me search these shelves closely.');
           }
           closeMode = false;
           if (opts.confined) {
-            phase = 'paused'; saidAt = -Infinity;
-            return emit('Item still unconfirmed. Say search again for another shelf scan.');
+            return pause('Item still unconfirmed. Say search again for another shelf scan.', null);
           }
           if (now() - startedAt > EXPLORE_BUDGET_MS) {
-            phase = 'paused'; gaveUpAt = now(); lastPulseAt = now(); saidAt = -Infinity;
-            return emit('Search paused. We can keep looking, or ask someone nearby.');
+            return pause('Search paused. We can keep looking, or ask someone nearby.', null);
           }
           memoryRoute = map?.trip.route(deps.item, section) ?? null;
           if (memoryRoute) { phase = 'permission'; permissionAt = now(); saidAt = -Infinity; return emit(question()); }
@@ -581,12 +664,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
               pendingLeg = pose; phase = 'permission'; permissionAt = now(); saidAt = -Infinity;
               return emit(question());
             }
-            phase = 'paused'; saidAt = -Infinity; gaveUpAt = now();
-            lastPulseAt = now();
-            return emit('No confirmed route. Hidden items may remain. Say keep looking.');
+            return pause('No opening seen. Turn slowly; I am checking for another aisle.', 'opening');
           }
-          phase = 'paused'; saidAt = -Infinity;
-          return emit('No way on from here. Ask someone nearby, or say search again.');
+          return pause('No opening seen. Turn slowly; I am checking for another way.', 'opening');
         }
         const corridor = deps.context === 'store' && /\baisle end|end of (?:the )?aisle|corridor\b/i.test(area.landmark ?? '');
         const text = (opts.surface || opts.confined || closeMode ? SHELVES : deps.context === 'store' ? (corridor ? CORRIDOR_SCANS : AISLE_SCANS) : SCANS)[scan]!;
@@ -596,7 +676,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       return { text: null, target, phase };
     },
     intercept(text) {
-      if (/^(?:search again|keep looking|scan again|try again|look again)[.!]?$/i.test(text.trim())) { resetScan(); startedAt = now(); localScanAt = now(); coverageProgressAt = now(); missingBands = 3; gaveUpAt = -Infinity; advances = 0; return { consumed: true, text: 'Resuming the search. Hold the camera steady.' }; }
+      if (/^(?:search(?: again)?|resume(?: searching| search| the search)?|continue(?: searching| search| the search)?|keep looking|scan again|try again|look again)[.!]?$/i.test(text.trim())) { resumeScan(true); return { consumed: true, text: 'Resuming the search. Hold the camera steady.' }; }
       if (/^(?:where have we (?:looked|been)|what have we checked)[?!.]?$/i.test(text.trim())) {
         return { consumed: true, text: areas.some((a) => a.outcome === 'not_seen_in_scanned_views') ? 'We checked several views. Hidden items may still be there.' : 'We have only partly inspected this area.' };
       }
@@ -640,7 +720,7 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
     pending: () => phase === 'permission' || phase === 'paused',
     status: () => phase,
     repeat: () => { saidAt = -Infinity; },
-    restart: () => { resetScan(); startedAt = now(); localScanAt = now(); coverageProgressAt = now(); missingBands = 3; advances = 0; gaveUpAt = -Infinity; },
+    restart: () => resumeScan(true),
     busy: () => phase === 'move' || phase === 'advance' || phase === 'permission',
     exploreNow(prefer = null) {
       gaveUpAt = -Infinity; startedAt = now(); localScanAt = now();
@@ -652,7 +732,9 @@ export function createSearchExplorer(deps: SearchExplorerDeps): SearchExplorer {
       if (map && pose) map.markScanned(pose);
       // A fresh landmark of the wanted kind (an aisle end, a doorway), without asking — the person asked.
       const wanted = prefer === 'aisle' ? 'aisle_end' : prefer === 'room' ? 'doorway' : null;
-      const fresh = landmarks.filter((l) => (!['doorway', 'aisle_end'].includes(l.kind) || (l.hits >= 2 && l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? ''))) && now() - l.at <= FRESH_MS && l.confidence >= LANDMARK_MIN_CONFIDENCE && !refused.has(candidateKey(l)) && clean(l.name) !== clean(area.landmark ?? ''));
+      const fresh = candidates().filter((l) => (!['doorway', 'aisle_end'].includes(l.kind) || (l.hits >= 2 && l.confidence >= 0.8 && ['open_passage', 'cross_aisle'].includes(l.boundary ?? ''))) && now() - l.at <= FRESH_MS && l.confidence >= LANDMARK_MIN_CONFIDENCE && !refused.has(candidateKey(l)) && clean(l.name) !== clean(area.landmark ?? '')
+        && now() - (recentlyReached.get(clean(l.name)) ?? -Infinity) >= 120000
+        && (deps.context !== 'store' || !map?.trip.aisleVisited(l.name, deps.item)));
       const pick = (wanted ? fresh.find((l) => l.kind === wanted) : null) ?? choose() ?? fresh.sort((a, b) => b.confidence - a.confidence)[0] ?? null;
       if (pick) {
         proposal = pick;

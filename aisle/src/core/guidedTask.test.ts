@@ -116,6 +116,29 @@ describe('createGuidedTask', () => {
   });
   afterEach(() => jest.useRealTimers());
 
+  it('continues camera checks after an adaptive search pauses and recovers when frames return', async () => {
+    let recovered = false;
+    let seq = 0;
+    const h = harness({ askImpl: async () => {
+      const response = visionResponse({ done: false, confidence: 0 });
+      if (recovered) response.search = { sign: null, items: [], view: 'overview', quality: 'usable', confidence: 0.9, barrier: 'none', landmarks: [] };
+      return { status: 'applied', seq: ++seq, capturedAt: Date.now(), response, streamed: false, latencyMs: 0 };
+    } });
+    const guide = createGuide({ detections: () => [], memory: { whereIs: () => 'unseen', facing: () => 0 }, hfovDeg: () => 56, now: () => Date.now() });
+    const task = createGuidedTask({ ...h.deps, guide, adaptiveSearch: true });
+    h.bus.emit({ type: 'TASK_REQUESTED', goal: 'bananas', context: 'store', source: 'keyboard' });
+    await flush(35000);
+    expect(h.said.some(r => r.text.includes('Waiting for camera analysis'))).toBe(true);
+    const count = h.asks.mock.calls.length;
+    await flush(6000);
+    expect(h.asks.mock.calls.length).toBeGreaterThan(count);
+    recovered = true;
+    const spoken = h.said.length;
+    await flush(10000);
+    expect(h.said.slice(spoken).some(r => /Face the shelf|face the right shelf/.test(r.text))).toBe(true);
+    task.dispose();
+  });
+
   it('starts an unseen egg search at a hypothesized fridge without claiming eggs are visible', async () => {
     const h = harness();
     h.deps.guide = createGuide({
@@ -171,7 +194,7 @@ describe('createGuidedTask', () => {
     await flush(TASK_TICK_MS);
     expect(h.asks).toHaveBeenCalledTimes(1);
     expect(h.asks.mock.calls[0][0]).toBe('task_step');
-    expect(seen[0]).toBe('Goal: eggs in my fridge. Step 1 of 3: Walk to the kitchen door frame. Look for: a door frame close ahead.');
+    expect(seen[0]).toBe('Setting: home. Goal: eggs in my fridge. Step 1 of 3: Walk to the kitchen door frame. Look for: a door frame close ahead.');
     await flush(TASK_TICK_MS * 3);
     // readings: no, yes, weak-yes → still on step one
     expect(task.getDebugState().step).toBe(0);
@@ -303,7 +326,7 @@ describe('createGuidedTask', () => {
     await flush(TASK_TICK_MS);
     expect(task.getDebugState().step).toBe(1);
     expect(h.said.slice(-2).map((r) => r.text)).toEqual([PHRASES.task_step_done, PLAN.steps[0].instruction]);
-    expect(h.asks.mock.calls[0][1].userText).toBe('Goal: eggs in my fridge. Step 1 of 4: Turn slowly so I can see the room. Look for: the room layout. Place: in a kitchen by a refrigerator.');
+    expect(h.asks.mock.calls[0][1].userText).toBe('Setting: home. Goal: eggs in my fridge. Step 1 of 4: Turn slowly so I can see the room. Look for: the room layout. Place: in a kitchen by a refrigerator.');
     task.dispose();
 
     // No done reading at all: the timeout closes it.

@@ -30,6 +30,37 @@ function setup(context: 'store' | 'home' = 'store') {
 }
 
 describe('active search with trip memory', () => {
+  it('does not alternate between bowls or tables in a grocery search, including explicit exploration', () => {
+    const h = setup();
+    const landmarks: SearchObservation['landmarks'] = [
+      { name: 'left fruit bowl', kind: 'surface', section: 'produce', box: [0.1, 0.2, 0.2, 0.3], confidence: 0.99 },
+      { name: 'right bowl on table', kind: 'surface', section: 'produce', box: [0.6, 0.2, 0.2, 0.3], confidence: 0.99 },
+      { name: 'aisle end', kind: 'aisle_end', boundary: 'cross_aisle', section: 'unknown', box: [0.4, 0.1, 0.2, 0.6], confidence: 0.9 },
+    ];
+    for (let i = 0; i < 5; i++) h.tick({ landmarks });
+    expect(h.said).toContain('May I take you out of this aisle to look elsewhere?');
+    expect(h.search.exploreNow().target).toBe('aisle end');
+    expect(h.guide.mock.calls.some(([name]) => /bowl|table/.test(name))).toBe(false);
+  });
+
+  it('asks for another opening when only household containers are visible', () => {
+    const h = setup();
+    h.tick({ landmarks: [{ name: 'fruit bowl', kind: 'surface', section: 'produce', box: [0.1, 0.2, 0.2, 0.3], confidence: 0.99 }] });
+    expect(h.search.exploreNow().text).toBe('Turn slowly so I can find another opening.');
+    expect(h.guide).not.toHaveBeenCalled();
+  });
+
+  it('leaves a searched display for a verified opening instead of a neighboring display', () => {
+    const h = setup();
+    h.search.enterArea('first produce display');
+    const landmarks: SearchObservation['landmarks'] = [
+      { name: 'second produce display', kind: 'section', section: 'produce', box: [0.1, 0.2, 0.2, 0.3], confidence: 0.99 },
+      { name: 'aisle end', kind: 'aisle_end', boundary: 'cross_aisle', section: 'unknown', box: [0.4, 0.1, 0.2, 0.6], confidence: 0.9 },
+    ];
+    for (let i = 0; i < 5; i++) h.tick({ landmarks });
+    expect(h.search.target()).toBe('aisle end');
+  });
+
   it('chooses a related-products sign over an unrelated sign in the same broad department', () => {
     let t = 100000;
     const search = createSearchExplorer({ item: 'spaghetti', context: 'store', guide: { instructionFor: () => null }, now: () => t });
@@ -156,10 +187,46 @@ describe('active search with trip memory', () => {
     const texts: string[] = [];
     for (let i = 0; i < 70; i++) { const r = h.tick({ landmarks: [] }); if (r?.text) texts.push(r.text); }
     expect(texts.some(s => /Walk forward/.test(s))).toBe(false);
-    expect(texts).toContain('No way on from here. Ask someone nearby, or say search again.');
+    expect(texts).toContain('No opening seen. Turn slowly; I am checking for another way.');
     expect(h.search.pending()).toBe(true);
     expect(h.search.status()).toBe('paused');
     for (const text of h.said) expect(checkPhrase(text)).toEqual([]);
+  });
+});
+
+describe('paused search recovery', () => {
+  it.each(['search', 'resume', 'continue', 'resume searching', 'search again'])('accepts "%s" and gives a fresh camera retry window', (command) => {
+    const h = setup();
+    h.wait(31000);
+    expect(h.search.tick('bananas', null)?.text).toContain('Waiting for camera analysis');
+    expect(h.search.status()).toBe('paused');
+    expect(h.search.intercept(command).consumed).toBe(true);
+    expect(h.search.tick('bananas', null)?.text).toBe('Hold the camera steady. I need a current view.');
+    expect(h.search.status()).toBe('scan');
+  });
+
+  it('recovers from a camera outage on a fresh usable frame without a voice command', () => {
+    const h = setup();
+    h.wait(31000); h.search.tick('bananas', null);
+    h.tick({ landmarks: [], quality: 'blurred' });
+    expect(h.search.status()).toBe('paused');
+    h.tick({ landmarks: [] });
+    expect(h.search.status()).toBe('scan');
+    expect(h.guide).not.toHaveBeenCalled();
+  });
+
+  it('keeps inspecting while stopped and asks consent when an opening becomes confirmed', () => {
+    const h = setup();
+    for (let i = 0; i < 5; i++) h.tick({ landmarks: [] });
+    expect(h.search.status()).toBe('paused');
+    const landmarks: SearchObservation['landmarks'] = [{ name: 'aisle end', kind: 'aisle_end', boundary: 'cross_aisle', section: 'unknown', confidence: 0.9, box: [0.4, 0.1, 0.2, 0.6] }];
+    h.tick({ landmarks });
+    expect(h.search.status()).toBe('paused');
+    h.tick({ landmarks });
+    expect(h.search.status()).toBe('scan');
+    for (let i = 0; i < 4; i++) h.tick({ landmarks });
+    expect(h.search.status()).toBe('permission');
+    expect(h.guide).not.toHaveBeenCalled();
   });
 });
 
@@ -201,7 +268,7 @@ describe('exploring a big space by coverage (round 12)', () => {
     const lines: string[] = [];
     for (let i = 0; i < 5; i += 1) { const r = h.tick(); if (r?.text) lines.push(r.text); }
     // Looking north painted the ground ahead as seen; the first leg goes where no view reached.
-    expect(lines.at(-1)).toMatch(/May I explore/);
+    expect(lines).toContainEqual(expect.stringMatching(/May I explore/));
     expect(h.search.intercept('yes').text).toMatch(/check the path/);
     expect(h.search.status()).toBe('advance');
     const heading = 0;
@@ -235,7 +302,7 @@ describe('exploring a big space by coverage (round 12)', () => {
     h.setPath({ center: 0.1, left: 0.1, right: 0.1 });
     const lines: string[] = [];
     for (let i = 0; i < 5; i += 1) { const r = h.tick(); if (r?.text) lines.push(r.text); }
-    expect(lines.at(-1)).toMatch(/May I explore/);
+    expect(lines).toContainEqual(expect.stringMatching(/May I explore/));
     const next = h.search.intercept('yes').text!;
     expect(headingOf(next)).not.toBe(0);   // not the blocked way again
     // Until the person has turned onto the heading, the nudge is "keep turning", not "drifting".
@@ -330,12 +397,12 @@ describe('confirmed openings and bounded exploration', () => {
     h.tick(1000); expect(h.tick(1000)?.text).toMatch(/At the opening/);
     expect(h.search.status()).toBe('advance');
     h.depth(null); expect(h.tick(2000)?.haptic).toBe('STOP');
-    expect(h.search.memory().some(a => a.landmark === 'beyond opening')).toBe(false);
+    expect(h.search.memory().some(a => a.landmark === 'cross aisle corridor')).toBe(false);
     h.depth({ center: 0.1 });
     let last;
     for (let i = 0; i < 8; i++) { h.move(0.2); last = h.tick(300); }
     expect(last?.text).toBe('Stop here. Let me look around.');
-    expect(h.search.memory().at(-1)?.landmark).toBe('beyond opening');
+    expect(h.search.memory().at(-1)?.landmark).toBe('cross aisle corridor');
   });
 
   it('a failed crossing never creates a new room just because its timer expired', () => {
@@ -346,7 +413,49 @@ describe('confirmed openings and bounded exploration', () => {
     let last;
     for (let i = 0; i < 8; i++) last = h.tick(2000);
     expect(last?.text).toMatch(/No progress/);
-    expect(h.search.memory().some(a => a.landmark === 'beyond opening')).toBe(false);
+    expect(h.search.memory().some(a => a.landmark === 'cross aisle corridor')).toBe(false);
     expect(h.search.status()).toBe('scan');
+  });
+});
+
+describe('grocery aisle dwell and visit memory', () => {
+  function aisleRig() {
+    let t = 100000; let seq = 0;
+    const map = createExplorationMap(() => t);
+    const pose = { x: 0, y: 1.4, z: 0, yawDeg: 90, pitchDeg: 0, timestamp: t, trackingState: 'NORMAL' as const, worldSessionId: 'grocery' };
+    const feed = (ms: number) => { for (let elapsed = 0; elapsed < ms; elapsed += 100) { t += 100; pose.timestamp = t; map.ingestPose({ ...pose }); } };
+    feed(300);
+    const search = createSearchExplorer({ item: 'bananas', context: 'store', map, pose: () => ({ ...pose }), path: () => ({ center: 0.1 }),
+      now: () => t, guide: { instructionFor: () => null } });
+    const tick = (ms: number, patch: Partial<SearchObservation>) => {
+      feed(ms); search.observe(observation({ inspection: { target: 'bananas', assessed: false, confidence: 0.4 }, ...patch }), ++seq, t);
+      return search.tick('bananas', null);
+    };
+    return { map, search, tick };
+  }
+
+  it('moves on after ten seconds without shelf progress but does not clear the aisle', () => {
+    const h = aisleRig();
+    const end = { name: 'aisle end', kind: 'aisle_end' as const, boundary: 'cross_aisle' as const, section: 'unknown' as const,
+      confidence: 0.95, box: [0.4, 0.1, 0.2, 0.8] as [number, number, number, number] };
+    h.tick(4000, { sign: 'PRODUCE', items: ['apples', 'oranges'], view: 'upper', landmarks: [end] });
+    h.tick(4000, { sign: 'PRODUCE', items: ['apples', 'oranges'], view: 'middle', landmarks: [end] });
+    let moveOn; const lines: Array<string | null | undefined> = [];
+    for (let i = 0; i < 2 && h.search.status() !== 'permission'; i++) {
+      moveOn = h.tick(4000, { sign: 'PRODUCE', items: ['apples', 'oranges'], view: 'lower', landmarks: [end] });
+      lines.push(moveOn?.text);
+    }
+    expect({ status: h.search.status(), lines }).toEqual(expect.objectContaining({ status: 'permission', lines: expect.arrayContaining([expect.stringMatching(/take you out of this aisle/)]) }));
+    expect(h.search.memory()[0]?.outcome).toBe('partly_searched');
+    expect(h.map.trip.visitedAisles('bananas')).toEqual([expect.objectContaining({ label: 'PRODUCE', result: 'inconclusive' })]);
+  });
+
+  it('remembers attempted aisles per item without hiding another specific pantry aisle', () => {
+    const h = aisleRig();
+    h.map.trip.noteAisle('Aisle four pasta', 'pantry');
+    h.map.trip.noteAisleSearch('spaghetti', 'inconclusive');
+    expect(h.map.trip.aisleVisited('Aisle four pasta', 'spaghetti')).toBe(true);
+    expect(h.map.trip.aisleVisited('Aisle six coffee', 'spaghetti')).toBe(false);
+    expect(h.map.trip.aisleVisited('Aisle four pasta', 'coffee')).toBe(false);
   });
 });

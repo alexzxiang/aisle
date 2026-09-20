@@ -39,7 +39,7 @@ import { bindPrefs, createMemoryPrefsStorage, type PrefsBinding, type PrefsStora
 import { createConversationLog, type ConversationLog } from './conversation';
 import { createSceneDescriber, type SceneDescriber } from './describer';
 import { createGuidedTask, type GuidedTask } from './guidedTask';
-import { createSituate, type Situate } from './situate';
+import { createSituate, whereaboutsFrom, type Situate } from './situate';
 import { classForWords, createSceneMemory, type SceneMemory } from './sceneMemory';
 import { createGuide } from './guide';
 import { describeObstacle, obstacleDetection } from './obstacleWords';
@@ -426,7 +426,9 @@ export function composeApp(opts: ComposeAppOptions): AppComposition {
     askScene: (question) => describer.describeNow(question),
     // Open questions answer first: the awareness loop's, then the guided task's step check,
     // then "where is the X" from memory — never a store trip for a fridge.
-    intercept: (transcript) => (guidedTaskRef?.intercept(transcript) ?? false) || (store.getState().mode !== 'GUIDED_TASK' && situate.intercept(transcript)) || sceneMemory.intercept(transcript),
+    intercept: (transcript) => (whereaboutsFrom(transcript) !== null && situate.intercept(transcript))
+      || (guidedTaskRef?.intercept(transcript) ?? false)
+      || (store.getState().mode !== 'GUIDED_TASK' && situate.intercept(transcript)) || sceneMemory.intercept(transcript),
     sceneContext: () => {
       const scene = situate.getScene();
       if (scene?.confirmed || scene?.setting === 'store') return situate.getContext();

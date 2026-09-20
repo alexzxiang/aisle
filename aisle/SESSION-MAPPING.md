@@ -98,11 +98,28 @@ depth must still permit movement after turning. After approach, the crossing is 
 1.5 metre forward segment; measured displacement, not the timer, establishes the next area.
 
 Coverage gets up to 60 seconds per viewpoint while new verified shelf bands are accumulating.
-Twenty seconds without coverage progress allows relocation without claiming absence; unusable
-views pause after 45 seconds. Home surface missions also allow up to 60 seconds before
+Unusable views pause after 45 seconds. Home surface missions also allow up to 60 seconds before
 abandoning an unverified hypothesis. Relocation still requires consent.
 
-Inconclusive viewpoints are deferred for two minutes, separately from verified absence.
+For grocery searches, the no-progress dwell is ten seconds. New verified shelf-band evidence
+restarts that clock. With fresh observations and usable tracking, expiry defers the local
+viewpoint; only qualified shelf evidence can mark its views checked. A verified visible
+aisle exit takes precedence over a remembered route, followed by an unexplored heading.
+Confined searches (such as inside a fridge) retain their separate inspection behavior.
+Aisle visits are stored per item. Named aisles have a two-minute revisit cooldown; a generic
+produce/dairy label never eliminates that whole department. A later item request can still
+use the same aisle's semantic memory.
+
+Store context takes precedence over household keywords. Explicit verbal store corrections
+also restart an active home mission with store assumptions while retaining the trip map.
+Every task image request includes its setting. Store exploration excludes bowl, table and
+counter destinations; the vision prompt asks for merchandise shelves, produce bins,
+displays, endcaps and refrigerated cases. After searching a reached display, verified
+openings rank above nearby displays; recently reached names receive a two-minute cooldown.
+
+Inconclusive viewpoints and neighbors within three metres along walked graph edges are
+deferred for two minutes, separately from verified absence. This prevents routing between
+adjacent waypoints of the same shelf without skipping through walls to another aisle.
 Remembered routes are pinned to the selected destination so new observations cannot switch
 the destination while walking. Eighteen seconds without 35 cm movement aborts the approach;
 the existing overall approach timeout remains a backstop. Failed coverage legs remember the
@@ -113,3 +130,12 @@ These are conservative policy thresholds, not calibrated probabilities. Verify w
 store walks (especially glare, repeated shelf textures, slow walking, closed doors and camera
 pans) before treating the system as reliable navigation. No camera system can guarantee that
 an occluded item is absent; incomplete regions remain unknown.
+
+## Recovering from pauses
+
+A pause stops movement while camera analysis continues at intervals of at least five seconds.
+Fresh usable observations recover camera outages; a newly confirmed exploration destination
+recovers a missing-route pause. Recovery restarts scanning and still requires consent before
+relocation. Budget and completed confined-scan pauses require an explicit retry, unless the
+target itself becomes visible. `search`, `resume`, `continue`, and `search again` renew the
+search and its retry window. Periodic reminders retain the actual reason for the pause.

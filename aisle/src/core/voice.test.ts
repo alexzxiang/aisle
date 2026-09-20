@@ -806,6 +806,17 @@ describe('round 4: the voice path emits the new events', () => {
     expect(events.find((x) => x.type === 'ITEM_REQUESTED')).toBeUndefined();
   });
 
+  it('household words in a request do not override the grocery store setting', async () => {
+    const v = createVoiceInput({
+      speech: { say: (r: SpeechRequest) => { said.push(r); } } as unknown as SpeechService,
+      bus, store, proxyUrl: 'http://proxy', knownItems: () => KNOWN,
+      fetchImpl: (async () => { throw new Error('offline'); }) as unknown as typeof fetch,
+      sceneContext: () => 'store',
+    });
+    await v.submitText('find bananas on the table');
+    expect(events.find((x) => x.type === 'TASK_REQUESTED')).toMatchObject({ context: 'store' });
+  });
+
   it('the same item on an active trip stays a trip (ITEM_REQUESTED), scene ignored', async () => {
     store.setState({ mode: 'INDOOR_NAV' });
     const v = createVoiceInput({
