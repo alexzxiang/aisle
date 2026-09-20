@@ -25,7 +25,9 @@ jobs:
           cache-dependency-path: aisle/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npx jest --ci
+      # React Native renderer startup can exceed an individual test's 5 s timeout
+      # when GitHub's two-core runner executes many Jest workers concurrently.
+      - run: npx jest --ci --runInBand
   server:
     name: proxy (tsc, vitest)
     runs-on: ubuntu-latest
