@@ -625,7 +625,7 @@ export const TASK_PLAN_SCHEMA = {
 } as const;
 
 export const TASK_PLAN_PROMPT = [
-  'You plan step-by-step camera-guided help for a blind person reaching a goal. Input: JSON with goal, context (home, store, street, unknown) and optional facts the camera already sees.',
+  'You plan step-by-step camera-guided help for a blind person reaching a goal. Input: JSON with goal, context (home, store, classroom, street, unknown) and optional facts the camera already sees. Classrooms use visible desks, tables and floor; shared furniture does not establish home context. Unknown means no environment-specific assumptions.',
   'Return askFirst: one short request to look around first, e.g. "Let me see your surroundings." Then steps: three to eight ordered steps, each an instruction of at most twelve words the person performs (walk, turn, reach, open) and lookFor: what the camera should confirm to call that step done.',
   'Adjust to the context: at home use rooms, door frames, appliances and furniture ("Walk to the kitchen door frame.", "Open the fridge."); in a store use aisles, signs and shelves; on the street use doors, entrances and crossings only as places to stand, never when to cross.',
   'facts.scene says where the person is and facts.description says what the camera sees right now, with sides. Plan from there: if the fridge is already on the left, the first step is "Turn left to face the fridge.", not a look around. Start with a "turn slowly" step only when facts say nothing useful. Put the target where it usually is ("Eggs are often on the door shelf or the middle shelf.") in the reach step.',
@@ -654,6 +654,7 @@ const TASK_STEP_DEFAULTS: Record<string, Array<{ instruction: string; lookFor: s
 };
 
 export function templateTaskPlan(input: TaskPlanInput): TaskPlanOutput {
+  if (!input.facts && (input.context === 'unknown' || input.context === 'classroom')) return templateTaskPlan({ ...input, facts: { detections: [], ocr: [] } });
   // With camera facts, the fallback must not invent the old doorway/room route.
   if (input.facts) {
     const description = input.facts.description ?? '';
@@ -670,7 +671,7 @@ export function templateTaskPlan(input: TaskPlanInput): TaskPlanOutput {
     const target = String(input.goal ?? 'the requested target').replace(/^(find|reach|get)\s+/i, '').slice(0, 45);
     return { askFirst: 'Let me see your surroundings.', steps: [
       first,
-      ...(/fridge|refrigerator/.test(anchor?.name ?? '') ? [{ instruction: 'Show me inside the fridge.', lookFor: 'the fridge door open and its shelves visible' }] : []),
+      ...(input.context === 'home' && /fridge|refrigerator/.test(anchor?.name ?? '') ? [{ instruction: 'Show me inside the fridge.', lookFor: 'the fridge door open and its shelves visible' }] : []),
       { instruction: 'Show me the target before moving toward it.', lookFor: `${target} visible in the scene` },
       input.context === 'street'
         ? { instruction: 'Stop beside the entrance when you reach it.', lookFor: 'the requested entrance immediately beside the user' }

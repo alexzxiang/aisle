@@ -792,7 +792,7 @@ export function createSemanticVision(opts: SemanticVisionOptions): SemanticVisio
       if (res.confidence < MIN_CONFIDENCE) {
         streamed.delete(n);
         stats.lowConfidence += 1;
-        return { status: 'low_confidence', seq: n, response: res, streamed: wasStreamed, latencyMs };
+        return { status: 'low_confidence', capturedAt, seq: n, response: res, streamed: wasStreamed, latencyMs };
       }
       apply(res, meta);   // skips `speech` when the audio already streamed for this seq
       streamed.delete(n);
